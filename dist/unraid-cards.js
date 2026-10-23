@@ -1453,8 +1453,10 @@ if(!window.customCards.some(c=>c.type==='busch-unraid-docker-card'))window.custo
 
 
 /* === Kachel-Basis === */
-const UNRAID_TILE_TEXTE={de:{cancel:'Abbrechen',collapse:'Einklappen',expand:'Ausklappen',loading:'Wird geladen …',failed:'Aktion fehlgeschlagen. Verbindung zu Unraid prüfen und erneut versuchen.',no_server:'Kein Unraid-Server gefunden. Die Integration Unraid SSH einrichten.',choose_server:'Mehrere Unraid-Server gefunden. Im Editor einen wählen.',unavailable:'Nicht verfügbar',device_id:'Server',device_id_helper:'Unraid-Server, dessen Daten die Karte zeigt. Leer: der einzige Server.',title:'Titel',title_helper:'Überschrift der Karte. Leer: Name der Kachel.'},
- en:{cancel:'Cancel',collapse:'Collapse',expand:'Expand',loading:'Loading …',failed:'Action failed. Check the connection to Unraid and try again.',no_server:'No Unraid server found. Set up the Unraid SSH integration.',choose_server:'Several Unraid servers found. Choose one in the editor.',unavailable:'Unavailable',device_id:'Server',device_id_helper:'Unraid server whose data the card shows. Empty: the only server.',title:'Title',title_helper:'Heading of the card. Empty: the tile name.'}};
+const UNRAID_TILE_TEXTE={de:{cancel:'Abbrechen',collapse:'Einklappen',expand:'Ausklappen',loading:'Wird geladen …',failed:'Aktion fehlgeschlagen. Verbindung zu Unraid prüfen und erneut versuchen.',no_server:'Kein Unraid-Server gefunden. Die Integration Unraid SSH einrichten.',choose_server:'Mehrere Unraid-Server gefunden. Im Editor einen wählen.',unavailable:'Nicht verfügbar'},
+ en:{cancel:'Cancel',collapse:'Collapse',expand:'Expand',loading:'Loading …',failed:'Action failed. Check the connection to Unraid and try again.',no_server:'No Unraid server found. Set up the Unraid SSH integration.',choose_server:'Several Unraid servers found. Choose one in the editor.',unavailable:'Unavailable'}};
+// Gemeinsame Laufzeittexte aller Kacheln; je Kachel per Spread in ein eigenes TEXTE_-Literal übernommen.
+// labels/helpers stehen wörtlich je Kachel (auch device_id/title), weil scripts/ui-regeln-pruefen.py nur Literale liest.
 const UNRAID_SCHWELLEN={warnung:70,kritisch:90};
 function unraidZahl(wert,einheit,locale,stellen=0){if(typeof wert!=='number'||!Number.isFinite(wert))return '–';const text=new Intl.NumberFormat(String(locale||'en').startsWith('de')?'de-DE':'en-US',{maximumFractionDigits:stellen,minimumFractionDigits:stellen}).format(wert);return einheit?text+' '+einheit:text;}
 function unraidStufe(p,s=UNRAID_SCHWELLEN){return typeof p!=='number'||!Number.isFinite(p)?'':p>=s.kritisch?'crit':p>=s.warnung?'warn':'';}
@@ -1590,7 +1592,7 @@ if(!customElements.get?.('busch-unraid-confirm'))customElements.define('busch-un
 
 /* === Kacheln === */
 // Gemeinsamer Editor aller Kacheln: `ha-form` mit Schema und Texten der Kachel
-// (`feld`/`feld_helper`), wie `BuschUnraidBaseEditor`; Echo-Schutz aus BuschUI.EditorBase.
+// (`labels`/`helpers`), wie `BuschUnraidBaseEditor`; Echo-Schutz aus BuschUI.EditorBase.
 class BuschUnraidTileEditor extends BuschEditorBase {
  get _schema(){return [];}get _texte(){return {de:{},en:{}};}get _defaults(){return {};}
  setConfig(config){if(!this._acceptConfig(config,buschUnraidConfig))return;this._render();}
@@ -1598,14 +1600,14 @@ class BuschUnraidTileEditor extends BuschEditorBase {
  get hass(){return this._hass;}
  _render(){if(!this._config||!this._hass)return;const t=buschTexte(this._texte,this._hass);
   if(!this._form){this._form=BuschUI.ha.form();this._form.addEventListener('value-changed',event=>{event.stopPropagation();this._publishConfig(buschUnraidConfig({...this._config,...event.detail.value}));this._form.data={...this._defaults,...this._config};});this.appendChild(this._form);}
-  this._form.hass=this._hass;this._form.data={...this._defaults,...this._config};this._form.schema=buschSchemaMitTexten(this._schema,t);this._form.computeLabel=s=>t[s.name]||s.name;this._form.computeHelper=s=>t[s.name+'_helper']||'';
+  this._form.hass=this._hass;this._form.data={...this._defaults,...this._config};this._form.schema=buschSchemaMitTexten(this._schema,t);this._form.computeLabel=s=>t.labels?.[s.name]||s.name;this._form.computeHelper=s=>t.helpers?.[s.name]||'';
  }
 }
 const UNRAID_ARRAY_STATUS={de:{started:'Gestartet',stopped:'Gestoppt',starting:'Startet',stopping:'Stoppt'},en:{started:'Started',stopped:'Stopped',starting:'Starting',stopping:'Stopping'}};
 function unraidDauer(sek,t){if(typeof sek!=='number'||!Number.isFinite(sek)||sek<0)return '–';const d=Math.floor(sek/86400),h=Math.floor(sek%86400/3600),m=Math.floor(sek%3600/60);return [[d,t.day,t.days],[h,t.hour,t.hours],[m,t.minute,t.minutes]].filter(([n],i)=>n||i===2).map(([n,e,v])=>`${n} ${n===1?e:v}`).join(', ');}
 const SCHEMA_BUSCH_UNRAID_SERVER_CARD=[{name:'device_id',selector:{device:{integration:'unraid_ssh',model:'Unraid'}}},{name:'title',selector:{text:{}}},{name:'show_clock',selector:{boolean:{}}}];
-const TEXTE_BUSCH_UNRAID_SERVER_CARD={de:{...UNRAID_TILE_TEXTE.de,tile:'Server',show_clock:'Uhrzeit zeigen',show_clock_helper:'Zeigt Uhrzeit und Datum in der Zeitzone von Home Assistant. Vorgabe an.',uptime:'Laufzeit',array:'Array',mover:'Mover',mover_on:'läuft',mover_off:'ruht',day:'Tag',days:'Tage',hour:'Stunde',hours:'Stunden',minute:'Minute',minutes:'Minuten',version:'Unraid-Version'},
- en:{...UNRAID_TILE_TEXTE.en,tile:'Server',show_clock:'Show clock',show_clock_helper:'Shows time and date in the Home Assistant time zone. Default on.',uptime:'Uptime',array:'Array',mover:'Mover',mover_on:'running',mover_off:'idle',day:'day',days:'days',hour:'hour',hours:'hours',minute:'minute',minutes:'minutes',version:'Unraid version'}};
+const TEXTE_BUSCH_UNRAID_SERVER_CARD={de:{...UNRAID_TILE_TEXTE.de,name:'Unraid: Server',description:'Name, Uhrzeit, Laufzeit und Array-Zustand eines Unraid-Servers.',labels:{device_id:'Server',title:'Titel',show_clock:'Uhrzeit zeigen'},helpers:{device_id:'Unraid-Server, dessen Daten die Karte zeigt. Leer: der einzige Server.',title:'Überschrift der Karte. Leer: Name der Kachel.',show_clock:'Zeigt Uhrzeit und Datum in der Zeitzone von Home Assistant. Vorgabe an.'},tile:'Server',uptime:'Laufzeit',array:'Array',mover:'Mover',mover_on:'läuft',mover_off:'ruht',day:'Tag',days:'Tage',hour:'Stunde',hours:'Stunden',minute:'Minute',minutes:'Minuten',version:'Unraid-Version'},
+ en:{...UNRAID_TILE_TEXTE.en,name:'Unraid: Server',description:'Name, clock, uptime and array state of an Unraid server.',labels:{device_id:'Server',title:'Title',show_clock:'Show clock'},helpers:{device_id:'Unraid server whose data the card shows. Empty: the only server.',title:'Heading of the card. Empty: the tile name.',show_clock:'Shows time and date in the Home Assistant time zone. Default on.'},tile:'Server',uptime:'Uptime',array:'Array',mover:'Mover',mover_on:'running',mover_off:'idle',day:'day',days:'days',hour:'hour',hours:'hours',minute:'minute',minutes:'minutes',version:'Unraid version'}};
 class BuschUnraidServerCard extends BuschUnraidTile{
  static get kachel(){return 'server';}get _texte(){return TEXTE_BUSCH_UNRAID_SERVER_CARD;}get _vorgaben(){return {device_id:'',title:'',show_clock:true};}
  // Der Uptime-Sensor von unraid_ssh ist ein Zeitstempel (Boot-Zeit, ISO); die Laufzeit rechnet die Karte selbst.
@@ -1622,6 +1624,9 @@ class BuschUnraidServerCard extends BuschUnraidTile{
  static getStubConfig(){return {type:'custom:busch-unraid-server-card'};}
 }
 class BuschUnraidServerCardEditor extends BuschUnraidTileEditor{get _schema(){return SCHEMA_BUSCH_UNRAID_SERVER_CARD;}get _texte(){return TEXTE_BUSCH_UNRAID_SERVER_CARD;}get _defaults(){return new BuschUnraidServerCard()._vorgaben;}}
-// [tag, Karte, Editor, [Name, Beschreibung] de, … en] — Vertragstest und Registrierung laufen über diese Liste.
-const UNRAID_KACHELN=[['busch-unraid-server-card',BuschUnraidServerCard,BuschUnraidServerCardEditor,['Unraid: Server','Name, Uhrzeit, Laufzeit und Array-Zustand eines Unraid-Servers.'],['Unraid: Server','Name, clock, uptime and array state of an Unraid server.']]];
-for(const [tag,karte,editor,de,en] of UNRAID_KACHELN){if(!customElements.get?.(tag))customElements.define(tag,karte);if(!customElements.get?.(tag+'-editor'))customElements.define(tag+'-editor',editor);window.customCards=window.customCards||[];const deutsch=typeof navigator!=='undefined'&&String(navigator.language||'').startsWith('de');if(!window.customCards.some(c=>c.type===tag))window.customCards.push({type:tag,name:deutsch?de[0]:en[0],description:deutsch?de[1]:en[1],preview:true,documentationURL:'https://github.com/luukkii123/ha-unraid-cards#'+tag});}
+// [tag, Karte, Editor] — für den Vertragstest; registriert wird wörtlich je Kachel (Regelprüfer findet nur das).
+const UNRAID_KACHELN=[['busch-unraid-server-card',BuschUnraidServerCard,BuschUnraidServerCardEditor]];
+if(!customElements.get?.('busch-unraid-server-card'))customElements.define('busch-unraid-server-card',BuschUnraidServerCard);
+if(!customElements.get?.('busch-unraid-server-card-editor'))customElements.define('busch-unraid-server-card-editor',BuschUnraidServerCardEditor);
+window.customCards=window.customCards||[];
+if(!window.customCards.some(c=>c.type==='busch-unraid-server-card'))window.customCards.push({type:'busch-unraid-server-card',name:buschTexte(TEXTE_BUSCH_UNRAID_SERVER_CARD).name,description:buschTexte(TEXTE_BUSCH_UNRAID_SERVER_CARD).description,preview:true,documentationURL:'https://github.com/luukkii123/ha-unraid-cards#busch-unraid-server-card'});
