@@ -54,3 +54,23 @@ test('System: Fühlername aus label, sonst friendly_name, sonst Kanal; abschaltb
   k = rendere(BuschUnraidSystemCard, core, { show_temperatures: false }); assert.equal(k.shadowRoot.querySelector('.grid'), null); assert.doesNotMatch(k.shadowRoot.textContent, /Temperaturen/);
 });
 test('System-Editor: Schema und Texte', () => { const { BuschUnraidSystemCardEditor } = ladeKarte(['BuschUnraidSystemCardEditor']); const e = new BuschUnraidSystemCardEditor(); e.hass = { locale: { language: 'de' } }; e.setConfig({ type: 'custom:busch-unraid-system-card' }); const form = e.querySelector('ha-form'); assert.deepEqual(form.schema.map(s => s.name), ['device_id', 'title', 'show_temperatures']); assert.equal(form.data.show_temperatures, true); assert.equal(form.computeLabel({ name: 'show_temperatures' }), 'Temperaturen zeigen'); });
+test('CPU: Balken, Temperatur, Load', () => { const { BuschUnraidCpuCard } = ladeKarte(['BuschUnraidCpuCard']); const txt = rendere(BuschUnraidCpuCard, unraidAttrappe()).shadowRoot.textContent; assert.match(txt, /24 %/); assert.match(txt, /89 °C/); assert.match(txt, /3,2/); });
+test('Verlauf: history_during_period, höchstens einmal je Minute', async () => { const { unraidVerlauf } = ladeKarte(['unraidVerlauf']); let n = 0; const hass = { callWS: async m => { n++; assert.equal(m.type, 'history/history_during_period'); assert.equal(m.minimal_response, true); return { 'sensor.tower_cpu': [{ s: '10', lu: 1 }, { s: 'unavailable', lu: 2 }, { s: '30', lu: 3 }] }; } }; const a = await unraidVerlauf(hass, 'sensor.tower_cpu', 10); assert.deepEqual(a.map(p => p.v), [10, 30]); await unraidVerlauf(hass, 'sensor.tower_cpu', 10); assert.equal(n, 1); });
+test('Linie: leere Punkte ergeben Hinweis statt SVG-Fehler', () => { const { unraidLinie } = ladeKarte(['unraidLinie']); assert.ok(unraidLinie([], 'Keine Daten').textContent.includes('Keine Daten')); });
+test('Verlauf: gleichzeitige Abrufe teilen sich einen Aufruf, Zeitraum zählt getrennt', async () => {
+  const { unraidVerlauf } = ladeKarte(['unraidVerlauf']); let n = 0; const hass = { callWS: async () => { n++; return { 'sensor.tower_cpu': [{ s: '5', lu: 1 }, { s: '7', lu: 2 }] }; } };
+  await Promise.all([unraidVerlauf(hass, 'sensor.tower_cpu', 10), unraidVerlauf(hass, 'sensor.tower_cpu', 10)]); assert.equal(n, 1);
+  await unraidVerlauf(hass, 'sensor.tower_cpu', 30); assert.equal(n, 2);
+});
+test('Linie: SVG-Pfad über die Punkte, Beschriftung für Screenreader', () => { const { unraidLinie } = ladeKarte(['unraidLinie']); const svg = unraidLinie([{ t: 0, v: 0 }, { t: 10, v: 100 }], 'Keine Daten', 'Gesamtlast'); assert.equal(svg.getAttribute('role'), 'img'); assert.equal(svg.getAttribute('aria-label'), 'Gesamtlast'); assert.equal(svg.childNodes[0].getAttribute('d'), 'M0.00,30.00 L100.00,0.00'); });
+test('CPU: ohne callWS kein Verlauf und kein Fehler; mit callWS Linie, Abschaltung wirkt', async () => {
+  const { BuschUnraidCpuCard } = ladeKarte(['BuschUnraidCpuCard']); assert.equal(rendere(BuschUnraidCpuCard, unraidAttrappe()).shadowRoot.querySelector('.history'), null);
+  let abfrage; const k = new BuschUnraidCpuCard(); k._core = unraidAttrappe(); k._hass = { locale: { language: 'de' }, callWS: async m => { abfrage = m; return { 'sensor.tower_cpu': [{ s: '20', lu: 1 }, { s: '40', lu: 61 }] }; } }; k.setConfig({ history_minutes: '30' });
+  await new Promise(r => setImmediate(r)); assert.deepEqual(abfrage.entity_ids, ['sensor.tower_cpu']); assert.ok(k.shadowRoot.querySelector('.history').childNodes[0].getAttribute('class') === 'line');
+  k.setConfig({ show_history: false }); assert.equal(k.shadowRoot.querySelector('.history'), null);
+});
+test('CPU: fehlgeschlagener Verlauf zeigt Hinweis', async () => {
+  const { BuschUnraidCpuCard } = ladeKarte(['BuschUnraidCpuCard']); const k = new BuschUnraidCpuCard(); k._core = unraidAttrappe(); k._hass = { locale: { language: 'de' }, callWS: async () => { throw new Error('weg'); } }; k.setConfig({});
+  await new Promise(r => setImmediate(r)); assert.match(k.shadowRoot.querySelector('.history').textContent, /Noch kein Verlauf/);
+});
+test('CPU-Editor: Zeitraum-Auswahl und Texte', () => { const { BuschUnraidCpuCardEditor } = ladeKarte(['BuschUnraidCpuCardEditor']); const e = new BuschUnraidCpuCardEditor(); e.hass = { locale: { language: 'de' } }; e.setConfig({ type: 'custom:busch-unraid-cpu-card' }); const form = e.querySelector('ha-form'); assert.deepEqual(form.schema.map(s => s.name), ['device_id', 'title', 'history_minutes', 'show_history']); assert.equal(form.data.history_minutes, '10'); assert.equal(form.computeLabel({ name: 'history_minutes' }), 'Verlaufszeitraum'); });

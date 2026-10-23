@@ -1510,7 +1510,7 @@ const UNRAID_TILE_STYLE=BUSCH_UNRAID_STYLE+`
 @container (max-width: 420px){.table thead{display:none}.table tr{display:grid;padding:6px 0;border-bottom:1px solid var(--divider-color)}.table td{display:flex;gap:8px}.table td::before{content:attr(data-label);color:var(--secondary-text-color);min-width:40%}}
 @media (prefers-reduced-motion: reduce){*{transition:none!important;animation:none!important}}
 .clock{font-size:40px;line-height:1.1;margin:8px 0 2px}
-.rings{display:flex;flex-wrap:wrap;gap:16px}.section{margin:12px 0 6px;font-size:var(--ha-font-size-m,14px);color:var(--secondary-text-color)}`;
+.rings{display:flex;flex-wrap:wrap;gap:16px}.history{margin-top:8px;height:72px}.line{width:100%;height:72px}.line path{fill:none;stroke:var(--warning-color);stroke-width:1.2;vector-effect:non-scaling-stroke}.section{margin:12px 0 6px;font-size:var(--ha-font-size-m,14px);color:var(--secondary-text-color)}`;
 class BuschUnraidTile extends HTMLElement {
  constructor(){super();this.attachShadow({mode:'open'});this._config={};this._eingeklappt=false;this._busy=false;this._error=null;}
  static get kachel(){return 'tile';}
@@ -1642,8 +1642,36 @@ class BuschUnraidSystemCard extends BuschUnraidTile{
  static getStubConfig(){return {type:'custom:busch-unraid-system-card'};}
 }
 class BuschUnraidSystemCardEditor extends BuschUnraidTileEditor{get _schema(){return SCHEMA_BUSCH_UNRAID_SYSTEM_CARD;}get _texte(){return TEXTE_BUSCH_UNRAID_SYSTEM_CARD;}get _defaults(){return new BuschUnraidSystemCard()._vorgaben;}}
+// Verlauf aus der HA-History (R20): höchstens ein Abruf je Minute und Entität+Zeitraum. Gecacht wird das Promise,
+// damit auch gleichzeitige Renders vor der ersten Antwort keinen zweiten Abruf auslösen; ein Fehlschlag gilt ebenfalls eine Minute.
+const UNRAID_VERLAUF_CACHE=new Map();
+function unraidVerlauf(hass,entityId,minuten){const key=entityId+'|'+minuten,alt=UNRAID_VERLAUF_CACHE.get(key);if(alt&&Date.now()-alt.zeit<60000)return alt.punkte;
+ const start=new Date(Date.now()-minuten*60000).toISOString();
+ const punkte=Promise.resolve().then(()=>hass.callWS({type:'history/history_during_period',start_time:start,entity_ids:[entityId],minimal_response:true,no_attributes:true,significant_changes_only:false}))
+  .then(antwort=>(antwort?.[entityId]||[]).map(r=>({t:Number(r.lu??r.lc)*1000,v:Number(r.s)})).filter(p=>Number.isFinite(p.v)&&Number.isFinite(p.t)));
+ UNRAID_VERLAUF_CACHE.set(key,{zeit:Date.now(),punkte});return punkte;}
+function unraidLinie(punkte,leer,label=leer){if(!punkte||punkte.length<2)return buschUnraidNode('p',leer,'message');const ns='http://www.w3.org/2000/svg',svg=document.createElementNS(ns,'svg');svg.setAttribute('viewBox','0 0 100 30');svg.setAttribute('preserveAspectRatio','none');svg.setAttribute('class','line');svg.setAttribute('role','img');svg.setAttribute('aria-label',label);
+ const t0=punkte[0].t,t1=punkte[punkte.length-1].t,d=punkte.map((p,i)=>`${i?'L':'M'}${((p.t-t0)/(t1-t0||1)*100).toFixed(2)},${(30-Math.max(0,Math.min(100,p.v))*0.3).toFixed(2)}`).join(' ');const path=document.createElementNS(ns,'path');path.setAttribute('d',d);svg.appendChild(path);return svg;}
+const UNRAID_CPU_ZEITRAEUME=['5','10','30','60'];
+const SCHEMA_BUSCH_UNRAID_CPU_CARD=[{name:'device_id',selector:{device:{integration:'unraid_ssh',model:'Unraid'}}},{name:'title',selector:{text:{}}},{name:'history_minutes',selector:{select:{mode:'dropdown',options:UNRAID_CPU_ZEITRAEUME.map(v=>({value:v,label:v+' min'}))}}},{name:'show_history',selector:{boolean:{}}}];
+const TEXTE_BUSCH_UNRAID_CPU_CARD={de:{...UNRAID_TILE_TEXTE.de,name:'Unraid: Prozessor',description:'Gesamtlast, Temperatur und Lastverlauf der CPU.',labels:{device_id:'Server',title:'Titel',history_minutes:'Verlaufszeitraum',show_history:'Verlauf zeigen'},helpers:{device_id:'Unraid-Server, dessen Daten die Karte zeigt. Leer: der einzige Server.',title:'Überschrift der Karte. Leer: Name der Kachel.',history_minutes:'Minuten, die die Verlaufslinie zeigt. Vorgabe 10.',show_history:'Zeigt die Gesamtlast als Linie aus dem Verlauf von Home Assistant. Vorgabe an.'},tile:'Prozessor',load:'Gesamtlast',temp:'Temperatur',load1:'Load (1 min)',no_history:'Noch kein Verlauf.'},
+ en:{...UNRAID_TILE_TEXTE.en,name:'Unraid: Processor',description:'Overall load, temperature and load history of the CPU.',labels:{device_id:'Server',title:'Title',history_minutes:'History period',show_history:'Show history'},helpers:{device_id:'Unraid server whose data the card shows. Empty: the only server.',title:'Heading of the card. Empty: the tile name.',history_minutes:'Minutes shown by the history line. Default 10.',show_history:'Shows the overall load as a line from the Home Assistant history. Default on.'},tile:'Processor',load:'Overall load',temp:'Temperature',load1:'Load (1 min)',no_history:'No history yet.'}};
+class BuschUnraidCpuCard extends BuschUnraidTile{
+ static get kachel(){return 'cpu';}get _texte(){return TEXTE_BUSCH_UNRAID_CPU_CARD;}get _vorgaben(){return {device_id:'',title:'',history_minutes:'10',show_history:true};}
+ _modell(core,config){const s=unraidServer(core,config);if(!s.server)return {fehler:s.fehler};const cpu=s.wert('cpu_percent');return {name:s.server.name_by_user||s.server.name,cpu:unraidNum(cpu),cpuId:cpu?.entity_id,temp:unraidNum(s.wert('cpu_temp')),load:unraidNum(s.wert('load_1'))};}
+ _kopf(m,t){return {icon:'mdi:cpu-64-bit',titel:t.tile,untertitel:m.name};}
+ _inhalt(body,m,t){const lang=this._hass?.locale?.language;body.appendChild(unraidTabelle([{key:'k',label:''},{key:'v',label:''}],[{k:t.temp,v:unraidZahl(m.temp,'°C',lang)},{k:t.load1,v:unraidZahl(m.load,'',lang,1)}],{leer:''}));
+  body.appendChild(buschUnraidNode('h3',t.load,'section'));body.appendChild(unraidBalken(m.cpu,unraidZahl(m.cpu,'%',lang)));
+  // Ohne callWS (Vorschau, Tests) entfällt der Verlauf. Die letzte Linie bleibt bis zur Antwort stehen, damit Renders nicht flackern.
+  if(this._config.show_history&&m.cpuId&&typeof this._hass?.callWS==='function'){const platz=buschUnraidNode('div',undefined,'history');body.appendChild(platz);const min=Number(this._config.history_minutes)||10,key=m.cpuId+'|'+min;
+   if(this._linie?.key===key)platz.appendChild(unraidLinie(this._linie.punkte,t.no_history,t.load));
+   unraidVerlauf(this._hass,m.cpuId,min).then(p=>{this._linie={key,punkte:p};platz.replaceChildren(unraidLinie(p,t.no_history,t.load));}).catch(()=>platz.replaceChildren(buschUnraidNode('p',t.no_history,'message')));}}
+ static getConfigElement(){return document.createElement('busch-unraid-cpu-card-editor');}
+ static getStubConfig(){return {type:'custom:busch-unraid-cpu-card'};}
+}
+class BuschUnraidCpuCardEditor extends BuschUnraidTileEditor{get _schema(){return SCHEMA_BUSCH_UNRAID_CPU_CARD;}get _texte(){return TEXTE_BUSCH_UNRAID_CPU_CARD;}get _defaults(){return new BuschUnraidCpuCard()._vorgaben;}}
 // [tag, Karte, Editor] — für den Vertragstest; registriert wird wörtlich je Kachel (Regelprüfer findet nur das).
-const UNRAID_KACHELN=[['busch-unraid-server-card',BuschUnraidServerCard,BuschUnraidServerCardEditor],['busch-unraid-system-card',BuschUnraidSystemCard,BuschUnraidSystemCardEditor]];
+const UNRAID_KACHELN=[['busch-unraid-server-card',BuschUnraidServerCard,BuschUnraidServerCardEditor],['busch-unraid-system-card',BuschUnraidSystemCard,BuschUnraidSystemCardEditor],['busch-unraid-cpu-card',BuschUnraidCpuCard,BuschUnraidCpuCardEditor]];
 if(!customElements.get?.('busch-unraid-server-card'))customElements.define('busch-unraid-server-card',BuschUnraidServerCard);
 if(!customElements.get?.('busch-unraid-server-card-editor'))customElements.define('busch-unraid-server-card-editor',BuschUnraidServerCardEditor);
 window.customCards=window.customCards||[];
@@ -1651,3 +1679,6 @@ if(!window.customCards.some(c=>c.type==='busch-unraid-server-card'))window.custo
 if(!customElements.get?.('busch-unraid-system-card'))customElements.define('busch-unraid-system-card',BuschUnraidSystemCard);
 if(!customElements.get?.('busch-unraid-system-card-editor'))customElements.define('busch-unraid-system-card-editor',BuschUnraidSystemCardEditor);
 if(!window.customCards.some(c=>c.type==='busch-unraid-system-card'))window.customCards.push({type:'busch-unraid-system-card',name:buschTexte(TEXTE_BUSCH_UNRAID_SYSTEM_CARD).name,description:buschTexte(TEXTE_BUSCH_UNRAID_SYSTEM_CARD).description,preview:true,documentationURL:'https://github.com/luukkii123/ha-unraid-cards#busch-unraid-system-card'});
+if(!customElements.get?.('busch-unraid-cpu-card'))customElements.define('busch-unraid-cpu-card',BuschUnraidCpuCard);
+if(!customElements.get?.('busch-unraid-cpu-card-editor'))customElements.define('busch-unraid-cpu-card-editor',BuschUnraidCpuCardEditor);
+if(!window.customCards.some(c=>c.type==='busch-unraid-cpu-card'))window.customCards.push({type:'busch-unraid-cpu-card',name:buschTexte(TEXTE_BUSCH_UNRAID_CPU_CARD).name,description:buschTexte(TEXTE_BUSCH_UNRAID_CPU_CARD).description,preview:true,documentationURL:'https://github.com/luukkii123/ha-unraid-cards#busch-unraid-cpu-card'});
