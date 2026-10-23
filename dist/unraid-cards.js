@@ -1479,9 +1479,12 @@ class BuschUnraidVmCard extends BuschUnraidBaseCard {
  _modellListe(){const s=unraidServer(this._core,this._config);if(!s.server)return {fehler:s.fehler};const alle=s.geraete('Virtual machine').map(d=>buschUnraidModel(this._core,{...this._config,device_id:d.id},'vm').selected).filter(Boolean);return {name:s.server.name_by_user||s.server.name,vms:alle.filter(r=>this._zeigeAlle()||r.status==='running')};}
  async _zeilenAktion(action,row){return this._action(action,row);}
  getCardSize(){return this._istListe()?3:super.getCardSize();}
+ disconnectedCallback(){super.disconnectedCallback();unraidBeobachten(this,[]);}
  _render(){
-  if(!this.shadowRoot||!this._config)return;if(!this._istListe()){this._listSignature=null;return super._render();}this._renderSignature=null;
+  if(!this.shadowRoot||!this._config)return;if(!this._istListe()){this._listSignature=null;unraidBeobachten(this,[]);return super._render();}this._renderSignature=null;
   const h=this._hass,t={...buschTexte(BUSCH_UNRAID_TEXT,h),...buschTexte(TEXTE_BUSCH_UNRAID_VM_CARD,h)},m=this._core&&h?this._modellListe():{laedt:true},alle=this._zeigeAlle();
+  // Liste: Server und seine VM-Geräte beobachten (Stream-Updates), Platten usw. nicht.
+  if(this.isConnected&&this._core&&h)unraidBeobachten(this,unraidServerIds(this._core,this._config).filter(id=>['Unraid','Virtual machine'].includes(this._core.devices?.get?.(id)?.model)));
   const signature=JSON.stringify([this._config,alle,m,!!this._busy,this._error,t]);if(signature===this._listSignature)return;this._listSignature=signature;
   const active=this.shadowRoot.activeElement,fokus=active?.tagName==='BUTTON'?{key:active.dataset.focusKey,entity:active.closest?.('.vm-row')?.dataset.entityId}:null;
   const style=buschUnraidNode('style',UNRAID_TILE_STYLE),card=buschUnraidNode('ha-card');card.className=('tile '+(this._config.layout||'')).trim();
@@ -1834,8 +1837,12 @@ function unraidServer(core,config){
  const haupt=index(eigene);
  return {server:gewaehlt,entry,wert:s=>haupt.get(s)||null,alle:p=>[...haupt].filter(([s])=>s.startsWith(p)).map(([suffix,entity])=>({suffix,entity})),
   geraete:modell=>kinder.filter(d=>d.model===modell).map(d=>({...d,roh:unraidRohname(d,core.getDeviceEntities(d.id).filter(e=>e?.platform==='unraid_ssh'&&e.config_entry_id===entry))})).sort((a,b)=>a.roh.localeCompare(b.roh,undefined,{numeric:true})),
-  von:(d,s)=>d?index(core.getDeviceEntities(d.id)).get(s)||null:null};
+  von:(d,s)=>d?index(core.getDeviceEntities(d.id)).get(s)||null:null,ids:[gewaehlt.id,...kinder.map(d=>d.id)]};
 }
+// Geräte, deren Stream-Updates eine Kachel neu rendern sollen (Server und Kindgeräte desselben Eintrags).
+function unraidServerIds(core,config){try{const s=unraidServer(core,config);return s.server?s.ids:[];}catch{return [];}}
+// watchDevice wie BuschUnraidBaseCard: Rückruf rendert, die Render-Signatur verwirft Unverändertes. Leere Liste = abmelden.
+function unraidBeobachten(karte,ids){const key=ids.join('\n');if(karte._beobachtKey===key)return;for(const ab of karte._beobachtAb||[])ab?.();karte._beobachtAb=[];karte._beobachtKey=key;const core=karte._core;if(!ids.length||typeof core?.watchDevice!=='function')return;for(const id of ids)karte._beobachtAb.push(core.watchDevice(id,()=>karte._render()));}
 function unraidSpeicher(){try{return window.localStorage||null;}catch{return null;}}
 const UNRAID_TILE_STYLE=BUSCH_UNRAID_STYLE+`
 .tile-head{display:flex;align-items:flex-start;gap:var(--ha-space-3,12px);min-width:0}
@@ -1879,7 +1886,7 @@ class BuschUnraidTile extends HTMLElement {
  set hass(hass){this._hass=hass;if(this.isConnected)this._verbinden();this._core?.attach(hass);this._render();}
  get hass(){return this._hass;}
  connectedCallback(){this._verbinden();this._render();}
- disconnectedCallback(){this._release?.();this._unwatch?.();this._release=this._unwatch=null;}
+ disconnectedCallback(){this._release?.();this._unwatch?.();this._release=this._unwatch=null;unraidBeobachten(this,[]);}
  _verbinden(){if(!this._hass||this._release)return;this._core=ensureBuschCore(1);this._release=this._core.retain(this._hass);this._unwatch=this._core.watch(()=>this._render());}
  getCardSize(){return this._eingeklappt?1:3;}
  getGridOptions(){return {columns:12,min_columns:6};}
@@ -1887,8 +1894,13 @@ class BuschUnraidTile extends HTMLElement {
  _kopf(){return {icon:'mdi:server',titel:''};}
  _aktionen(){return [];}
  _inhalt(){}
+ // Zusätzlicher Signaturteil (z. B. die Minute der Uhr); null = keiner.
+ _signaturZusatz(){return null;}
  _render(){
   if(!this.shadowRoot)return;const t=buschTexte(this._texte,this._hass),m=this._core&&this._hass?this._modell(this._core,this._config):{laedt:true};
+  if(this.isConnected&&this._core&&this._hass)unraidBeobachten(this,unraidServerIds(this._core,this._config));
+  // Render-Signatur wie BuschUnraidBaseCard: nur bei geänderter Ansicht neu aufbauen (set hass kommt bei jeder Zustandsänderung in HA).
+  const signatur=JSON.stringify([this._config,m,this._eingeklappt,!!this._busy,this._error,this._hass?.locale?.language,this._hass?.config?.time_zone,this._signaturZusatz()]);if(signatur===this._signatur)return;this._signatur=signatur;
   const style=document.createElement('style');style.textContent=UNRAID_TILE_STYLE;const card=document.createElement('ha-card');card.className='tile';
   const k=this._kopf(m,t)||{},head=buschUnraidNode('div',undefined,'tile-head'),icon=BuschUI.ha.icon(k.icon||'mdi:server'),text=buschUnraidNode('div',undefined,'tile-text');icon.className='tile-icon';icon.setAttribute('aria-hidden','true');
   text.appendChild(buschUnraidNode('h2',this._config.title||k.titel||'','tile-title'));if(k.untertitel)text.appendChild(buschUnraidNode('p',k.untertitel,'tile-sub'));head.appendChild(icon);head.appendChild(text);
@@ -1970,13 +1982,15 @@ class BuschUnraidServerCard extends BuschUnraidTile{
  static get kachel(){return 'server';}get _texte(){return TEXTE_BUSCH_UNRAID_SERVER_CARD;}get _vorgaben(){return {device_id:'',title:'',show_clock:true};}
  // Der Uptime-Sensor von unraid_ssh ist ein Zeitstempel (Boot-Zeit, ISO); die Laufzeit rechnet die Karte selbst.
  _modell(core,config){const s=unraidServer(core,config);if(!s.server)return {fehler:s.fehler};const up=s.wert('uptime'),boot=up&&!['unavailable','unknown'].includes(up.state)?Date.parse(up.state):NaN;
-  return {name:s.server.name_by_user||s.server.name,version:s.server.sw_version||'',uptime:Number.isFinite(boot)?Math.max(0,(Date.now()-boot)/1000):null,array:s.wert('array_state')?.state||null,mover:s.wert('mover_active')?.state||null};}
+  return {name:s.server.name_by_user||s.server.name,version:s.server.sw_version||'',uptime:Number.isFinite(boot)?Math.floor(Math.max(0,(Date.now()-boot)/1000)/60)*60:null,array:s.wert('array_state')?.state||null,mover:s.wert('mover_active')?.state||null};}
  _kopf(m,t){return {icon:'mdi:server',titel:m.name||t.tile,untertitel:m.version?`${t.version} ${m.version}`:undefined};}
  _inhalt(body,m,t){const lang=String(this._hass?.locale?.language||'en'),tz=this._hass?.config?.time_zone;
   if(this._config.show_clock){const now=new Date();body.appendChild(buschUnraidNode('div',new Intl.DateTimeFormat(lang,{hour:'2-digit',minute:'2-digit',timeZone:tz}).format(now),'clock'));body.appendChild(buschUnraidNode('p',new Intl.DateTimeFormat(lang,{weekday:'long',day:'2-digit',month:'2-digit',year:'numeric',timeZoneName:'short',timeZone:tz}).format(now),'detail'));}
   const st=UNRAID_ARRAY_STATUS[lang.startsWith('de')?'de':'en'],arr=m.array&&!['unavailable','unknown'].includes(m.array)?m.array:null;
   body.appendChild(unraidTabelle([{key:'k',label:''},{key:'v',label:''}],[{k:t.uptime,v:unraidDauer(m.uptime,t)},{k:t.array,v:unraidPunkt(arr==='started'?'ok':arr?'warning':'unknown',arr?(st[arr]||arr):t.unavailable)},{k:t.mover,v:m.mover==='on'?t.mover_on:m.mover==='off'?t.mover_off:t.unavailable}],{leer:''}));}
- connectedCallback(){super.connectedCallback();clearInterval(this._uhr);this._uhr=setInterval(()=>this._config.show_clock&&!this._eingeklappt&&this._render(),30000);}
+ _signaturZusatz(){return this._config.show_clock?Math.floor(Date.now()/60000):null;}
+ // Uhr: alle 30 s prüfen, gebaut wird nur bei neuer Minute (Signatur); bei verstecktem Tab nichts tun.
+ connectedCallback(){super.connectedCallback();clearInterval(this._uhr);this._uhr=setInterval(()=>{if(typeof document!=='undefined'&&document.hidden)return;if(this._config.show_clock&&!this._eingeklappt)this._render();},30000);}
  disconnectedCallback(){super.disconnectedCallback();clearInterval(this._uhr);this._uhr=null;}
  static getConfigElement(){return document.createElement('busch-unraid-server-card-editor');}
  static getStubConfig(){return {type:'custom:busch-unraid-server-card'};}
@@ -2027,6 +2041,7 @@ class BuschUnraidCpuCard extends BuschUnraidTile{
  static get kachel(){return 'cpu';}get _texte(){return TEXTE_BUSCH_UNRAID_CPU_CARD;}get _vorgaben(){return {device_id:'',title:'',history_minutes:'10',show_history:true};}
  _modell(core,config){const s=unraidServer(core,config);if(!s.server)return {fehler:s.fehler};const cpu=s.wert('cpu_percent');return {name:s.server.name_by_user||s.server.name,cpu:unraidNum(cpu),cpuId:cpu?.entity_id,temp:unraidNum(s.wert('cpu_temp')),load:unraidNum(s.wert('load_1'))};}
  _kopf(m,t){return {icon:'mdi:cpu-64-bit',titel:t.tile,untertitel:m.name};}
+ _signaturZusatz(){return this._config.show_history?Math.floor(Date.now()/60000):null;}
  _inhalt(body,m,t){const lang=this._hass?.locale?.language;body.appendChild(unraidTabelle([{key:'k',label:''},{key:'v',label:''}],[{k:t.temp,v:unraidZahl(m.temp,'°C',lang)},{k:t.load1,v:unraidZahl(m.load,'',lang,1)}],{leer:''}));
   body.appendChild(buschUnraidNode('h3',t.load,'section'));body.appendChild(unraidBalken(m.cpu,unraidZahl(m.cpu,'%',lang)));
   // Ohne callWS (Vorschau, Tests) entfällt der Verlauf. Die letzte Linie bleibt bis zur Antwort stehen, damit Renders nicht flackern.
