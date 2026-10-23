@@ -66,7 +66,8 @@ function domMitHistory() {
     set isConnected(_v) {}
     addEventListener(type, fn) { (this.listeners[type] ||= []).push(fn); }
     removeEventListener(type, fn) { this.listeners[type] = (this.listeners[type] || []).filter((f) => f !== fn); }
-    dispatchEvent(e) { super.dispatchEvent(e); for (const fn of [...(this.listeners[e.type] || [])]) fn(e); return !e.defaultPrevented; }
+    // Wie im Browser: Ereignisse an einem eingehängten Element erreichen zuerst die Capture-Listener am document.
+    dispatchEvent(e) { super.dispatchEvent(e); if (this.isConnected) document._feuern(e); for (const fn of [...(this.listeners[e.type] || [])]) fn(e); return !e.defaultPrevented; }
   }
   class Event { constructor(type, init = {}) { this.type = type; Object.assign(this, init); this.defaultPrevented = false; } preventDefault() { this.defaultPrevented = true; } stopPropagation() {} }
   class KeyboardEvent extends Event {}
@@ -80,6 +81,12 @@ function domMitHistory() {
     pushState(s) { this.stack.push(structuredClone(s)); },
     back() { this.backs++; if (this.stack.length > 1) this.stack.pop(); setTimeout(() => fenster.dispatchEvent(new Event('popstate'))); } };
   document.activeElement = null;
+  // document-Listener (Capture-Flag wird ignoriert, alle laufen vor den Element-Listenern).
+  document.listeners = {};
+  document.addEventListener = (type, fn) => { (document.listeners[type] ||= []).push(fn); };
+  document.removeEventListener = (type, fn) => { document.listeners[type] = (document.listeners[type] || []).filter((f) => f !== fn); };
+  document._feuern = (e) => { for (const fn of [...(document.listeners[e.type] || [])]) fn(e); };
+  document.dispatchEvent = (e) => { document._feuern(e); return !e.defaultPrevented; };
   document.querySelector = () => null;
   const customElements = { define: (k, v) => registered.set(k, v), get: (k) => registered.get(k) };
   const umgebung = { document, window: fenster, history, Event, KeyboardEvent, HTMLElement, customElements, setTimeout, clearTimeout };

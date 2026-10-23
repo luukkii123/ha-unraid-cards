@@ -1113,12 +1113,21 @@ class BuschUnraidBaseCard extends HTMLElement {
  }
  async _action(action,row){
   const t=buschTexte(BUSCH_UNRAID_TEXT,this._hass);
+  // Während ein Bestätigungsdialog offen ist, weitere Aufrufe ignorieren; nach der Antwort den Zustand frisch prüfen.
+  if(this._confirming)return;
   if(action==='details'||action==='update'){const entity=action==='update'?row.update:row.switch;if(entity)this.dispatchEvent(new CustomEvent('hass-more-info',{detail:{entityId:entity.entity_id},bubbles:true,composed:true}));return;}
   if(action==='update_all'){if(this._busy||row.update_queue?.active||!row.update_all||row.update_all.state==='unavailable')return;this._busy=true;this._error=null;this._render();try{await this._hass.callService('button','press',{entity_id:row.update_all.entity_id});}catch{this._error=t.failed;}finally{this._busy=false;this._render();}return;}
   if(this._busy||(row.status==='updating'&&['start','stop','restart'].includes(action))||(this._kind==='vm'&&((action==='start'&&row.status!=='stopped')||(['restart','stop'].includes(action)&&row.status!=='running')||(action==='force_stop'&&!buschUnraidVmForceable(row.status)))))return;const entity=action==='restart'?row.restart:action==='force_stop'?row.force_stop:row.switch;
   if(!entity||entity.state==='unavailable'||(!['restart','force_stop'].includes(action)&&!buschUnraidAvailable(entity)))return;
-  if(action==='force_stop'){if(!(await unraidBestaetigen(t.force_stop,t.confirm_force_stop.replace('{name}',row.name||''),t.force_stop,true)))return;}
-  else if((action==='stop'&&this._config.confirm_stop)||(action==='restart'&&this._config.confirm_restart)){const prompt=action==='stop'&&this._kind==='vm'?t.confirm_vm_shutdown:t['confirm_'+action];const aktion=action==='stop'?(this._kind==='vm'?t.vm_shutdown:t.stop):t.restart;if(!(await unraidBestaetigen(aktion,prompt.replace('{name}',row.name||''),aktion,action==='stop')))return;}
+  if(action==='force_stop'||(action==='stop'&&this._config.confirm_stop)||(action==='restart'&&this._config.confirm_restart)){
+   this._confirming=true;let ja;try{
+    if(action==='force_stop')ja=await unraidBestaetigen(t.force_stop,t.confirm_force_stop.replace('{name}',row.name||''),t.force_stop,true);
+    else{const prompt=action==='stop'&&this._kind==='vm'?t.confirm_vm_shutdown:t['confirm_'+action];const aktion=action==='stop'?(this._kind==='vm'?t.vm_shutdown:t.stop):t.restart;ja=await unraidBestaetigen(aktion,prompt.replace('{name}',row.name||''),aktion,action==='stop');}
+   }finally{this._confirming=false;}
+   if(!ja)return;
+   const jetzt=this._hass?.states?.[entity.entity_id]||entity;
+   if(this._busy||jetzt.state==='unavailable'||(!['restart','force_stop'].includes(action)&&!buschUnraidAvailable(jetzt)))return;
+  }
   const generation=this._generation;this._busy=true;this._error=null;this._render();
   try{await this._hass.callService(['restart','force_stop'].includes(action)?'button':'switch',['restart','force_stop'].includes(action)?'press':action==='start'?'turn_on':'turn_off',{entity_id:entity.entity_id});}
   catch{if(generation===this._generation)this._error=t.failed;}
@@ -1519,7 +1528,7 @@ class BuschUnraidTile extends HTMLElement {
  }
  _bestaetigen(text,aktion,gefahr){return unraidBestaetigen(aktion,text,aktion,gefahr);}
 }
-const UNRAID_CONFIRM_STYLE=`:host{position:fixed;inset:0;z-index:1000;display:grid;place-items:center}
+const UNRAID_CONFIRM_STYLE=`:host{position:fixed;inset:0;z-index:10000;display:grid;place-items:center}
 .scrim{position:absolute;inset:0;background:rgba(0,0,0,.32)}
 .dialog{position:relative;width:min(320px,calc(100vw - 32px));background:var(--card-background-color,#fff);color:var(--primary-text-color);border-radius:var(--ha-card-border-radius,12px);padding:24px;box-shadow:var(--ha-card-box-shadow,0 8px 24px rgba(0,0,0,.3))}
 h2{margin:0 0 12px;font-size:var(--ha-font-size-l,18px);overflow-wrap:anywhere}p{margin:0 0 20px;overflow-wrap:anywhere}
@@ -1528,6 +1537,8 @@ button.danger{background:var(--error-color);color:var(--text-primary-color,#fff)
 @media (max-width:449px),(max-height:499px){:host{place-items:end stretch}.dialog{width:auto;min-height:90vh;border-radius:16px 16px 0 0;display:flex;flex-direction:column}.buttons{margin-top:auto}}`;
 // Zentraler Bestätigungsdialog (R04): Escape, Abbrechen und Zurück liefern false, Bestätigen true, genau einmal.
 // `history.state` ist im Browser eine Kopie: der eigene Eintrag wird deshalb über seine id erkannt, nie per Identität.
+// Schlüssel `buschUnraidConfirm`, nicht `dialog`: HA wertet `history.state.dialog` selbst aus.
+// Tasten hängen am document (Capture): nach einem Klick ins Leere liegt der Fokus sonst auf body und Escape/Tab erreichen den Dialog nicht.
 class BuschUnraidConfirm extends HTMLElement {
  static frage(o){const d=document.createElement('busch-unraid-confirm');document.body.appendChild(d);return d._zeigen(o);}
  _zeigen({titel,text,aktion,gefahr}){
@@ -1539,16 +1550,17 @@ class BuschUnraidConfirm extends HTMLElement {
   const h=document.createElement('h2');h.id='t';h.textContent=titel;const p=document.createElement('p');p.id='d';p.textContent=text;box.setAttribute('aria-labelledby','t');box.setAttribute('aria-describedby','d');
   const row=document.createElement('div');row.className='buttons';this._abbr=document.createElement('button');this._abbr.textContent=buschTexte(UNRAID_TILE_TEXTE,document.querySelector('home-assistant')?.hass).cancel;
   this._ok=document.createElement('button');this._ok.textContent=aktion;if(gefahr)this._ok.className='danger';row.append(this._abbr,this._ok);box.append(h,p,row);root.append(style,this._scrim,box);
-  const id=Math.random().toString(36).slice(2);this._eintrag={dialog:'busch-unraid-confirm',id};history.pushState(this._eintrag,'');
-  const obenEigener=()=>{const s=history.state;return !!s&&s.dialog==='busch-unraid-confirm'&&s.id===id;};
+  const id=Math.random().toString(36).slice(2);this._eintrag={buschUnraidConfirm:id};history.pushState(this._eintrag,'');
+  const obenEigener=()=>{const s=history.state;return !!s&&s.buschUnraidConfirm===id;};
   return new Promise(resolve=>{
-   this._fertig=(wert,ausHistory=false)=>{if(this._erledigt)return;this._erledigt=true;window.removeEventListener('popstate',this._pop);this.removeEventListener('keydown',this._taste);if(!ausHistory&&obenEigener())history.back();this.remove();this._vorher?.focus?.();resolve(wert);};
+   this._fertig=(wert,ausHistory=false)=>{if(this._erledigt)return;this._erledigt=true;window.removeEventListener('popstate',this._pop);document.removeEventListener('keydown',this._taste,true);if(!ausHistory&&obenEigener())history.back();this.remove();this._vorher?.focus?.();resolve(wert);};
    // Jedes popstate, solange der Dialog offen ist, ist ein Zurück: der eigene back()-Aufruf läuft erst nach dem Abmelden.
    this._pop=()=>this._fertig(false,true);
-   this._taste=e=>{if(e.key==='Escape'){e.preventDefault();this._fertig(false);}else if(e.key==='Tab'){const z=[this._abbr,this._ok],i=z.indexOf(root.activeElement);e.preventDefault();z[(i+(e.shiftKey?-1:1)+z.length)%z.length].focus();}};
-   window.addEventListener('popstate',this._pop);this.addEventListener('keydown',this._taste);
+   this._taste=e=>{if(e.key==='Escape'){e.preventDefault();e.stopPropagation?.();this._fertig(false);}else if(e.key==='Tab'){const z=[this._abbr,this._ok],i=z.indexOf(root.activeElement);e.preventDefault();(i<0?z[e.shiftKey?z.length-1:0]:z[(i+(e.shiftKey?-1:1)+z.length)%z.length]).focus();}};
+   window.addEventListener('popstate',this._pop);document.addEventListener('keydown',this._taste,true);
    this._abbr.addEventListener('click',()=>this._fertig(false));this._ok.addEventListener('click',()=>this._fertig(true));
-   // R04: Klick auf den Scrim schließt einen Bestätigungsdialog bewusst nicht.
+   // R04: Klick auf den Scrim schließt einen Bestätigungsdialog bewusst nicht; mousedown ohne Standardaktion hält den Fokus im Dialog.
+   this._scrim.addEventListener('mousedown',e=>e.preventDefault());
    this._abbr.focus();
   });
  }

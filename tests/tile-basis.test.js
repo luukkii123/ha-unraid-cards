@@ -92,7 +92,7 @@ test('Dialog: Fokus kehrt zum vorher aktiven Element zurück (auch im Shadow DOM
 });
 test('Dialog: eigener History-Eintrag; zurück nur, wenn er oben liegt', async () => {
   const { BuschUnraidConfirm, umgebung } = ladeKarte(['BuschUnraidConfirm','umgebung'], domMitHistory()); const h = umgebung.history;
-  let p = BuschUnraidConfirm.frage({titel:'x',text:'y',aktion:'OK'}); assert.equal(h.length, 2); assert.equal(h.state.dialog, 'busch-unraid-confirm');
+  let p = BuschUnraidConfirm.frage({titel:'x',text:'y',aktion:'OK'}); assert.equal(h.length, 2); assert.equal(typeof h.state.buschUnraidConfirm, 'string'); assert.equal(h.state.dialog, undefined, 'nicht unter HAs Schlüssel dialog');
   umgebung.document.body.lastChild._ok.click(); assert.equal(await p, true); assert.equal(h.backs, 1); assert.equal(h.length, 1);
   await new Promise((r) => setTimeout(r)); // eigenes popstate aus back() abwarten
   p = BuschUnraidConfirm.frage({titel:'x',text:'y',aktion:'OK'}); h.stack.pop(); // Zurück des Nutzers: Eintrag ist weg
@@ -100,6 +100,7 @@ test('Dialog: eigener History-Eintrag; zurück nur, wenn er oben liegt', async (
   p = BuschUnraidConfirm.frage({titel:'x',text:'y',aktion:'OK'}); h.pushState({fremd:true}); // jemand anderes liegt oben
   umgebung.document.body.lastChild._abbr.click(); assert.equal(await p, false); assert.equal(h.backs, 1, 'fremden Eintrag nicht wegnehmen');
   assert.equal(umgebung.window.listeners.popstate.length, 0, 'popstate-Listener aufgeräumt');
+  assert.equal(umgebung.document.listeners.keydown.length, 0, 'keydown-Listener am document aufgeräumt');
 });
 test('unraidBestaetigen und Kachel-Bestätigung laufen über den Dialog', async () => {
   const { BuschUnraidTile, unraidBestaetigen, globalThis: g } = ladeKarte(['BuschUnraidTile','unraidBestaetigen','globalThis'], domMitHistory());
@@ -108,4 +109,23 @@ test('unraidBestaetigen und Kachel-Bestätigung laufen über den Dialog', async 
   const gefragt = []; g.unraidBestaetigen = async (...x) => { gefragt.push(x); return false; };
   const k = new BuschUnraidTile(); assert.equal(await k._bestaetigen('Sicher?','Stoppen',true), false);
   assert.deepEqual(JSON.parse(JSON.stringify(gefragt)), [['Stoppen','Sicher?','Stoppen',true]]);
+});
+test('Dialog: nach Scrim-Klick bleiben Escape und Fokusfalle wirksam', async () => {
+  const { BuschUnraidConfirm, umgebung } = ladeKarte(['BuschUnraidConfirm','umgebung'], domMitHistory());
+  let p = BuschUnraidConfirm.frage({titel:'x',text:'y',aktion:'OK'}); let d = umgebung.document.body.lastChild;
+  const md = new umgebung.Event('mousedown'); for (const fn of d._scrim.listeners.mousedown || []) fn(md);
+  assert.ok(md.defaultPrevented, 'mousedown auf dem Scrim nimmt dem Dialog den Fokus nicht'); d._scrim.click(); assert.ok(d.isConnected);
+  d._abbr.blur(); assert.equal(d.shadowRoot.activeElement, null, 'Fokus liegt außerhalb (body)');
+  const vor = new umgebung.KeyboardEvent('keydown',{key:'Tab',shiftKey:false}); umgebung.document.dispatchEvent(vor);
+  assert.ok(vor.defaultPrevented); assert.equal(d.shadowRoot.activeElement, d._abbr, 'Tab von außen springt auf den ersten Knopf');
+  d._abbr.blur(); umgebung.document.dispatchEvent(new umgebung.KeyboardEvent('keydown',{key:'Tab',shiftKey:true}));
+  assert.equal(d.shadowRoot.activeElement, d._ok, 'Umschalt+Tab von außen springt auf den letzten Knopf');
+  d._ok.blur(); umgebung.document.dispatchEvent(new umgebung.KeyboardEvent('keydown',{key:'Escape'}));
+  assert.equal(await p, false); assert.equal(d.isConnected, false, 'Dialog entfernt');
+  assert.equal(umgebung.document.listeners.keydown.length, 0);
+  p = BuschUnraidConfirm.frage({titel:'x',text:'y',aktion:'OK'}); d = umgebung.document.body.lastChild;
+  const e = new umgebung.KeyboardEvent('keydown',{key:'Escape'}); d.dispatchEvent(e); assert.equal(await p, false, 'Escape am Host schließt genau einmal');
+});
+test('Dialog-Host liegt über HA-Dialogen (z-index 10000)', () => {
+  const { UNRAID_CONFIRM_STYLE } = ladeKarte(['UNRAID_CONFIRM_STYLE']); assert.match(UNRAID_CONFIRM_STYLE, /:host\{[^}]*z-index:10000/);
 });
