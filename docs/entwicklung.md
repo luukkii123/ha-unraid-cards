@@ -10,7 +10,7 @@ nie. Die Datei gliedert sich in Abschnitte (Kommentarköpfe im Code):
 | Abschnitt | Inhalt |
 | --- | --- |
 | `BEGIN/END BUSCH SHARED UI` | gemeinsame UI-Bausteine aller Busch-Kartenrepos (Editorbasis, Medien, Status, Sprache). Wortgleich mit Versions- und Hashkopf; nie von Hand ändern, sondern zentral abgleichen. |
-| Kern (Kopie aus Busch Cards) | `BuschCardsCore`, `ensureBuschCore`, Registercache, Entitätsindex. Zur Laufzeit gibt es den Kern nur einmal (`globalThis[Symbol.for("busch.cards.core")]`, API 1): wer zuerst lädt, legt ihn an. `ensureBuschCore` bleibt eine globale Funktion und wird als `ensureBuschCore(1)` aufgerufen. |
+| Kern (Kopie aus Busch Cards) | `BuschCardsCore`, `ensureBuschCore`, Registercache, Entitätsindex, Abfrage-Engine und die Smart-Abfragen (`BuschSmartQueries`, `buschSmart*`, auto-entities-Attribution mit MIT-Hinweis). Zur Laufzeit gibt es den Kern nur einmal (`globalThis[Symbol.for("busch.cards.core")]`, API 1): wer zuerst lädt, legt ihn an — auch für Busch-Cards-Karten wie Gerät und Smart. Deshalb ist der Abschnitt von `const BUSCH_CORE_KEY` bis zum Ende von `BuschSmartQueries` **byte-gleich** zu `busch-cards/dist/busch-cards.js`; nie von Hand ändern, sondern aus Busch Cards übernehmen und mit `python3 scripts/kern-gleich-pruefen.py` (im hacs-Ordner) bzw. `tests/kern.test.js` belegen. `ensureBuschCore` bleibt eine globale Funktion und wird als `ensureBuschCore(1)` aufgerufen. |
 | Version und Sprache | `CARD_VERSION`, Konsolenbanner, Sprachwahl nach `hass.locale.language` (im Kartenwähler nach `navigator.language`). |
 | Unraid-Familie | Stack-, Container- und VM-Karte samt Modell (`buschUnraidModel`), Editoren und gemeinsamen Vorgaben (`BUSCH_UNRAID_DEFAULTS`). |
 | Unraid-Docker-Übersicht | `busch-unraid-docker-card` mit Kachelraster und Aktionsmenü. |
@@ -38,12 +38,29 @@ Feste Verträge:
 - Der Bestätigungsdialog schließt mit Escape, Zurück und *Abbrechen*, **nicht**
   per Klick daneben (DESIGN_GUIDELINES R04 hat Vorrang vor der allgemeinen
   Popup-Regel).
+- Kacheln und VM-Liste bauen nur bei geänderter Render-Signatur neu (Modell,
+  Konfiguration, Einklappen, Busy, Fehler, Sprache; die Server-Uhr zusätzlich
+  die Minute) und beobachten Server und Kindgeräte per `watchDevice`
+  (`unraidBeobachten`), damit Stream-Updates ankommen.
+
+### Ausnahme R24: Stack- und Container-Einzelkarte
+
+Die Kacheln und die VM-Liste klappen über den Pfeil im Kopf bis auf den Kopf
+ein (R21, gemerkt im Browser). Die Stack- und die Container-Karte sind
+bewusst **kompakte Einzelkarten** ohne dieses Kopf-Einklappen: Ihr Kopf trägt
+Status und Steueraktionen, die eingeklappt nicht verschwinden dürfen, und die
+Stack-Karte hat stattdessen ein eigenes Auf-/Zuklappen der Containerliste
+(`start_expanded`, Knopf „Container (n)“). Ein zweiter Einklapp-Pfeil daneben
+würde zwei Bedeutungen für dasselbe Symbol schaffen.
 
 ## Tests
 
 Unit- und Frontendtests mit `node --test` gegen eine `hass`-Attrappe
 (`tests/attrappe.js`, `tests/dom-attrappe.js`, `tests/familie-attrappe.js`);
-kein Browser, kein Netz. Node läuft nicht auf dem Host, sondern in einem
+kein Browser, kein Netz. Für den Byte-Vergleich des Kerns zusätzlich
+`busch-cards` schreibgeschützt unter `/busch-cards` einhängen
+(`-v "$PWD/../busch-cards:/busch-cards:ro"`); fehlt es, überspringt
+`tests/kern.test.js` diesen Teil mit Begründung. Node läuft nicht auf dem Host, sondern in einem
 Container mit Node ≥ 20, die Quellen werden schreibgeschützt eingehängt und
 im Container kopiert:
 
@@ -63,6 +80,8 @@ docker run --rm --network none \
 | `tests/kacheln.test.js` | die neun Kacheln samt Leer-, Fehl- und Nicht-verfügbar-Zuständen |
 | `tests/unraid-cards.test.js` | Stack-, Container- und VM-Karte, Abbildung alter Konfigurationsschlüssel |
 | `tests/unraid-docker-card.test.js` | Docker-Übersicht |
+| `tests/kern.test.js` | `smartQuery` des Kerns, Byte-Gleichheit des Kerns mit Busch Cards |
+| `tests/schluss-*.test.js` | Schlussrunde #564: Render-Signatur und `watchDevice`, Lade-/Nicht-verfügbar-Zustände, Tabellen am Handy, Balkenkontrast, Ring, VM-Liste (Einklappen, `show_restart`), Kleinigkeiten |
 
 ## Renderprüfung (Chromium, erfundene Daten)
 

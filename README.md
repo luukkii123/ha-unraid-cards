@@ -57,7 +57,10 @@ mit Beschriftung und Erklärung (deutsch oder englisch, je nach HA-Sprache)
 einstellbar, YAML ist optional.
 
 **Umstieg von Busch Cards ≤ 0.21:** Unraid Cards installieren, Busch Cards
-auf 0.22 aktualisieren, Seite neu laden — Dashboards bleiben unverändert. Die
+auf 0.22 aktualisieren, Seite neu laden — Dashboards bleiben unverändert.
+Unraid Cards **vor oder zusammen mit** Busch Cards 0.22.0 installieren: Busch
+Cards 0.22 enthält die Unraid-Karten nicht mehr, bis zur Installation zeigen
+bestehende Unraid-Karten sonst „Custom element doesn't exist“. Die
 Kartentypen `custom:busch-unraid-stack-card`, `-container-card`, `-vm-card`
 und `-docker-card` heißen gleich, alte Konfigurationen gelten weiter. Solange
 beide Bundles geladen sind, gewinnt das zuerst geladene, ohne Fehler. Bei der
@@ -131,8 +134,14 @@ type: custom:busch-unraid-gpu-card
 ## busch-unraid-array-card
 
 Vorgabetitel: „Array und Pools“. Je Gruppe (Array, jeder Pool, Boot) ein
-Untertitel „belegt von gesamt“ und eine Tabelle Gerät · Status · Temp. ·
-Belegung; schlafende Platten sind als „schläft“ markiert. Auf schmalen Karten
+Untertitel mit der Geräteanzahl (z. B. „Array · 3 Geräte“) und eine Tabelle
+Gerät · Status · Temp. · Belegung; schlafende Platten sind als „schläft“
+markiert.
+
+> **Abweichung bis Stufe 2:** Geplant ist je Gruppe „belegt von gesamt“.
+> Unraid SSH 0.8.0 liefert aber keine Platten- oder Poolgrößen als Entität
+> (nur die Belegung in Prozent), deshalb zeigt die Karte vorerst die Anzahl
+> der Geräte. Auf schmalen Karten
 werden die Tabellenzeilen gestapelt statt seitlich gescrollt.
 
 | Schlüssel | Typ | Vorgabe | Bedeutung |
@@ -323,8 +332,8 @@ container_key: YOUR_CONTAINER_KEY
 
 ## Bedienung und Darstellung
 
-- **Einklappen:** Der Pfeil im Kopf der Kacheln und der Docker-Karte klappt
-  die Karte bis auf den Kopf ein. Der Zustand wird je Karte im Browser
+- **Einklappen:** Der Pfeil im Kopf der Kacheln, der VM-Liste und der
+  Docker-Karte klappt die Karte bis auf den Kopf ein. Der Zustand wird je Karte im Browser
   gemerkt (je Kartentyp, Server und Titel) und gilt nur für dieses Gerät.
 - **Bestätigungsdialog:** Stoppen, Herunterfahren, Neu starten und Sofort
   ausschalten fragen vorher nach (Sofort ausschalten immer). Der Dialog nennt
@@ -333,6 +342,11 @@ container_key: YOUR_CONTAINER_KEY
   bewusst nicht, damit nichts versehentlich ausgelöst oder verworfen wird.
   Während eine Aktion läuft, ist der Knopf gesperrt; ein Fehler wird mit dem
   nächsten Schritt angezeigt.
+- **Zustände:** Solange Home Assistant die Register noch lädt, zeigen die
+  Karten „Wird geladen …“ statt eines Leerzustands. Sind die Hauptsensoren
+  eines Servers nicht verfügbar, bleibt der Kopf stehen und der Inhalt zeigt
+  „Nicht verfügbar“; ein unbekannter Paritäts- oder VM-Zustand wird als
+  solcher angezeigt, nicht als „ruht“ bzw. „Keine laufenden VMs“.
 - **Tastatur:** Alle Knöpfe sind per Tab erreichbar und haben einen sichtbaren
   Fokus.
 - Status wird nie nur über Farbe gezeigt, immer auch als Text. Die Karten
