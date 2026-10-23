@@ -1117,8 +1117,8 @@ class BuschUnraidBaseCard extends HTMLElement {
   if(action==='update_all'){if(this._busy||row.update_queue?.active||!row.update_all||row.update_all.state==='unavailable')return;this._busy=true;this._error=null;this._render();try{await this._hass.callService('button','press',{entity_id:row.update_all.entity_id});}catch{this._error=t.failed;}finally{this._busy=false;this._render();}return;}
   if(this._busy||(row.status==='updating'&&['start','stop','restart'].includes(action))||(this._kind==='vm'&&((action==='start'&&row.status!=='stopped')||(['restart','stop'].includes(action)&&row.status!=='running')||(action==='force_stop'&&!buschUnraidVmForceable(row.status)))))return;const entity=action==='restart'?row.restart:action==='force_stop'?row.force_stop:row.switch;
   if(!entity||entity.state==='unavailable'||(!['restart','force_stop'].includes(action)&&!buschUnraidAvailable(entity)))return;
-  if(action==='force_stop'){if(!window.confirm(t.confirm_force_stop.replace('{name}',row.name||'')))return;}
-  else if((action==='stop'&&this._config.confirm_stop)||(action==='restart'&&this._config.confirm_restart)){const prompt=action==='stop'&&this._kind==='vm'?t.confirm_vm_shutdown:t['confirm_'+action];if(!window.confirm(prompt.replace('{name}',row.name||'')))return;}
+  if(action==='force_stop'){if(!(await unraidBestaetigen(t.force_stop,t.confirm_force_stop.replace('{name}',row.name||''),t.force_stop,true)))return;}
+  else if((action==='stop'&&this._config.confirm_stop)||(action==='restart'&&this._config.confirm_restart)){const prompt=action==='stop'&&this._kind==='vm'?t.confirm_vm_shutdown:t['confirm_'+action];const aktion=action==='stop'?(this._kind==='vm'?t.vm_shutdown:t.stop):t.restart;if(!(await unraidBestaetigen(aktion,prompt.replace('{name}',row.name||''),aktion,action==='stop')))return;}
   const generation=this._generation;this._busy=true;this._error=null;this._render();
   try{await this._hass.callService(['restart','force_stop'].includes(action)?'button':'switch',['restart','force_stop'].includes(action)?'press':action==='start'?'turn_on':'turn_off',{entity_id:entity.entity_id});}
   catch{if(generation===this._generation)this._error=t.failed;}
@@ -1444,8 +1444,8 @@ if(!window.customCards.some(c=>c.type==='busch-unraid-docker-card'))window.custo
 
 
 /* === Kachel-Basis === */
-const UNRAID_TILE_TEXTE={de:{collapse:'Einklappen',expand:'Ausklappen',loading:'Wird geladen …',failed:'Aktion fehlgeschlagen. Verbindung zu Unraid prüfen und erneut versuchen.',no_server:'Kein Unraid-Server gefunden. Die Integration Unraid SSH einrichten.',choose_server:'Mehrere Unraid-Server gefunden. Im Editor einen wählen.',unavailable:'Nicht verfügbar',device_id:'Server',device_id_helper:'Unraid-Server, dessen Daten die Karte zeigt. Leer: der einzige Server.',title:'Titel',title_helper:'Überschrift der Karte. Leer: Name der Kachel.'},
- en:{collapse:'Collapse',expand:'Expand',loading:'Loading …',failed:'Action failed. Check the connection to Unraid and try again.',no_server:'No Unraid server found. Set up the Unraid SSH integration.',choose_server:'Several Unraid servers found. Choose one in the editor.',unavailable:'Unavailable',device_id:'Server',device_id_helper:'Unraid server whose data the card shows. Empty: the only server.',title:'Title',title_helper:'Heading of the card. Empty: the tile name.'}};
+const UNRAID_TILE_TEXTE={de:{cancel:'Abbrechen',collapse:'Einklappen',expand:'Ausklappen',loading:'Wird geladen …',failed:'Aktion fehlgeschlagen. Verbindung zu Unraid prüfen und erneut versuchen.',no_server:'Kein Unraid-Server gefunden. Die Integration Unraid SSH einrichten.',choose_server:'Mehrere Unraid-Server gefunden. Im Editor einen wählen.',unavailable:'Nicht verfügbar',device_id:'Server',device_id_helper:'Unraid-Server, dessen Daten die Karte zeigt. Leer: der einzige Server.',title:'Titel',title_helper:'Überschrift der Karte. Leer: Name der Kachel.'},
+ en:{cancel:'Cancel',collapse:'Collapse',expand:'Expand',loading:'Loading …',failed:'Action failed. Check the connection to Unraid and try again.',no_server:'No Unraid server found. Set up the Unraid SSH integration.',choose_server:'Several Unraid servers found. Choose one in the editor.',unavailable:'Unavailable',device_id:'Server',device_id_helper:'Unraid server whose data the card shows. Empty: the only server.',title:'Title',title_helper:'Heading of the card. Empty: the tile name.'}};
 const UNRAID_SCHWELLEN={warnung:70,kritisch:90};
 function unraidZahl(wert,einheit,locale,stellen=0){if(typeof wert!=='number'||!Number.isFinite(wert))return '–';const text=new Intl.NumberFormat(String(locale||'en').startsWith('de')?'de-DE':'en-US',{maximumFractionDigits:stellen,minimumFractionDigits:stellen}).format(wert);return einheit?text+' '+einheit:text;}
 function unraidStufe(p,s=UNRAID_SCHWELLEN){return typeof p!=='number'||!Number.isFinite(p)?'':p>=s.kritisch?'crit':p>=s.warnung?'warn':'';}
@@ -1517,5 +1517,41 @@ class BuschUnraidTile extends HTMLElement {
   if(a.bestaetigen){let ok=false;try{ok=await this._bestaetigen(a.bestaetigen,a.label,a.gefahr);}catch{ok=false;}if(!ok){this._busy=false;this._render();return;}}
   this._render();try{await a.ausfuehren();}catch{this._error=t.failed;}finally{this._busy=false;this._render();}
  }
- async _bestaetigen(){return true;}
+ _bestaetigen(text,aktion,gefahr){return unraidBestaetigen(aktion,text,aktion,gefahr);}
 }
+const UNRAID_CONFIRM_STYLE=`:host{position:fixed;inset:0;z-index:1000;display:grid;place-items:center}
+.scrim{position:absolute;inset:0;background:rgba(0,0,0,.32)}
+.dialog{position:relative;width:min(320px,calc(100vw - 32px));background:var(--card-background-color,#fff);color:var(--primary-text-color);border-radius:var(--ha-card-border-radius,12px);padding:24px;box-shadow:var(--ha-card-box-shadow,0 8px 24px rgba(0,0,0,.3))}
+h2{margin:0 0 12px;font-size:var(--ha-font-size-l,18px);overflow-wrap:anywhere}p{margin:0 0 20px;overflow-wrap:anywhere}
+.buttons{display:flex;justify-content:flex-end;gap:8px}button{min-height:44px;min-width:44px;padding:0 16px;border-radius:8px;border:1px solid var(--divider-color);background:transparent;color:var(--primary-color);font:inherit}
+button.danger{background:var(--error-color);color:var(--text-primary-color,#fff);border-color:var(--error-color)}button:focus-visible{outline:2px solid var(--primary-color);outline-offset:2px}
+@media (max-width:449px),(max-height:499px){:host{place-items:end stretch}.dialog{width:auto;min-height:90vh;border-radius:16px 16px 0 0;display:flex;flex-direction:column}.buttons{margin-top:auto}}`;
+// Zentraler Bestätigungsdialog (R04): Escape, Abbrechen und Zurück liefern false, Bestätigen true, genau einmal.
+// `history.state` ist im Browser eine Kopie: der eigene Eintrag wird deshalb über seine id erkannt, nie per Identität.
+class BuschUnraidConfirm extends HTMLElement {
+ static frage(o){const d=document.createElement('busch-unraid-confirm');document.body.appendChild(d);return d._zeigen(o);}
+ _zeigen({titel,text,aktion,gefahr}){
+  // document.activeElement meldet nur den äußersten Shadow-Host; bis zum wirklich fokussierten Element absteigen.
+  let vorher=document.activeElement;while(vorher?.shadowRoot?.activeElement)vorher=vorher.shadowRoot.activeElement;this._vorher=vorher;
+  const root=this.attachShadow({mode:'open'}),style=document.createElement('style');style.textContent=UNRAID_CONFIRM_STYLE;
+  this._scrim=document.createElement('div');this._scrim.className='scrim';
+  const box=document.createElement('div');box.className='dialog';box.setAttribute('role','alertdialog');box.setAttribute('aria-modal','true');
+  const h=document.createElement('h2');h.id='t';h.textContent=titel;const p=document.createElement('p');p.id='d';p.textContent=text;box.setAttribute('aria-labelledby','t');box.setAttribute('aria-describedby','d');
+  const row=document.createElement('div');row.className='buttons';this._abbr=document.createElement('button');this._abbr.textContent=buschTexte(UNRAID_TILE_TEXTE,document.querySelector('home-assistant')?.hass).cancel;
+  this._ok=document.createElement('button');this._ok.textContent=aktion;if(gefahr)this._ok.className='danger';row.append(this._abbr,this._ok);box.append(h,p,row);root.append(style,this._scrim,box);
+  const id=Math.random().toString(36).slice(2);this._eintrag={dialog:'busch-unraid-confirm',id};history.pushState(this._eintrag,'');
+  const obenEigener=()=>{const s=history.state;return !!s&&s.dialog==='busch-unraid-confirm'&&s.id===id;};
+  return new Promise(resolve=>{
+   this._fertig=(wert,ausHistory=false)=>{if(this._erledigt)return;this._erledigt=true;window.removeEventListener('popstate',this._pop);this.removeEventListener('keydown',this._taste);if(!ausHistory&&obenEigener())history.back();this.remove();this._vorher?.focus?.();resolve(wert);};
+   // Jedes popstate, solange der Dialog offen ist, ist ein Zurück: der eigene back()-Aufruf läuft erst nach dem Abmelden.
+   this._pop=()=>this._fertig(false,true);
+   this._taste=e=>{if(e.key==='Escape'){e.preventDefault();this._fertig(false);}else if(e.key==='Tab'){const z=[this._abbr,this._ok],i=z.indexOf(root.activeElement);e.preventDefault();z[(i+(e.shiftKey?-1:1)+z.length)%z.length].focus();}};
+   window.addEventListener('popstate',this._pop);this.addEventListener('keydown',this._taste);
+   this._abbr.addEventListener('click',()=>this._fertig(false));this._ok.addEventListener('click',()=>this._fertig(true));
+   // R04: Klick auf den Scrim schließt einen Bestätigungsdialog bewusst nicht.
+   this._abbr.focus();
+  });
+ }
+}
+function unraidBestaetigen(titel,text,aktion,gefahr){return BuschUnraidConfirm.frage({titel,text,aktion,gefahr});}
+if(!customElements.get?.('busch-unraid-confirm'))customElements.define('busch-unraid-confirm',BuschUnraidConfirm);

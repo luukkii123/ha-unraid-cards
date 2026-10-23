@@ -1,6 +1,7 @@
 // tests/tile-basis.test.js
 const test = require('node:test'); const assert = require('node:assert');
 const { ladeKarte } = require('./laden.js');
+const { domMitHistory, Element } = require('./dom-attrappe.js');
 test('Balken: Schwellen und unbekannter Wert', () => {
   const { unraidBalken } = ladeKarte(['unraidBalken']);
   const ok = unraidBalken(42, '42 %'); assert.equal(ok.getAttribute('aria-valuenow'), '42'); assert.ok(!ok.className.includes('warn'));
@@ -41,4 +42,70 @@ test('Fokus bleibt nach einer Kachel-Aktion auf dem Knopf', async () => {
   fertig(); await laeuft; await new Promise((r) => setImmediate(r));
   assert.equal(k._busy, false); assert.equal(knopf().getAttribute('aria-disabled'), null);
   assert.equal(k.shadowRoot.activeElement, knopf()); assert.equal(k.shadowRoot.activeElement.dataset.focusKey, 'neustart');
+});
+
+test('Dialog: Escape und Zurück brechen ab, Klick daneben nicht', async () => {
+  const { BuschUnraidConfirm, umgebung } = ladeKarte(['BuschUnraidConfirm', 'umgebung'], domMitHistory());
+  let p = BuschUnraidConfirm.frage({titel:'Stoppen',text:'Windows 11 stoppen?',aktion:'Stoppen',gefahr:true});
+  const d = umgebung.document.body.lastChild; d._scrim.click(); assert.ok(d.isConnected, 'Scrim schließt nicht');
+  d.dispatchEvent(new umgebung.KeyboardEvent('keydown',{key:'Escape'})); assert.equal(await p, false);
+  p = BuschUnraidConfirm.frage({titel:'x',text:'y',aktion:'OK'}); umgebung.window.dispatchEvent(new umgebung.Event('popstate')); assert.equal(await p, false);
+});
+test('Dialog: Doppelklick bestätigt einmal', async () => {
+  const { BuschUnraidConfirm, umgebung } = ladeKarte(['BuschUnraidConfirm','umgebung'], domMitHistory());
+  const p = BuschUnraidConfirm.frage({titel:'x',text:'y',aktion:'OK'}); const d = umgebung.document.body.lastChild;
+  d._ok.click(); d._ok.click(); assert.equal(await p, true); assert.equal(umgebung.document.body.childNodes.length, 0);
+});
+test('Kachel: Aktion mit Bestätigung ruft genau einmal auf', async () => {
+  const { BuschUnraidTile } = ladeKarte(['BuschUnraidTile']); let n = 0;
+  class T extends BuschUnraidTile { _bestaetigen(){ return Promise.resolve(true); } }
+  const k = new T(); k.setConfig({}); const a = {key:'x',label:'X',bestaetigen:'Sicher?',ausfuehren:async()=>{n++;}};
+  await Promise.all([k._ausfuehren(a,{failed:'f'}), k._ausfuehren(a,{failed:'f'})]); assert.equal(n, 1);
+});
+test('Dialog: Aufbau, Fokus auf Abbrechen, Fokusfalle, Abbrechen liefert false', async () => {
+  const { BuschUnraidConfirm, umgebung } = ladeKarte(['BuschUnraidConfirm','umgebung'], domMitHistory());
+  const p = BuschUnraidConfirm.frage({titel:'Stoppen',text:'„plex“ stoppen?',aktion:'Stoppen',gefahr:true}); const d = umgebung.document.body.lastChild;
+  assert.equal(d.tagName, 'BUSCH-UNRAID-CONFIRM');
+  const box = d.shadowRoot.querySelector('.dialog'); assert.equal(box.getAttribute('role'), 'alertdialog'); assert.equal(box.getAttribute('aria-modal'), 'true');
+  assert.match(d.shadowRoot.querySelector('h2').textContent, /Stoppen/); assert.match(d.shadowRoot.querySelector('p').textContent, /plex/);
+  assert.equal(d._abbr.textContent, 'Cancel', 'ohne hass/navigator englisch'); assert.equal(d._ok.textContent, 'Stoppen'); assert.equal(d._ok.className, 'danger');
+  assert.equal(d.shadowRoot.activeElement, d._abbr, 'Fokus beim Öffnen auf Abbrechen');
+  const tab = (shiftKey) => { const e = new umgebung.KeyboardEvent('keydown',{key:'Tab',shiftKey}); d.dispatchEvent(e); return e; };
+  assert.ok(tab(false).defaultPrevented); assert.equal(d.shadowRoot.activeElement, d._ok);
+  tab(false); assert.equal(d.shadowRoot.activeElement, d._abbr, 'Tab läuft im Dialog im Kreis');
+  tab(true); assert.equal(d.shadowRoot.activeElement, d._ok, 'Umschalt+Tab rückwärts');
+  d._abbr.click(); assert.equal(await p, false); assert.equal(d.isConnected, false);
+});
+test('Dialog: ohne Gefahr normaler Knopf, deutsche Texte mit hass', async () => {
+  const u = domMitHistory(); u.document.querySelector = (sel) => sel === 'home-assistant' ? { hass: { locale: { language: 'de' } } } : null;
+  const { BuschUnraidConfirm, umgebung } = ladeKarte(['BuschUnraidConfirm','umgebung'], u);
+  const p = BuschUnraidConfirm.frage({titel:'x',text:'y',aktion:'Neu starten'}); const d = umgebung.document.body.lastChild;
+  assert.equal(d._abbr.textContent, 'Abbrechen'); assert.notEqual(d._ok.className, 'danger'); d._ok.click(); assert.equal(await p, true);
+});
+test('Dialog: Fokus kehrt zum vorher aktiven Element zurück (auch im Shadow DOM)', async () => {
+  const { BuschUnraidConfirm, umgebung } = ladeKarte(['BuschUnraidConfirm','umgebung'], domMitHistory());
+  const karte = new Element('home-assistant'); karte.attachShadow(); const knopf = new Element('button'); karte.shadowRoot.appendChild(knopf); knopf.focus();
+  umgebung.document.activeElement = karte; // der Browser meldet nur den äußersten Shadow-Host
+  const p = BuschUnraidConfirm.frage({titel:'x',text:'y',aktion:'OK'}); knopf.focused = false;
+  umgebung.document.body.lastChild.dispatchEvent(new umgebung.KeyboardEvent('keydown',{key:'Escape'})); await p;
+  assert.equal(knopf.focused, true);
+});
+test('Dialog: eigener History-Eintrag; zurück nur, wenn er oben liegt', async () => {
+  const { BuschUnraidConfirm, umgebung } = ladeKarte(['BuschUnraidConfirm','umgebung'], domMitHistory()); const h = umgebung.history;
+  let p = BuschUnraidConfirm.frage({titel:'x',text:'y',aktion:'OK'}); assert.equal(h.length, 2); assert.equal(h.state.dialog, 'busch-unraid-confirm');
+  umgebung.document.body.lastChild._ok.click(); assert.equal(await p, true); assert.equal(h.backs, 1); assert.equal(h.length, 1);
+  await new Promise((r) => setTimeout(r)); // eigenes popstate aus back() abwarten
+  p = BuschUnraidConfirm.frage({titel:'x',text:'y',aktion:'OK'}); h.stack.pop(); // Zurück des Nutzers: Eintrag ist weg
+  umgebung.window.dispatchEvent(new umgebung.Event('popstate')); assert.equal(await p, false); assert.equal(h.backs, 1, 'kein zweites back()');
+  p = BuschUnraidConfirm.frage({titel:'x',text:'y',aktion:'OK'}); h.pushState({fremd:true}); // jemand anderes liegt oben
+  umgebung.document.body.lastChild._abbr.click(); assert.equal(await p, false); assert.equal(h.backs, 1, 'fremden Eintrag nicht wegnehmen');
+  assert.equal(umgebung.window.listeners.popstate.length, 0, 'popstate-Listener aufgeräumt');
+});
+test('unraidBestaetigen und Kachel-Bestätigung laufen über den Dialog', async () => {
+  const { BuschUnraidTile, unraidBestaetigen, globalThis: g } = ladeKarte(['BuschUnraidTile','unraidBestaetigen','globalThis'], domMitHistory());
+  const p = unraidBestaetigen('Stoppen','Sicher?','Stoppen',true); const d = g.document.body.lastChild;
+  assert.equal(d._ok.textContent, 'Stoppen'); d._ok.click(); assert.equal(await p, true);
+  const gefragt = []; g.unraidBestaetigen = async (...x) => { gefragt.push(x); return false; };
+  const k = new BuschUnraidTile(); assert.equal(await k._bestaetigen('Sicher?','Stoppen',true), false);
+  assert.deepEqual(JSON.parse(JSON.stringify(gefragt)), [['Stoppen','Sicher?','Stoppen',true]]);
 });

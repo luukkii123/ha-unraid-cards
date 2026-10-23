@@ -9,6 +9,8 @@ class Element {
   get textContent() { return this._text + this.childNodes.map((n) => n.textContent).join(''); }
   appendChild(n) { n.parentNode = this; this.childNodes.push(n); return n; }
   append(...n) { for (const x of n) this.appendChild(x); }
+  get lastChild() { return this.childNodes.at(-1) || null; }
+  removeChild(n) { n.remove(); return n; }
   replaceChildren(...n) { for (const c of this.childNodes) c.parentNode = null; this.childNodes = []; this.append(...n); }
   remove() { if (this.parentNode) this.parentNode.childNodes = this.parentNode.childNodes.filter((c) => c !== this); this.parentNode = null; }
   setAttribute(k, v) { this.attributes[k] = String(v); if (k === 'class') this.className = String(v); }
@@ -48,4 +50,41 @@ function dokument(registered) {
   return { createElement, createElementNS: (_ns, tag) => new Element(tag), body, querySelectorAll: (sel) => body.all().filter((n) => n.tagName === sel.toUpperCase()) };
 }
 
-module.exports = { Element, dokument };
+/**
+ * Umgebung mit `document.body`, `window`-Ereignissen und `history` für den
+ * Bestätigungsdialog. `history.state` liefert wie im Browser eine KOPIE des
+ * Zustands (structuredClone), Vergleiche per Identität fallen also auf.
+ * `history.back()` nimmt den Eintrag weg und feuert `popstate` asynchron.
+ * Gibt die Sandbox-Zusätze zurück; `umgebung` zeigt auf dieselben Objekte.
+ */
+function domMitHistory() {
+  const registered = new Map();
+  const document = dokument(registered), body = document.body;
+  const verbunden = (n) => { let w = n; while (w.parentNode) w = w.parentNode; return w === body; };
+  class HTMLElement extends Element {
+    get isConnected() { return verbunden(this); }
+    set isConnected(_v) {}
+    addEventListener(type, fn) { (this.listeners[type] ||= []).push(fn); }
+    removeEventListener(type, fn) { this.listeners[type] = (this.listeners[type] || []).filter((f) => f !== fn); }
+    dispatchEvent(e) { super.dispatchEvent(e); for (const fn of [...(this.listeners[e.type] || [])]) fn(e); return !e.defaultPrevented; }
+  }
+  class Event { constructor(type, init = {}) { this.type = type; Object.assign(this, init); this.defaultPrevented = false; } preventDefault() { this.defaultPrevented = true; } stopPropagation() {} }
+  class KeyboardEvent extends Event {}
+  const fenster = { customCards: [], listeners: {}, innerWidth: 1000, innerHeight: 800,
+    addEventListener(type, fn) { (this.listeners[type] ||= []).push(fn); },
+    removeEventListener(type, fn) { this.listeners[type] = (this.listeners[type] || []).filter((f) => f !== fn); },
+    dispatchEvent(e) { for (const fn of [...(this.listeners[e.type] || [])]) fn(e); return true; } };
+  const history = { stack: [null], backs: 0,
+    get state() { const s = this.stack.at(-1); return s == null ? null : structuredClone(s); },
+    get length() { return this.stack.length; },
+    pushState(s) { this.stack.push(structuredClone(s)); },
+    back() { this.backs++; if (this.stack.length > 1) this.stack.pop(); setTimeout(() => fenster.dispatchEvent(new Event('popstate'))); } };
+  document.activeElement = null;
+  document.querySelector = () => null;
+  const customElements = { define: (k, v) => registered.set(k, v), get: (k) => registered.get(k) };
+  const umgebung = { document, window: fenster, history, Event, KeyboardEvent, HTMLElement, customElements, setTimeout, clearTimeout };
+  umgebung.umgebung = umgebung;
+  return umgebung;
+}
+
+module.exports = { Element, dokument, domMitHistory };

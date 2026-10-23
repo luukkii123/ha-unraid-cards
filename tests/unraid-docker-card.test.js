@@ -17,10 +17,11 @@ function load(language = 'de') {
   const registered = new Map();
   const document = dokument(registered), body = document.body;
   const history = { stack: [null], get state() { return this.stack.at(-1); }, pushState(s) { this.stack.push(s); }, back() { this.stack.pop(); } };
-  const window = { customCards: [], confirm: () => true, innerWidth: 1000, innerHeight: 800, addEventListener() {}, removeEventListener() {}, scrollX: 0, scrollY: 0 };
+  const window = { customCards: [], innerWidth: 1000, innerHeight: 800, addEventListener() {}, removeEventListener() {}, scrollX: 0, scrollY: 0 };
   const context = { performance, setTimeout, clearTimeout, HTMLElement: Element, customElements: { define: (k, v) => registered.set(k, v), get: (k) => registered.get(k) }, window, history, navigator: { language }, console, CustomEvent: class { constructor(type, init) { this.type = type; Object.assign(this, init); } }, document };
   vm.createContext(context);
   vm.runInContext(source, context);
+  context.unraidBestaetigen = async () => true; // Dialog im Test ersetzt: zugestimmt
   const pick = vm.runInContext('({buschUnraidDockerModel,buschUnraidServers,buschUnraidSchema,BuschUnraidDockerCard,BuschUnraidDockerEditor,TEXTE_BUSCH_UNRAID_DOCKER_CARD,SCHEMA_BUSCH_UNRAID_DOCKER_CARD,BUSCH_UNRAID_DOCKER_DEFAULTS})', context);
   return { ...pick, context, registered, body, history };
 }
@@ -136,14 +137,15 @@ test('Menüeinträge nur für vorhandene Fähigkeiten', () => {
 });
 
 test('Aktionen rufen den richtigen Service; Stoppen/Neustart fragen nach', async () => {
-  const l = load(), card = karte(l, fixture()); let gefragt = [];
-  l.context.window.confirm = (text) => { gefragt.push(text); return true; };
+  const l = load(), card = karte(l, fixture()); let gefragt = [], gefahren = [];
+  l.context.unraidBestaetigen = async (titel, text, aktion, gefahr) => { gefragt.push(text); gefahren.push([titel, aktion, gefahr]); return true; };
   const run = async (key, action) => { const { list } = items(l, card, key); await list.find((i) => i.key === action).run(); };
   await run('stack:media', 'stop'); await run('stack:tools', 'start'); await run('stack:media', 'restart'); await run('stack:media', 'update_all'); await run('container:media', 'restart');
   same(card.calls.map((c) => [c[0], c[1], c[2].entity_id]), [
     ['switch', 'turn_off', 'switch.stack_media'], ['switch', 'turn_on', 'switch.stack_tools'], ['button', 'press', 'button.stack_media_restart'], ['button', 'press', 'button.stack_media_update_all'], ['button', 'press', 'button.media_restart']]);
   same(gefragt, ['„media“ stoppen?', '„media“ neu starten?', '„media“ neu starten?']);
-  l.context.window.confirm = () => false; await run('container:media', 'stop');
+  same(gefahren, [['Stoppen', 'Stoppen', true], ['Neu starten', 'Neu starten', false], ['Neu starten', 'Neu starten', false]]);
+  l.context.unraidBestaetigen = async () => false; await run('container:media', 'stop');
   assert.equal(card.calls.length, 5);
   await run('container:media', 'update'); await run('stack:media', 'details');
   same(card.events.map((e) => [e.type, e.detail.entityId]), [['hass-more-info', 'update.media'], ['hass-more-info', 'switch.stack_media']]);
@@ -151,7 +153,7 @@ test('Aktionen rufen den richtigen Service; Stoppen/Neustart fragen nach', async
 
 test('Bestätigung lässt sich abschalten wie bei den übrigen Unraid-Karten', async () => {
   const l = load(), card = karte(l, fixture(), { confirm_stop: false }); let gefragt = 0;
-  l.context.window.confirm = () => { gefragt++; return true; };
+  l.context.unraidBestaetigen = async () => { gefragt++; return true; };
   await items(l, card, 'stack:media').list.find((i) => i.key === 'stop').run();
   assert.equal(gefragt, 0); assert.equal(card.calls.length, 1);
 });
