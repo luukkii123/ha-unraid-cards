@@ -1463,6 +1463,25 @@ function unraidRing(prozent,label){const bekannt=typeof prozent==='number'&&Numb
 function unraidTabelle(spalten,zeilen,{leer}={}){if(!zeilen||!zeilen.length)return buschUnraidNode('p',leer,'message');const table=document.createElement('table');table.className='table';const head=document.createElement('tr');for(const s of spalten){const th=document.createElement('th');th.setAttribute('scope','col');th.textContent=s.label;head.appendChild(th);}const thead=document.createElement('thead');thead.appendChild(head);table.appendChild(thead);const body=document.createElement('tbody');for(const z of zeilen){const tr=document.createElement('tr');for(const s of spalten){const td=document.createElement('td');td.setAttribute('data-label',s.label);const v=z[s.key];if(v&&typeof v==='object'&&v.nodeType)td.appendChild(v);else td.textContent=v??'–';tr.appendChild(td);}body.appendChild(tr);}table.appendChild(body);return table;}
 function unraidRaster(eintraege){const grid=buschUnraidNode('div',undefined,'grid');for(const e of eintraege){const cell=buschUnraidNode('div',undefined,'cell');cell.appendChild(buschUnraidNode('span',e.name,'cell-name'));cell.appendChild(buschUnraidNode('span',e.wert,'cell-value'));grid.appendChild(cell);}return grid;}
 function unraidPunkt(semantik,text){const n=buschUnraidNode('span',undefined,'dot-row');const dot=buschUnraidNode('span',undefined,'dot sem-'+semantik);dot.setAttribute('aria-hidden','true');n.appendChild(dot);n.appendChild(buschUnraidNode('span',text,'dot-text'));return n;}
+// Servermodell für die Kacheln. unraid_ssh legt jede unique_id als
+// `<config_entry_id>_<suffix>` an; der Kern liefert in getDeviceEntities auch
+// deaktivierte Entitäten (registry.disabled_by, ohne Zustand) — die zählen nicht.
+// Ohne geladenes Entitätsregister (nur hass.entities: keine unique_id und kein
+// config_entry_id) gibt es keinen Entry und damit keine Treffer statt Fremdtreffer.
+function unraidNum(e){if(!e||e.state==null||['unavailable','unknown',''].includes(String(e.state).trim()))return null;const n=Number(e.state);return Number.isFinite(n)?n:null;}
+function unraidSuffix(e){const uid=e?.registry?.unique_id,entry=e?.config_entry_id;return typeof uid==='string'&&typeof entry==='string'&&entry&&uid.startsWith(entry+'_')?uid.slice(entry.length+1)||null:null;}
+function unraidServer(core,config){
+ config=config||{};
+ const server=buschUnraidServers(core),gewaehlt=config.device_id?server.find(d=>d.id===config.device_id):server.length===1?server[0]:null;
+ if(!gewaehlt)return {server:null,fehler:server.length>1&&!config.device_id?'choose_server':'no_server'};
+ const eigene=core.getDeviceEntities(gewaehlt.id).filter(e=>e&&e.platform==='unraid_ssh'),entry=eigene.find(e=>e.config_entry_id)?.config_entry_id;
+ const index=liste=>entry?new Map(liste.filter(e=>e&&e.platform==='unraid_ssh'&&e.config_entry_id===entry&&!e.registry?.disabled_by).map(e=>[unraidSuffix(e),e]).filter(([s])=>s)):new Map();
+ const kinder=entry?[...core.devices.values()].filter(d=>d.id!==gewaehlt.id&&core.getDeviceEntities(d.id).some(e=>e?.platform==='unraid_ssh'&&e.config_entry_id===entry)):[];
+ const haupt=index(eigene);
+ return {server:gewaehlt,entry,wert:s=>haupt.get(s)||null,alle:p=>[...haupt].filter(([s])=>s.startsWith(p)).map(([suffix,entity])=>({suffix,entity})),
+  geraete:modell=>kinder.filter(d=>d.model===modell).sort((a,b)=>String(a.name_by_user||a.name||a.id).localeCompare(String(b.name_by_user||b.name||b.id),undefined,{numeric:true})),
+  von:(d,s)=>d?index(core.getDeviceEntities(d.id)).get(s)||null:null};
+}
 function unraidSpeicher(){try{return window.localStorage||null;}catch{return null;}}
 const UNRAID_TILE_STYLE=BUSCH_UNRAID_STYLE+`
 .tile-head{display:flex;align-items:flex-start;gap:var(--ha-space-3,12px);min-width:0}
