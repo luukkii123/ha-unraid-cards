@@ -19,7 +19,9 @@ function ent(id, suffix, device, state, attributes = {}, entry = ENTRY) {
     platform: 'unraid_ssh', config_entry_id: entry, device_id: device, area_id: undefined, floor_id: undefined, labels: [], manufacturer: undefined, model: undefined, entity_category: null,
   };
 }
-function unraidAttrappe({ gpu = true, fans = true, parity = false, zweiterServer = false, ausfall = false } = {}) {
+// VM-Attribute wie vm_metadata() in unraid_ssh (model.py): kind/role/config_entry_id/vm_key/vm_name/vm_state, vm_state roh aus VM_STATES.
+function vmAttr(name, role, state, entry = ENTRY) { return { kind: 'vm', role, config_entry_id: entry, vm_key: name, vm_name: name, vm_state: state }; }
+function unraidAttrappe({ gpu = true, fans = true, parity = false, zweiterServer = false, ausfall = false, zweiteVm = false } = {}) {
   const geraet = (id, name, model, entry = ENTRY) => [id, { id, name, name_by_user: null, model, manufacturer: 'Lime Technology', config_entries: [entry], via_device_id: model === 'Unraid' ? null : 'srv' }];
   // Kindgeräte wie live: übersetzter Name mit Eintragstitel-Präfix (translations/de.json `device`: „{prefix} Festplatte {component}“ …),
   // model f"{disk.kind} disk" mit kind = Unraid-`type` (Unraid 7: Flash heißt „Boot disk“). Der Rohname steckt nur in den unique_ids.
@@ -37,9 +39,9 @@ function unraidAttrappe({ gpu = true, fans = true, parity = false, zweiterServer
     ent('sensor.cache_temp', 'disk_temp_cache', 'p1', 51), ent('sensor.cache_usage', 'disk_usage_cache', 'p1', 45), ent('sensor.cache_status', 'disk_status_cache', 'p1', 'ok'),
     ent('sensor.raid_temp', 'disk_temp_raid', 'r1', 44), ent('sensor.raid_usage', 'disk_usage_raid', 'r1', 60), ent('sensor.raid_status', 'disk_status_raid', 'r1', 'ok'), ent('sensor.raid2_temp', 'disk_temp_raid2', 'r2', 50), ent('sensor.raid2_status', 'disk_status_raid2', 'r2', 'ok'),
     ent('sensor.flash_usage', 'disk_usage_flash', 'f1', 35), ent('sensor.flash_status', 'disk_status_flash', 'f1', 'ok'),
-    ent('switch.win', 'vm_Windows 11', 'vm1', 'on'), ent('button.win_restart', 'restart_vm_Windows 11', 'vm1', 'unknown'),
+    ent('switch.win', 'vm_Windows 11', 'vm1', 'on', vmAttr('Windows 11', 'control', 'running')), ent('button.win_restart', 'restart_vm_Windows 11', 'vm1', 'unknown', vmAttr('Windows 11', 'restart', 'running')), ent('button.win_force', 'force_stop_vm_Windows 11', 'vm1', 'unknown', vmAttr('Windows 11', 'force_stop', 'running')),
     ent('sensor.appdata_used', 'share_used_appdata', 'sh1', 120.5, { unit_of_measurement: 'GB' }), ent('sensor.appdata_free', 'share_free_appdata', 'sh1', 450, { unit_of_measurement: 'GB' }),
-    ent('sensor.win_state', 'vm_state_Windows 11', 'vm1', 'running'), ent('sensor.win_cpu', 'vm_cpu_Windows 11', 'vm1', 36), ent('sensor.win_ram_used', 'vm_ram_used_Windows 11', 'vm1', 17179869184), ent('sensor.win_ram_alloc', 'vm_ram_allocated_Windows 11', 'vm1', 17179869184),
+    ent('sensor.win_state', 'vm_state_Windows 11', 'vm1', 'running', vmAttr('Windows 11', 'state', 'running')), ent('sensor.win_cpu', 'vm_cpu_Windows 11', 'vm1', 36, vmAttr('Windows 11', 'cpu', 'running')), ent('sensor.win_ram_used', 'vm_ram_used_Windows 11', 'vm1', 17179869184, vmAttr('Windows 11', 'ram_used', 'running')), ent('sensor.win_ram_alloc', 'vm_ram_allocated_Windows 11', 'vm1', 17179869184, vmAttr('Windows 11', 'ram_allocated', 'running')),
     // deaktiviert (z. B. vom Nutzer abgeschaltet): im Register, ohne Zustand
     ent('sensor.tower_load_5', 'load_5', 'srv', undefined)];
   if (gpu) list.push(ent('sensor.gpu_util', 'gpu_util_0', 'srv', 19), ent('sensor.gpu_vram', 'gpu_vram_0', 'srv', 9), ent('sensor.gpu_temp', 'gpu_temp_0', 'srv', 52), ent('sensor.gpu_power', 'gpu_power_0', 'srv', 78), ent('sensor.gpu_fan', 'gpu_fan_0', 'srv', 31));
@@ -50,6 +52,12 @@ function unraidAttrappe({ gpu = true, fans = true, parity = false, zweiterServer
     ent('sensor.fan6', 'fan_nct6798_isa_0290_fan6_rpm', 'srv', 4821, { chip: 'nct6798-isa-0290', channel: 'fan6', pwm: 255, pwm_mode: 'auto', friendly_name: 'Tower Lüfter FAN 6 Drehzahl' }),
     ent('sensor.fan6p', 'fan_nct6798_isa_0290_fan6_percent', 'srv', 100, { chip: 'nct6798-isa-0290', channel: 'fan6', pwm: 255, pwm_mode: 'auto', friendly_name: 'Tower Lüfter FAN 6 PWM-Ansteuerung' }),
     ent('sensor.fan1', 'fan_nct6798_isa_0290_fan1_rpm', 'srv', undefined));
+  // Zweite, gestoppte VM wie live („<Titel> VM <Name>“); gestoppte VMs liefern keine Ressourcenwerte.
+  if (zweiteVm) {
+    devices.set(...geraet('vm2', 'Tower VM Ubuntu', 'Virtual machine'));
+    list.push(ent('switch.ubuntu', 'vm_Ubuntu', 'vm2', 'off', vmAttr('Ubuntu', 'control', 'shut_off')), ent('button.ubuntu_restart', 'restart_vm_Ubuntu', 'vm2', 'unknown', vmAttr('Ubuntu', 'restart', 'shut_off')),
+      ent('button.ubuntu_force', 'force_stop_vm_Ubuntu', 'vm2', 'unavailable', vmAttr('Ubuntu', 'force_stop', 'shut_off')), ent('sensor.ubuntu_state', 'vm_state_Ubuntu', 'vm2', 'shut_off', vmAttr('Ubuntu', 'state', 'shut_off')));
+  }
   if (parity) list.push(ent('sensor.parity_temp', 'disk_temp_parity', 'par', 40), ent('sensor.parity_status', 'disk_status_parity', 'par', 'ok'));
   if (zweiterServer) {
     devices.set(...geraet('srv2', 'Backup', 'Unraid', 'e2'));

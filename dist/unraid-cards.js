@@ -662,7 +662,7 @@ function buschFuellen(text, werte) {
 
 /* === Unraid-Familie === */
 /* Unraid cards: joins are exclusively backend metadata + registry scope. */
-const BUSCH_UNRAID_DEFAULTS = { display_mode:'auto', image:'', icon:'', show_cpu:true, show_ram:true, show_uptime:true, show_ip:true, show_disk:true, debug:false, title: '', device_id: '', container_key: '', switch_entity: '', update_entity: '', layout: 'detailed', show_status: true, show_controls: true, show_containers: true, show_updates: true, state_filter: 'all', sort: 'name', show_restart: true, confirm_stop: true, confirm_restart: true, start_expanded: true };
+const BUSCH_UNRAID_DEFAULTS = { display_mode:'auto', image:'', icon:'', show_cpu:true, show_ram:true, show_all:false, debug:false, title: '', device_id: '', container_key: '', switch_entity: '', update_entity: '', layout: 'detailed', show_status: true, show_controls: true, show_containers: true, show_updates: true, state_filter: 'all', sort: 'name', show_restart: true, confirm_stop: true, confirm_restart: true, start_expanded: true };
 function buschUnraidConfig(config){const next={...config};delete next.config_entry_id;return next;}
 const TEXTE_BUSCH_UNRAID_STACK_CARD = {
  de: {
@@ -696,7 +696,7 @@ const TEXTE_BUSCH_UNRAID_VM_CARD = {
  de: {
   labels: {
    title: "Titel",
-   device_id: "Virtuelle Maschine",
+   device_id: "Unraid-Server oder VM",
    layout: "Darstellung",
    display_mode: "Medienanzeige",
    image: "Eigenes Bild",
@@ -709,13 +709,11 @@ const TEXTE_BUSCH_UNRAID_VM_CARD = {
    confirm_restart: "Neustart bestätigen",
    show_cpu: "CPU anzeigen",
    show_ram: "RAM anzeigen",
-   show_uptime: "Betriebszeit anzeigen",
-   show_ip: "IP anzeigen",
-   show_disk: "Datenträger anzeigen"
+   show_all: "Alle VMs"
   },
   helpers: {
    title: "Optionaler eigener Titel; leer verwendet den VM-Namen.",
-   device_id: "Wählt ein echtes VM-Gerät der Integration; ungültige IDs werden nicht ersetzt.",
+   device_id: "Unraid-Server für die VM-Liste oder eine einzelne VM. Leer: der einzige Server.",
    layout: "Kompakt oder ausführlich; Vorgabe ist ausführlich.",
    display_mode: "Automatisch bevorzugt verfügbare Bilder; Bild bevorzugt das eigene Bild, Icon zeigt nur das Icon. Vorgabe: automatisch.",
    image: "Optionale Bild-URL; leer verwendet vorhandenes Bild oder Icon.",
@@ -728,15 +726,19 @@ const TEXTE_BUSCH_UNRAID_VM_CARD = {
    confirm_restart: "Fragt vor dem Neustart nach; Vorgabe: ein.",
    show_cpu: "Zeigt CPU in Prozent je Kern; über 100 % ist möglich. Fehlende Werte sind nicht verfügbar. Vorgabe: ein.",
    show_ram: "Zeigt Gastverbrauch, sonst ausdrücklich zugewiesenen RAM; Host-RSS ist kein Gastverbrauch. Vorgabe: ein.",
-   show_uptime: "Zeigt belastbare zugeordnete Werte; fehlende Daten bleiben ausgeblendet. Vorgabe: ein.",
-   show_ip: "Zeigt belastbare zugeordnete Werte; fehlende Daten bleiben ausgeblendet. Vorgabe: ein.",
-   show_disk: "Zeigt belastbare zugeordnete Werte; fehlende Daten bleiben ausgeblendet. Vorgabe: ein."
-  }
+   show_all: "Zeigt auch gestoppte VMs. Vorgabe aus."
+  },
+  vm_list: "Virtuelle Maschinen",
+  show_all: "Alle VMs",
+  none_vms: "Keine laufenden VMs.",
+  loading: "Wird geladen …",
+  choose_server: "Mehrere Unraid-Server gefunden. Im Editor einen wählen.",
+  no_server: "Kein Unraid-Server gefunden. Die Integration Unraid SSH einrichten."
  },
  en: {
   labels: {
    title: "Title",
-   device_id: "Virtual machine",
+   device_id: "Unraid server or VM",
    layout: "Layout",
    display_mode: "Media display",
    image: "Custom picture",
@@ -749,13 +751,11 @@ const TEXTE_BUSCH_UNRAID_VM_CARD = {
    confirm_restart: "Confirm restart",
    show_cpu: "Show CPU",
    show_ram: "Show RAM",
-   show_uptime: "Show UPTIME",
-   show_ip: "Show IP",
-   show_disk: "Show DISK"
+   show_all: "All VMs"
   },
   helpers: {
    title: "Optional title; empty uses the VM name.",
-   device_id: "Selects an integration VM device; invalid IDs are never substituted.",
+   device_id: "Unraid server for the VM list or a single VM. Empty: the only server.",
    layout: "Compact or detailed; defaults to detailed.",
    display_mode: "Auto prefers available pictures; image prefers your picture; icon only shows the icon. Default: auto.",
    image: "Optional picture URL; empty uses an existing picture or icon.",
@@ -768,10 +768,14 @@ const TEXTE_BUSCH_UNRAID_VM_CARD = {
    confirm_restart: "Asks before restarting; default: on.",
    show_cpu: "Shows CPU percent per core; values above 100 % are valid. Missing values are unavailable. Default: on.",
    show_ram: "Shows guest usage, otherwise explicitly allocated RAM; host RSS is not guest usage. Default: on.",
-   show_uptime: "Shows reliable matched values; missing data stays hidden. Default: on.",
-   show_ip: "Shows reliable matched values; missing data stays hidden. Default: on.",
-   show_disk: "Shows reliable matched values; missing data stays hidden. Default: on."
-  }
+   show_all: "Also shows stopped VMs. Default off."
+  },
+  vm_list: "Virtual machines",
+  show_all: "All VMs",
+  none_vms: "No running virtual machines.",
+  loading: "Loading …",
+  choose_server: "Several Unraid servers found. Choose one in the editor.",
+  no_server: "No Unraid server found. Set up the Unraid SSH integration."
  }
 };
 const BUSCH_UNRAID_TEXT = TEXTE_BUSCH_UNRAID_STACK_CARD;
@@ -929,8 +933,17 @@ const SCHEMA_BUSCH_UNRAID_VM_CARD = [
  {
   name: "device_id",
   selector: {
-   select: {
-    options: []
+   device: {
+    filter: [
+     {
+      integration: "unraid_ssh",
+      model: "Unraid"
+     },
+     {
+      integration: "unraid_ssh",
+      model: "Virtual machine"
+     }
+    ]
    }
   }
  },
@@ -1028,19 +1041,7 @@ const SCHEMA_BUSCH_UNRAID_VM_CARD = [
   }
  },
  {
-  name: "show_uptime",
-  selector: {
-   boolean: {}
-  }
- },
- {
-  name: "show_ip",
-  selector: {
-   boolean: {}
-  }
- },
- {
-  name: "show_disk",
+  name: "show_all",
   selector: {
    boolean: {}
   }
@@ -1050,7 +1051,8 @@ function buschUnraidSchema(core,config,kind){
  if(kind==='docker')return SCHEMA_BUSCH_UNRAID_DOCKER_CARD.map(field=>field.name==='device_id'?{...field,selector:{select:{options:buschUnraidServers(core).map(d=>({value:d.id,label:d.name_by_user||d.name||d.id}))}}}:field);
  const model=buschUnraidModel(core,config,kind),base=kind==='stack'?SCHEMA_BUSCH_UNRAID_STACK_CARD:kind==='vm'?SCHEMA_BUSCH_UNRAID_VM_CARD:SCHEMA_BUSCH_UNRAID_CONTAINER_CARD;
  return (kind==='vm'?base:[...base,...BUSCH_UNRAID_MEDIA_SCHEMA,...SCHEMA_BUSCH_UNRAID_VM_CARD.filter(f=>['show_cpu','show_ram','debug'].includes(f.name))]).map(field=>{
-  if(field.name==='device_id')return {...field,selector:{select:{options:buschUnraidDevices(core,kind).map(d=>({value:d.id,label:d.name_by_user||d.name||d.id}))}}};
+  // VM: Gerätewähler aus dem Schema (Server für die Liste oder eine einzelne VM), keine VM-Auswahlliste.
+  if(field.name==='device_id'&&kind!=='vm')return {...field,selector:{select:{options:buschUnraidDevices(core,kind).map(d=>({value:d.id,label:d.name_by_user||d.name||d.id}))}}};
   if(field.name==='container_key')return {...field,selector:{select:{options:model.containers.map(c=>({value:c.key,label:c.name}))}}};
   if(field.name==='switch_entity'||field.name==='update_entity')return {...field,selector:{entity:{filter:{integration:'unraid_ssh',domain:field.name==='switch_entity'?'switch':'update',...(model.device?{device_id:model.device.id}:{})}}}};
   if(field.name==='show_restart')return {...field,disabled:kind==='stack'?!model.restart&&!model.containers.some(c=>c.restart):!model.selected?.restart};
@@ -1163,10 +1165,39 @@ class BuschUnraidContainerCard extends BuschUnraidBaseCard {
  static getConfigElement(){return document.createElement('busch-unraid-container-card-editor');}
  static getStubConfig(hass){if(!hass)return {type:'custom:busch-unraid-container-card'};const core=ensureBuschCore(1);core.attach(hass);const device=buschUnraidDevices(core,'container')[0],model=buschUnraidModel(core,{device_id:device?.id},'container');return {type:'custom:busch-unraid-container-card',...(device?{device_id:device.id}:{}),...(model.containers[0]?{container_key:model.containers[0].key}:{})};}
 }
+// VM-Karte: device_id eines Servers (oder leer) → Liste aller VMs des Servers im Kachelstil; device_id eines
+// VM-Geräts (alte Konfiguration) → unveränderte Einzelansicht der Familie. Aktionen je Zeile über _actions/_action.
 class BuschUnraidVmCard extends BuschUnraidBaseCard {
  get _kind(){return 'vm';}
+ setConfig(config){const vorher=buschCoreKey(this._config);super.setConfig(config);if(buschCoreKey(this._config)!==vorher&&this._alle!==undefined){this._alle=undefined;this._render();}}
+ // Der Schalter „Alle VMs“ ändert nur die Anzeige dieser Karte, nicht die gespeicherte Konfiguration.
+ _zeigeAlle(){return this._alle??!!this._config.show_all;}
+ _istListe(){const d=this._core?.devices?.get?.(this._config.device_id);return !this._config.device_id||d?.model==='Unraid';}
+ _modellListe(){const s=unraidServer(this._core,this._config);if(!s.server)return {fehler:s.fehler};const alle=s.geraete('Virtual machine').map(d=>buschUnraidModel(this._core,{...this._config,device_id:d.id},'vm').selected).filter(Boolean);return {name:s.server.name_by_user||s.server.name,vms:alle.filter(r=>this._zeigeAlle()||r.status==='running')};}
+ async _zeilenAktion(action,row){return this._action(action,row);}
+ getCardSize(){return this._istListe()?3:super.getCardSize();}
+ _render(){
+  if(!this.shadowRoot||!this._config)return;if(!this._istListe()){this._listSignature=null;return super._render();}this._renderSignature=null;
+  const h=this._hass,t={...buschTexte(BUSCH_UNRAID_TEXT,h),...buschTexte(TEXTE_BUSCH_UNRAID_VM_CARD,h)},m=this._core&&h?this._modellListe():{laedt:true},alle=this._zeigeAlle();
+  const signature=JSON.stringify([this._config,alle,m,!!this._busy,this._error,t]);if(signature===this._listSignature)return;this._listSignature=signature;
+  const active=this.shadowRoot.activeElement,fokus=active?.tagName==='BUTTON'?{key:active.dataset.focusKey,entity:active.closest?.('.vm-row')?.dataset.entityId}:null;
+  const style=buschUnraidNode('style',UNRAID_TILE_STYLE),card=buschUnraidNode('ha-card');card.className=('tile '+(this._config.layout||'')).trim();
+  const head=buschUnraidNode('div',undefined,'tile-head header'),icon=BuschUI.ha.icon('mdi:monitor-multiple');icon.className='tile-icon';icon.setAttribute('aria-hidden','true');head.appendChild(icon);
+  const tx=buschUnraidNode('div',undefined,'tile-text');tx.appendChild(buschUnraidNode('h2',this._config.title||t.vm_list,'tile-title'));if(m.name)tx.appendChild(buschUnraidNode('p',m.name,'tile-sub'));head.appendChild(tx);
+  const leiste=buschUnraidNode('div',undefined,'tile-actions'),schalter=BuschUI.action({label:t.show_all,text:t.show_all,onClick:()=>{this._alle=!this._zeigeAlle();this._render();},variant:'secondary'});schalter.dataset.focusKey='show-all';schalter.setAttribute('aria-pressed',String(alle));leiste.appendChild(schalter);head.appendChild(leiste);card.appendChild(head);
+  const message=text=>card.appendChild(buschUnraidNode('p',text,'message'));
+  if(m.laedt)message(t.loading);else if(m.fehler)message(t[m.fehler]||t.empty);else if(!m.vms.length)message(t.none_vms);
+  else{const rows=buschUnraidNode('div',undefined,'rows');for(const r of m.vms){const row=buschUnraidNode('div',undefined,'row vm-row');row.dataset.entityId=r.switch?.entity_id||r.key||r.name;const id=buschUnraidNode('div',undefined,'row-identity'),nm=buschUnraidNode('div',undefined,'row-text');id.appendChild(buschMedia(this._config,r,'mdi:monitor','row-icon'));nm.appendChild(buschUnraidNode('div',r.name,'name'));id.appendChild(nm);row.appendChild(id);
+   if(this._config.show_status)row.appendChild(buschUnraidBadge(r.status,buschUnraidStatusText(r,t,h?.locale?.language)));
+   if(r.status==='running'&&(this._config.show_cpu||this._config.show_ram))row.appendChild(buschUnraidMetrics(r,this._config,t,h?.locale?.language));
+   this._actions(row,r,t);rows.appendChild(row);}card.appendChild(rows);}
+  if(this._error){const e=buschUnraidNode('p',this._error,'message error');e.setAttribute('role','alert');card.appendChild(e);}
+  this.shadowRoot.replaceChildren(style,card);
+  if(fokus?.key){const ziel=[...this.shadowRoot.querySelectorAll('button')].find(b=>b.dataset.focusKey===fokus.key&&(fokus.key==='show-all'||b.closest?.('.vm-row')?.dataset.entityId===fokus.entity));ziel?.focus?.({preventScroll:true});}
+ }
  static getConfigElement(){return document.createElement('busch-unraid-vm-card-editor');}
- static getStubConfig(hass){if(!hass)return {type:'custom:busch-unraid-vm-card'};const core=ensureBuschCore(1);core.attach(hass);const device=buschUnraidDevices(core,'vm')[0];return {type:'custom:busch-unraid-vm-card',...(device?{device_id:device.id}:{})};}
+ // Ohne device_id: bei genau einem Server sofort die VM-Liste, bei mehreren „Server wählen“.
+ static getStubConfig(){return {type:'custom:busch-unraid-vm-card'};}
 }
 class BuschUnraidBaseEditor extends BuschEditorBase {
  get _defaults(){return BUSCH_UNRAID_DEFAULTS;}

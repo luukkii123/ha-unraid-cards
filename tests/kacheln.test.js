@@ -175,3 +175,66 @@ test('Parität: Plattengeräte fehlen, Prüfung läuft → kein Leerzustand', ()
   let txt = rendere(BuschUnraidParityCard, core).shadowRoot.textContent; assert.doesNotMatch(txt, /Keine Paritätsplatte/); assert.match(txt, /Prüfung läuft/); assert.match(txt, /12,5 %/);
   core.entities.get('binary_sensor.tower_parity_running').state = 'off'; txt = rendere(BuschUnraidParityCard, core).shadowRoot.textContent; assert.doesNotMatch(txt, /Keine Paritätsplatte/);
   core.entities.get('sensor.tower_parity_progress').state = 'unknown'; assert.match(rendere(BuschUnraidParityCard, core).shadowRoot.textContent, /Keine Paritätsplatte/); });
+// Task 12: VM-Karte als Liste eines Servers; device_id eines VM-Geräts (alte Konfiguration) bleibt Einzelansicht.
+function vmKarte(config, opts = {}) {
+  const { BuschUnraidVmCard } = ladeKarte(['BuschUnraidVmCard'], { __bestaetigen: opts.bestaetigen || (async () => true) }, 'unraidBestaetigen = (...a) => globalThis.__bestaetigen(...a);');
+  const core = opts.core || unraidAttrappe({ zweiteVm: true }); const k = new BuschUnraidVmCard(); k._core = core;
+  k._hass = { locale: { language: 'de' }, states: {}, callService: opts.callService || (async () => {}) }; k.setConfig(config); k._render(); return k;
+}
+const vmZeilen = k => [...k.shadowRoot.querySelectorAll('.vm-row')];
+const knoepfe = n => [...n.querySelectorAll('button')].map(b => b.dataset.focusKey);
+test('VM: alte Einzel-Konfiguration bleibt Einzelansicht', () => { const k = vmKarte({ device_id: 'vm1' }); assert.equal(k.shadowRoot.querySelectorAll('.vm-row').length, 0); assert.ok(k.shadowRoot.querySelector('.header')); assert.match(k.shadowRoot.textContent, /Windows 11/); assert.match(k.shadowRoot.textContent, /Virtuelle Maschine/); });
+test('VM: Liste zeigt standardmäßig nur laufende, Schalter zeigt alle', () => {
+  const k = vmKarte({ device_id: 'srv' }); assert.equal(vmZeilen(k).length, 1); assert.match(vmZeilen(k)[0].textContent, /Windows 11/); assert.doesNotMatch(k.shadowRoot.textContent, /Tower VM/);
+  const s = k.shadowRoot.querySelector('[data-focus-key="show-all"]'); assert.equal(s.getAttribute('aria-pressed'), 'false'); s.click();
+  assert.equal(vmZeilen(k).length, 2); assert.deepEqual(vmZeilen(k).map(r => r.querySelector('.name').textContent), ['Ubuntu', 'Windows 11']); assert.equal(k.shadowRoot.querySelector('[data-focus-key="show-all"]').getAttribute('aria-pressed'), 'true');
+  assert.match(vmZeilen(k)[0].textContent, /Gestoppt/); assert.match(vmZeilen(k)[1].textContent, /Läuft/);
+});
+test('VM: Stopp fragt nach und ruft switch.turn_off genau einmal', async () => { const aufrufe = [], fragen = []; const k = vmKarte({ device_id: 'srv' }, { callService: async (...a) => aufrufe.push(a), bestaetigen: async (...a) => { fragen.push(a); return true; } }); await k._zeilenAktion('stop', k._modellListe().vms[0]); assert.deepEqual(aufrufe, [['switch', 'turn_off', { entity_id: 'switch.win' }]]); assert.equal(fragen.length, 1); assert.match(fragen[0][1], /Windows 11/); });
+test('VM: show_uptime/show_ip/show_disk stehen nicht mehr im Schema', () => { const { SCHEMA_BUSCH_UNRAID_VM_CARD, TEXTE_BUSCH_UNRAID_VM_CARD, BUSCH_UNRAID_DEFAULTS } = ladeKarte(['SCHEMA_BUSCH_UNRAID_VM_CARD', 'TEXTE_BUSCH_UNRAID_VM_CARD', 'BUSCH_UNRAID_DEFAULTS']); for (const n of ['show_uptime', 'show_ip', 'show_disk']) { assert.ok(!JSON.stringify(SCHEMA_BUSCH_UNRAID_VM_CARD).includes(n), n); assert.ok(!JSON.stringify(TEXTE_BUSCH_UNRAID_VM_CARD).includes(n), n); assert.ok(!(n in BUSCH_UNRAID_DEFAULTS), n); } });
+test('VM: show_all im Schema, Vorgabe aus, Label/Helper de+en; Gerät Server oder VM', () => {
+  const { SCHEMA_BUSCH_UNRAID_VM_CARD, TEXTE_BUSCH_UNRAID_VM_CARD, BUSCH_UNRAID_DEFAULTS } = ladeKarte(['SCHEMA_BUSCH_UNRAID_VM_CARD', 'TEXTE_BUSCH_UNRAID_VM_CARD', 'BUSCH_UNRAID_DEFAULTS']);
+  const f = SCHEMA_BUSCH_UNRAID_VM_CARD.find(x => x.name === 'show_all'); assert.deepEqual(JSON.parse(JSON.stringify(f.selector)), { boolean: {} }); assert.equal(BUSCH_UNRAID_DEFAULTS.show_all, false);
+  for (const l of ['de', 'en']) for (const x of SCHEMA_BUSCH_UNRAID_VM_CARD) { assert.ok(TEXTE_BUSCH_UNRAID_VM_CARD[l].labels[x.name], l + x.name); assert.ok(TEXTE_BUSCH_UNRAID_VM_CARD[l].helpers[x.name], l + x.name); }
+  assert.equal(TEXTE_BUSCH_UNRAID_VM_CARD.de.labels.show_all, 'Alle VMs'); assert.equal(TEXTE_BUSCH_UNRAID_VM_CARD.en.helpers.device_id, 'Unraid server for the VM list or a single VM. Empty: the only server.');
+  const d = JSON.parse(JSON.stringify(SCHEMA_BUSCH_UNRAID_VM_CARD.find(x => x.name === 'device_id').selector)); assert.deepEqual(d.device.filter.map(x => x.model), ['Unraid', 'Virtual machine']); assert.ok(d.device.filter.every(x => x.integration === 'unraid_ssh'));
+});
+test('VM: Editor zeigt show_all und Geräteauswahl ohne VM-Liste', () => {
+  const { BuschUnraidVmEditor } = ladeKarte(['BuschUnraidVmEditor'], { CustomEvent: class { constructor(type, init = {}) { this.type = type; this.detail = init.detail; } } });
+  const e = new BuschUnraidVmEditor(); e._core = unraidAttrappe({ zweiteVm: true }); e._hass = { locale: { language: 'de' } }; e.setConfig({ type: 'custom:busch-unraid-vm-card' }); const form = e.querySelector('ha-form');
+  const namen = form.schema.map(s => s.name); assert.ok(namen.includes('show_all')); for (const n of ['show_uptime', 'show_ip', 'show_disk']) assert.ok(!namen.includes(n)); assert.equal(form.data.show_all, false); assert.equal(form.computeLabel({ name: 'show_all' }), 'Alle VMs');
+  assert.ok(form.schema.find(s => s.name === 'device_id').selector.device);
+});
+test('VM: leere device_id mit einem Server = Liste; zwei Server = Server wählen; Stub ohne device_id', () => {
+  assert.equal(vmZeilen(vmKarte({})).length, 1);
+  const zwei = vmKarte({}, { core: unraidAttrappe({ zweiteVm: true, zweiterServer: true }) }); assert.equal(vmZeilen(zwei).length, 0); assert.match(zwei.shadowRoot.textContent, /Mehrere Unraid-Server/);
+  const { BuschUnraidVmCard } = ladeKarte(['BuschUnraidVmCard']); assert.deepEqual(JSON.parse(JSON.stringify(BuschUnraidVmCard.getStubConfig({ states: {} }))), { type: 'custom:busch-unraid-vm-card' });
+});
+test('VM-Liste: keine laufende VM → Leertext; Titel und Servername im Kopf', () => {
+  const core = unraidAttrappe({ zweiteVm: true }); core.entities.get('sensor.win_state').state = 'shut_off';
+  const k = vmKarte({ device_id: 'srv' }, { core }); assert.equal(vmZeilen(k).length, 0); assert.match(k.shadowRoot.textContent, /Keine laufenden VMs/);
+  assert.equal(k.shadowRoot.querySelector('.tile-title').textContent, 'Virtuelle Maschinen'); assert.equal(k.shadowRoot.querySelector('.tile-sub').textContent, 'Tower');
+  assert.equal(vmKarte({ device_id: 'srv', title: 'Gäste' }).shadowRoot.querySelector('.tile-title').textContent, 'Gäste');
+});
+test('VM-Liste: show_controls/show_restart je Zeile', () => {
+  assert.deepEqual(knoepfe(vmZeilen(vmKarte({ device_id: 'srv' }))[0]), ['control', 'restart', 'details', 'force-stop']);
+  assert.deepEqual(knoepfe(vmZeilen(vmKarte({ device_id: 'srv', show_restart: false }))[0]), ['control', 'details', 'force-stop']);
+  assert.deepEqual(knoepfe(vmZeilen(vmKarte({ device_id: 'srv', show_controls: false }))[0]), ['details']);
+  const gestoppt = vmZeilen(vmKarte({ device_id: 'srv', show_all: true }))[0]; assert.deepEqual(knoepfe(gestoppt), ['control', 'restart', 'details']); assert.equal(gestoppt.querySelector('[data-focus-key="control"]').textContent, 'Starten');
+});
+test('VM-Liste: confirm_stop/confirm_restart je Zeile', async () => {
+  let fragen = 0; const aufrufe = []; const k = vmKarte({ device_id: 'srv', confirm_stop: false, confirm_restart: false }, { callService: async (...a) => aufrufe.push(a), bestaetigen: async () => { fragen++; return true; } });
+  await k._zeilenAktion('stop', k._modellListe().vms[0]); await k._zeilenAktion('restart', k._modellListe().vms[0]); assert.equal(fragen, 0); assert.deepEqual(aufrufe, [['switch', 'turn_off', { entity_id: 'switch.win' }], ['button', 'press', { entity_id: 'button.win_restart' }]]);
+  const nein = []; const k2 = vmKarte({ device_id: 'srv' }, { callService: async (...a) => nein.push(a), bestaetigen: async () => false }); await k2._zeilenAktion('restart', k2._modellListe().vms[0]); assert.deepEqual(nein, []);
+});
+test('VM-Liste: show_cpu/show_ram zeigen Werte je laufender VM', () => {
+  const mit = vmZeilen(vmKarte({ device_id: 'srv', show_all: true })); assert.match(mit[1].textContent, /36 %/); assert.match(mit[1].textContent, /16 GiB/); assert.equal(mit[0].querySelector('.metrics'), null);
+  const ohne = vmZeilen(vmKarte({ device_id: 'srv', show_cpu: false, show_ram: false }))[0]; assert.equal(ohne.querySelector('.metrics'), null); assert.doesNotMatch(ohne.textContent, /36 %/);
+  const nurCpu = vmZeilen(vmKarte({ device_id: 'srv', show_ram: false }))[0]; assert.match(nurCpu.textContent, /36 %/); assert.doesNotMatch(nurCpu.textContent, /GiB/);
+});
+test('VM-Liste: layout/display_mode/icon steuern das Symbol je Zeile; show_uptime wird ignoriert', () => {
+  const icon = k => vmZeilen(k)[0].querySelector('.row-icon'); const k = vmKarte({ device_id: 'srv', display_mode: 'icon', icon: 'mdi:microsoft-windows' });
+  const alle = n => [n, ...(n.childNodes || []).flatMap(alle)]; assert.ok(alle(icon(k)).some(n => n.icon === 'mdi:microsoft-windows' || n.getAttribute?.('icon') === 'mdi:microsoft-windows'));
+  assert.equal(vmKarte({ device_id: 'srv', layout: 'compact' }).shadowRoot.querySelector('ha-card').className.includes('compact'), true);
+  assert.equal(vmZeilen(vmKarte({ device_id: 'srv', show_uptime: false, show_ip: false, show_disk: false })).length, 1);
+});
