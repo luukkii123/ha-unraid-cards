@@ -10,35 +10,12 @@ const fs = require('node:fs');
 const vm = require('node:vm');
 const path = require('node:path');
 
-class Element {
-  constructor(tag = 'div') { this.tagName = String(tag).toUpperCase(); this.childNodes = []; this.listeners = {}; this.attributes = {}; this.dataset = {}; this.style = {}; this.className = ''; this.title = ''; this._text = ''; this.isConnected = false; }
-  attachShadow() { this.shadowRoot = new Element('#shadow'); return this.shadowRoot; }
-  set textContent(v) { this._text = String(v); this.childNodes = []; }
-  get textContent() { return this._text + this.childNodes.map((n) => n.textContent).join(''); }
-  appendChild(n) { n.parentNode = this; this.childNodes.push(n); return n; }
-  append(...n) { for (const x of n) this.appendChild(x); }
-  replaceChildren(...n) { this.childNodes = []; this.append(...n); }
-  remove() { if (this.parentNode) this.parentNode.childNodes = this.parentNode.childNodes.filter((c) => c !== this); }
-  setAttribute(k, v) { this.attributes[k] = String(v); }
-  getAttribute(k) { return this.attributes[k] ?? null; }
-  removeAttribute(k) { delete this.attributes[k]; }
-  toggleAttribute(k, on) { if (on) this.attributes[k] = ''; else delete this.attributes[k]; }
-  addEventListener(type, fn) { (this.listeners[type] ||= []).push(fn); }
-  removeEventListener() {}
-  dispatchEvent(e) { this.event = e; (this.events ||= []).push(e); }
-  focus() { this.focused = true; }
-  getBoundingClientRect() { return { left: 10, top: 10, right: 110, bottom: 74, width: 100, height: 64 }; }
-  all() { return [this, ...this.childNodes.flatMap((c) => c.all())]; }
-  querySelectorAll(sel) { const cls = sel.replace(/^\./, '').split(':')[0]; return this.all().slice(1).filter((n) => sel === 'button' ? n.tagName === 'BUTTON' : String(n.className).split(/\s+/).includes(cls)); }
-  querySelector(sel) { return this.querySelectorAll(sel)[0] || null; }
-  click() { for (const fn of this.listeners.click || []) fn({ stopPropagation() {} }); }
-}
+const { Element, dokument } = require('./dom-attrappe.js');
 
 function load(language = 'de') {
   const source = fs.readFileSync(path.join(__dirname, '../dist/unraid-cards.js'), 'utf8');
   const registered = new Map();
-  const body = new Element('body');
-  const document = { createElement: (tag) => { if (!registered.has(tag)) return new Element(tag); const n = new (registered.get(tag))(); n.tagName = tag.toUpperCase(); return n; }, body, querySelectorAll: (sel) => body.all().filter((n) => n.tagName === sel.toUpperCase()) };
+  const document = dokument(registered), body = document.body;
   const history = { stack: [null], get state() { return this.stack.at(-1); }, pushState(s) { this.stack.push(s); }, back() { this.stack.pop(); } };
   const window = { customCards: [], confirm: () => true, innerWidth: 1000, innerHeight: 800, addEventListener() {}, removeEventListener() {}, scrollX: 0, scrollY: 0 };
   const context = { performance, setTimeout, clearTimeout, HTMLElement: Element, customElements: { define: (k, v) => registered.set(k, v), get: (k) => registered.get(k) }, window, history, navigator: { language }, console, CustomEvent: class { constructor(type, init) { this.type = type; Object.assign(this, init); } }, document };

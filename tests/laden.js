@@ -5,6 +5,7 @@ const vm = require("node:vm");
 const os = require("node:os");
 const path = require("node:path");
 const { execFileSync } = require("node:child_process");
+const { Element, dokument } = require("./dom-attrappe.js");
 
 const KARTE = path.join(__dirname, "..", "dist", "unraid-cards.js");
 
@@ -23,25 +24,19 @@ function quelle() {
  * `zusatz` ersetzt einzelne Einträge der Sandbox-Umgebung — gedacht für eine
  * reichere DOM-Attrappe, mit der sich die Kartenklasse selbst ausführen lässt.
  * Ersetzt wird jeweils der ganze Eintrag, nicht in die Tiefe gemischt.
+ * Vorgabe für `document`/`HTMLElement` ist die Attrappe aus `dom-attrappe.js`;
+ * `localStorage` lässt sich als Zusatz einsetzen (landet auch an `window`).
  */
 function ladeKarte(namen, zusatz, nachlauf) {
   const kontext = {
     console: { info() {}, warn() {}, error() {}, log() {} },
     window: { customCards: [] },
     customElements: { define() {} },
-    HTMLElement: class {},
-    document: {
-      createElement() {
-        return {
-          style: {},
-          setAttribute() {},
-          addEventListener() {},
-          appendChild() {},
-        };
-      },
-    },
+    HTMLElement: Element,
+    document: dokument(),
   };
   Object.assign(kontext, zusatz || {});
+  if (kontext.localStorage && !kontext.window.localStorage) kontext.window.localStorage = kontext.localStorage;
   kontext.globalThis = kontext;
   vm.createContext(kontext);
   const sammler = `\n;({ ${namen.join(", ")} });`;
