@@ -31,17 +31,17 @@ function unraidAttrappe({ gpu = true, fans = true, parity = false, zweiterServer
     ent('sensor.tower_nvme_composite_2', 'temp_nvme_pci_0200_temp1', 'srv', 41.5, { chip: 'nvme-pci-0200', channel: 'temp1', label: 'Composite', friendly_name: 'Tower Temperatur NVMe Composite' }),
     ent('sensor.tower_k10temp_temp3', 'temp_k10temp_pci_00c3_temp3', 'srv', 47, { chip: 'k10temp-pci-00c3', channel: 'temp3', label: '', friendly_name: 'Tower Temperatur CPU temp3' }),
     ent('binary_sensor.tower_array_started', 'array_started', 'srv', 'on'), ent('binary_sensor.tower_parity_running', 'parity_running', 'srv', parity ? 'on' : 'off'), ent('binary_sensor.tower_mover', 'mover_active', 'srv', 'off'),
-    ent('sensor.disk1_temp', 'disk_temp_disk1', 'd1', 45), ent('sensor.disk1_usage', 'disk_usage_disk1', 'd1', 97), ent('sensor.disk1_status', 'disk_status_disk1', 'd1', 'active'), ent('binary_sensor.disk1_spundown', 'disk_spundown_disk1', 'd1', 'off'),
-    ent('sensor.cache_temp', 'disk_temp_cache', 'p1', 51), ent('sensor.cache_usage', 'disk_usage_cache', 'p1', 45), ent('sensor.cache_status', 'disk_status_cache', 'p1', 'active'),
-    ent('sensor.raid_temp', 'disk_temp_raid', 'r1', 44), ent('sensor.raid_usage', 'disk_usage_raid', 'r1', 60), ent('sensor.raid_status', 'disk_status_raid', 'r1', 'active'), ent('sensor.raid2_temp', 'disk_temp_raid2', 'r2', 50), ent('sensor.raid2_status', 'disk_status_raid2', 'r2', 'active'),
-    ent('sensor.flash_usage', 'disk_usage_flash', 'f1', 35), ent('sensor.flash_status', 'disk_status_flash', 'f1', 'active'),
+    ent('sensor.disk1_temp', 'disk_temp_disk1', 'd1', 45), ent('sensor.disk1_usage', 'disk_usage_disk1', 'd1', 97), ent('sensor.disk1_status', 'disk_status_disk1', 'd1', 'ok'), ent('binary_sensor.disk1_spundown', 'disk_spundown_disk1', 'd1', 'off'),
+    ent('sensor.cache_temp', 'disk_temp_cache', 'p1', 51), ent('sensor.cache_usage', 'disk_usage_cache', 'p1', 45), ent('sensor.cache_status', 'disk_status_cache', 'p1', 'ok'),
+    ent('sensor.raid_temp', 'disk_temp_raid', 'r1', 44), ent('sensor.raid_usage', 'disk_usage_raid', 'r1', 60), ent('sensor.raid_status', 'disk_status_raid', 'r1', 'ok'), ent('sensor.raid2_temp', 'disk_temp_raid2', 'r2', 50), ent('sensor.raid2_status', 'disk_status_raid2', 'r2', 'ok'),
+    ent('sensor.flash_usage', 'disk_usage_flash', 'f1', 35), ent('sensor.flash_status', 'disk_status_flash', 'f1', 'ok'),
     ent('sensor.appdata_used', 'share_used_appdata', 'sh1', 120.5, { unit_of_measurement: 'GB' }), ent('sensor.appdata_free', 'share_free_appdata', 'sh1', 450, { unit_of_measurement: 'GB' }),
     ent('sensor.win_state', 'vm_state_Windows 11', 'vm1', 'running'), ent('sensor.win_cpu', 'vm_cpu_Windows 11', 'vm1', 36), ent('sensor.win_ram_used', 'vm_ram_used_Windows 11', 'vm1', 17179869184), ent('sensor.win_ram_alloc', 'vm_ram_allocated_Windows 11', 'vm1', 17179869184),
     // deaktiviert (z. B. vom Nutzer abgeschaltet): im Register, ohne Zustand
     ent('sensor.tower_load_5', 'load_5', 'srv', undefined)];
   if (gpu) list.push(ent('sensor.gpu_util', 'gpu_util_0', 'srv', 19), ent('sensor.gpu_vram', 'gpu_vram_0', 'srv', 9), ent('sensor.gpu_temp', 'gpu_temp_0', 'srv', 52), ent('sensor.gpu_power', 'gpu_power_0', 'srv', 78), ent('sensor.gpu_fan', 'gpu_fan_0', 'srv', 31));
   if (fans) list.push(ent('sensor.fan4', 'fan_nct6798_fan4_rpm', 'srv', 922, { label: 'FAN 4' }), ent('sensor.fan6', 'fan_nct6798_fan6_rpm', 'srv', 4821, { label: 'FAN 6' }), ent('sensor.fan6p', 'fan_nct6798_fan6_percent', 'srv', 100, { label: 'FAN 6' }));
-  if (parity) list.push(ent('sensor.parity_temp', 'disk_temp_parity', 'par', 40), ent('sensor.parity_status', 'disk_status_parity', 'par', 'active'));
+  if (parity) list.push(ent('sensor.parity_temp', 'disk_temp_parity', 'par', 40), ent('sensor.parity_status', 'disk_status_parity', 'par', 'ok'));
   if (zweiterServer) {
     devices.set(...geraet('srv2', 'Backup', 'Unraid', 'e2'));
     devices.set(...geraet('d2', 'backupdisk', 'Data disk', 'e2'));

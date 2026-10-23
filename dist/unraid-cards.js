@@ -1696,8 +1696,34 @@ class BuschUnraidGpuCard extends BuschUnraidTile{
  static getStubConfig(){return {type:'custom:busch-unraid-gpu-card'};}
 }
 class BuschUnraidGpuCardEditor extends BuschUnraidTileEditor{get _schema(){return SCHEMA_BUSCH_UNRAID_GPU_CARD;}get _texte(){return TEXTE_BUSCH_UNRAID_GPU_CARD;}get _defaults(){return new BuschUnraidGpuCard()._vorgaben;}}
+// Array-Karte. Statuswerte genau wie DISK_STATUSES in unraid_ssh (const.py); „schläft“ kommt aus dem eigenen Binärsensor disk_spundown_<name>.
+// Gruppen: Parity/Data → „Array“, Cache → Pool nach Name ohne Endziffern (raid, raid2 → „raid“), Flash → „Boot“; Reihenfolge Array, Pools alphabetisch, Boot.
+// Poolmitglieder ohne eigenes Dateisystem (raid2 …) haben in unraid_ssh keinen disk_usage-Sensor → „–“.
+const UNRAID_DISK_STATUS={de:{ok:'OK',new:'neu',disabled:'deaktiviert',invalid:'ungültig',missing:'fehlt',not_present:'nicht vorhanden',unknown:'unbekannt'},en:{ok:'OK',new:'new',disabled:'disabled',invalid:'invalid',missing:'missing',not_present:'not present',unknown:'unknown'}};
+const UNRAID_DISK_SEMANTIK={ok:'ok',new:'warning',disabled:'error',invalid:'error',missing:'error',not_present:'unknown',unknown:'unknown'};
+function unraidGruppen(s,t){const gruppen=new Map(),add=(titel,d,art)=>{if(!gruppen.has(titel))gruppen.set(titel,{titel,art,geraete:[]});const n=d.name,st=s.von(d,'disk_status_'+n)?.state;
+  gruppen.get(titel).geraete.push({name:d.name_by_user||n,status:st&&!['unavailable','unknown'].includes(st)?st:null,temp:unraidNum(s.von(d,'disk_temp_'+n)),usage:unraidNum(s.von(d,'disk_usage_'+n)),schlaeft:s.von(d,'disk_spundown_'+n)?.state==='on'});};
+ for(const d of [...s.geraete('Parity disk'),...s.geraete('Data disk')])add(t.array,d,0);
+ for(const d of s.geraete('Cache disk'))add(String(d.name).replace(/\d+$/,'')||String(d.name),d,1);
+ for(const d of s.geraete('Flash disk'))add(t.boot,d,2);
+ return [...gruppen.values()].sort((a,b)=>a.art-b.art||String(a.titel).localeCompare(String(b.titel)));}
+const SCHEMA_BUSCH_UNRAID_ARRAY_CARD=[{name:'device_id',selector:{device:{integration:'unraid_ssh',model:'Unraid'}}},{name:'title',selector:{text:{}}},{name:'show_boot',selector:{boolean:{}}}];
+const TEXTE_BUSCH_UNRAID_ARRAY_CARD={de:{...UNRAID_TILE_TEXTE.de,name:'Unraid: Array',description:'Platten von Array, Pools und Bootgerät mit Status, Temperatur und Belegung.',labels:{device_id:'Server',title:'Titel',show_boot:'Bootgerät zeigen'},helpers:{device_id:'Unraid-Server, dessen Daten die Karte zeigt. Leer: der einzige Server.',title:'Überschrift der Karte. Leer: Name der Kachel.',show_boot:'Zeigt den USB-Stick bzw. das Bootgerät als eigene Gruppe. Vorgabe an.'},tile:'Array und Pools',array:'Array',boot:'Boot',col_device:'Gerät',col_status:'Status',col_temp:'Temp.',col_usage:'Belegung',sleeping:'schläft',device_one:'{count} Gerät',device_many:'{count} Geräte',none:'Keine Platten gefunden.'},
+ en:{...UNRAID_TILE_TEXTE.en,name:'Unraid: Array',description:'Array, pool and boot disks with status, temperature and utilization.',labels:{device_id:'Server',title:'Title',show_boot:'Show boot device'},helpers:{device_id:'Unraid server whose data the card shows. Empty: the only server.',title:'Heading of the card. Empty: the tile name.',show_boot:'Shows the flash or boot device as its own group. Default on.'},tile:'Array and pools',array:'Array',boot:'Boot',col_device:'Device',col_status:'Status',col_temp:'Temp.',col_usage:'Utilization',sleeping:'spun down',device_one:'{count} device',device_many:'{count} devices',none:'No disks found.'}};
+class BuschUnraidArrayCard extends BuschUnraidTile{
+ static get kachel(){return 'array';}get _texte(){return TEXTE_BUSCH_UNRAID_ARRAY_CARD;}get _vorgaben(){return {device_id:'',title:'',show_boot:true};}
+ _modell(core,config){const s=unraidServer(core,config);if(!s.server)return {fehler:s.fehler};const t=buschTexte(this._texte,this._hass);return {name:s.server.name_by_user||s.server.name,gruppen:unraidGruppen(s,t).filter(g=>config.show_boot||g.art!==2)};}
+ _kopf(m,t){return {icon:'mdi:harddisk',titel:t.tile,untertitel:m.name};}
+ _inhalt(body,m,t){const lang=String(this._hass?.locale?.language||'en'),st=UNRAID_DISK_STATUS[lang.startsWith('de')?'de':'en'];if(!m.gruppen.length){body.appendChild(buschUnraidNode('p',t.none,'message'));return;}
+  const spalten=[{key:'n',label:t.col_device},{key:'s',label:t.col_status},{key:'t',label:t.col_temp},{key:'u',label:t.col_usage}];
+  for(const g of m.gruppen){body.appendChild(buschUnraidNode('h3',`${g.titel} · ${(g.geraete.length===1?t.device_one:t.device_many).replace('{count}',g.geraete.length)}`,'section'));
+   body.appendChild(unraidTabelle(spalten,g.geraete.map(d=>{const text=d.status?(st[d.status]||d.status):t.unavailable;return {n:d.name,s:unraidPunkt(UNRAID_DISK_SEMANTIK[d.status]||'unknown',d.schlaeft?`${text} · ${t.sleeping}`:text),t:d.schlaeft?'–':unraidZahl(d.temp,'°C',lang),u:d.usage===null?'–':unraidBalken(d.usage,unraidZahl(d.usage,'%',lang))};}),{leer:''}));}}
+ static getConfigElement(){return document.createElement('busch-unraid-array-card-editor');}
+ static getStubConfig(){return {type:'custom:busch-unraid-array-card'};}
+}
+class BuschUnraidArrayCardEditor extends BuschUnraidTileEditor{get _schema(){return SCHEMA_BUSCH_UNRAID_ARRAY_CARD;}get _texte(){return TEXTE_BUSCH_UNRAID_ARRAY_CARD;}get _defaults(){return new BuschUnraidArrayCard()._vorgaben;}}
 // [tag, Karte, Editor] — für den Vertragstest; registriert wird wörtlich je Kachel (Regelprüfer findet nur das).
-const UNRAID_KACHELN=[['busch-unraid-server-card',BuschUnraidServerCard,BuschUnraidServerCardEditor],['busch-unraid-system-card',BuschUnraidSystemCard,BuschUnraidSystemCardEditor],['busch-unraid-cpu-card',BuschUnraidCpuCard,BuschUnraidCpuCardEditor],['busch-unraid-gpu-card',BuschUnraidGpuCard,BuschUnraidGpuCardEditor]];
+const UNRAID_KACHELN=[['busch-unraid-server-card',BuschUnraidServerCard,BuschUnraidServerCardEditor],['busch-unraid-system-card',BuschUnraidSystemCard,BuschUnraidSystemCardEditor],['busch-unraid-cpu-card',BuschUnraidCpuCard,BuschUnraidCpuCardEditor],['busch-unraid-gpu-card',BuschUnraidGpuCard,BuschUnraidGpuCardEditor],['busch-unraid-array-card',BuschUnraidArrayCard,BuschUnraidArrayCardEditor]];
 if(!customElements.get?.('busch-unraid-server-card'))customElements.define('busch-unraid-server-card',BuschUnraidServerCard);
 if(!customElements.get?.('busch-unraid-server-card-editor'))customElements.define('busch-unraid-server-card-editor',BuschUnraidServerCardEditor);
 window.customCards=window.customCards||[];
@@ -1711,3 +1737,6 @@ if(!window.customCards.some(c=>c.type==='busch-unraid-cpu-card'))window.customCa
 if(!customElements.get?.('busch-unraid-gpu-card'))customElements.define('busch-unraid-gpu-card',BuschUnraidGpuCard);
 if(!customElements.get?.('busch-unraid-gpu-card-editor'))customElements.define('busch-unraid-gpu-card-editor',BuschUnraidGpuCardEditor);
 if(!window.customCards.some(c=>c.type==='busch-unraid-gpu-card'))window.customCards.push({type:'busch-unraid-gpu-card',name:buschTexte(TEXTE_BUSCH_UNRAID_GPU_CARD).name,description:buschTexte(TEXTE_BUSCH_UNRAID_GPU_CARD).description,preview:true,documentationURL:'https://github.com/luukkii123/ha-unraid-cards#busch-unraid-gpu-card'});
+if(!customElements.get?.('busch-unraid-array-card'))customElements.define('busch-unraid-array-card',BuschUnraidArrayCard);
+if(!customElements.get?.('busch-unraid-array-card-editor'))customElements.define('busch-unraid-array-card-editor',BuschUnraidArrayCardEditor);
+if(!window.customCards.some(c=>c.type==='busch-unraid-array-card'))window.customCards.push({type:'busch-unraid-array-card',name:buschTexte(TEXTE_BUSCH_UNRAID_ARRAY_CARD).name,description:buschTexte(TEXTE_BUSCH_UNRAID_ARRAY_CARD).description,preview:true,documentationURL:'https://github.com/luukkii123/ha-unraid-cards#busch-unraid-array-card'});

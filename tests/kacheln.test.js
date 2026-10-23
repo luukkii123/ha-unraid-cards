@@ -111,3 +111,20 @@ test('GPU: mehrere Karten nach Index (numerisch) mit Überschrift', () => {
   const k = rendere(BuschUnraidGpuCard, core); assert.deepEqual([...k.shadowRoot.querySelectorAll('.section')].map(n => n.textContent), ['GPU 0', 'GPU 10']); assert.match(k.shadowRoot.textContent, /77 %/);
 });
 test('GPU-Editor: Schema und Texte', () => { const { BuschUnraidGpuCardEditor } = ladeKarte(['BuschUnraidGpuCardEditor']); const e = new BuschUnraidGpuCardEditor(); e.hass = { locale: { language: 'en' } }; e.setConfig({ type: 'custom:busch-unraid-gpu-card' }); const form = e.querySelector('ha-form'); assert.deepEqual(form.schema.map(s => s.name), ['device_id', 'title']); assert.equal(form.computeLabel({ name: 'device_id' }), 'Server'); });
+// Task 9: Array-Karte. Statuswerte wie DISK_STATUSES in unraid_ssh (ok, new, disabled, invalid, missing, not_present, unknown).
+test('Array: Gruppen und Spalten', () => { const { BuschUnraidArrayCard, unraidGruppen, unraidServer } = ladeKarte(['BuschUnraidArrayCard', 'unraidGruppen', 'unraidServer']); const g = unraidGruppen(unraidServer(unraidAttrappe(), {}), { array: 'Array', boot: 'Boot' }); assert.deepEqual(g.map(x => x.titel), ['Array', 'cache', 'raid', 'Boot']); assert.deepEqual(g[2].geraete.map(d => d.name), ['raid', 'raid2']); const txt = rendere(BuschUnraidArrayCard, unraidAttrappe()).shadowRoot.textContent; assert.match(txt, /disk1/); assert.match(txt, /45 °C/); assert.match(txt, /97 %/); });
+test('Array: Poolmitglied ohne Belegung zeigt –', () => { const { BuschUnraidArrayCard } = ladeKarte(['BuschUnraidArrayCard']); const k = rendere(BuschUnraidArrayCard, unraidAttrappe()); const zeile = [...k.shadowRoot.querySelectorAll('tr')].find(r => r.textContent.includes('raid2')); assert.match(zeile.textContent, /–/); assert.doesNotMatch(k.shadowRoot.textContent, /NaN/); });
+test('Array: Parität zuerst in „Array“, Statustexte, schlafende Platte ohne Temperatur', () => {
+  const { BuschUnraidArrayCard, unraidGruppen, unraidServer } = ladeKarte(['BuschUnraidArrayCard', 'unraidGruppen', 'unraidServer']); const core = unraidAttrappe({ parity: true });
+  assert.deepEqual(unraidGruppen(unraidServer(core, {}), { array: 'Array', boot: 'Boot' })[0].geraete.map(d => d.name), ['parity', 'disk1']);
+  core.entities.get('sensor.cache_status').state = 'disabled'; core.entities.get('binary_sensor.disk1_spundown').state = 'on';
+  const k = rendere(BuschUnraidArrayCard, core), zeile = n => [...k.shadowRoot.querySelectorAll('tr')].find(r => r.querySelector('td')?.textContent === n).textContent;
+  assert.match(zeile('parity'), /OK/); assert.match(zeile('cache'), /deaktiviert/); assert.match(zeile('disk1'), /schläft/); assert.doesNotMatch(zeile('disk1'), /45 °C/);
+  assert.match(k.shadowRoot.textContent, /Array · 2 Geräte/); assert.match(k.shadowRoot.querySelector('.sem-error').parentNode.textContent, /deaktiviert/);
+});
+test('Array: Boot abschaltbar, Leerzustand, Editor', () => {
+  const { BuschUnraidArrayCard, BuschUnraidArrayCardEditor } = ladeKarte(['BuschUnraidArrayCard', 'BuschUnraidArrayCardEditor']);
+  assert.match(rendere(BuschUnraidArrayCard, unraidAttrappe()).shadowRoot.textContent, /Boot · 1 Gerät(?!e)/); assert.doesNotMatch(rendere(BuschUnraidArrayCard, unraidAttrappe(), { show_boot: false }).shadowRoot.textContent, /Boot/);
+  const core = unraidAttrappe(); for (const [id, d] of core.devices) if (/disk$/.test(d.model)) core.devices.delete(id); assert.match(rendere(BuschUnraidArrayCard, core).shadowRoot.textContent, /Keine Platten gefunden/);
+  const e = new BuschUnraidArrayCardEditor(); e.hass = { locale: { language: 'de' } }; e.setConfig({ type: 'custom:busch-unraid-array-card' }); const form = e.querySelector('ha-form'); assert.deepEqual(form.schema.map(s => s.name), ['device_id', 'title', 'show_boot']); assert.equal(form.data.show_boot, true); assert.equal(form.computeLabel({ name: 'show_boot' }), 'Bootgerät zeigen');
+});
