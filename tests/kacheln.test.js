@@ -46,12 +46,31 @@ test('Registrierung: Kartenwähler-Eintrag je Kachel', () => {
 });
 test('System: RAM-Ring und Temperaturen', () => { const { BuschUnraidSystemCard } = ladeKarte(['BuschUnraidSystemCard']); const k = rendere(BuschUnraidSystemCard, unraidAttrappe()); const r = k.shadowRoot.querySelector('.ring'); assert.match(r.textContent, /67 %/); assert.match(k.shadowRoot.textContent, /CPU.*89 °C/s); assert.match(k.shadowRoot.textContent, /Mainboard.*41 °C/s); });
 test('System: Ausfall zeigt – statt NaN', () => { const { BuschUnraidSystemCard } = ladeKarte(['BuschUnraidSystemCard']); const txt = rendere(BuschUnraidSystemCard, unraidAttrappe({ ausfall: true })).shadowRoot.textContent; assert.doesNotMatch(txt, /NaN/); assert.match(txt, /–/); });
-test('System: Fühlername aus label, sonst friendly_name, sonst Kanal; abschaltbar', () => {
+test('System: Fühlername aus friendly_name ohne Gerät, eindeutig, sonst label/Kanal; abschaltbar', () => {
   const { BuschUnraidSystemCard } = ladeKarte(['BuschUnraidSystemCard']); const core = unraidAttrappe();
   const namen = k => [...k.shadowRoot.querySelectorAll('.cell-name')].map(n => n.textContent), werte = k => [...k.shadowRoot.querySelectorAll('.cell-value')].map(n => n.textContent);
-  let k = rendere(BuschUnraidSystemCard, core); assert.ok(namen(k).includes('Composite')); assert.ok(werte(k).includes('38,5 °C')); assert.ok(namen(k).includes('temp3'));
-  core.entities.get('sensor.tower_k10temp_temp3').attributes.friendly_name = 'Tower k10temp temp3'; k = rendere(BuschUnraidSystemCard, core); assert.ok(namen(k).includes('Tower k10temp temp3'));
+  let k = rendere(BuschUnraidSystemCard, core); const n = namen(k);
+  assert.ok(n.includes('Temperatur CPU temp3')); assert.ok(werte(k).includes('38,5 °C'));
+  // zwei NVMe mit gleichem label („Composite“) und gleichem friendly_name bleiben unterscheidbar
+  const nvme = n.filter(x => x.includes('NVMe Composite')); assert.equal(nvme.length, 2); assert.equal(new Set(nvme).size, 2); assert.ok(nvme.every(x => !x.startsWith('Tower ')));
+  assert.ok(nvme.includes('Temperatur NVMe Composite (nvme-pci-0100)')); assert.ok(nvme.includes('Temperatur NVMe Composite (nvme-pci-0200)'));
+  const k10 = core.entities.get('sensor.tower_k10temp_temp3').attributes; k10.friendly_name = 'Towerchen eigener Name'; k = rendere(BuschUnraidSystemCard, core); assert.ok(namen(k).includes('Towerchen eigener Name'));
+  k10.label = 'Tctl'; delete k10.friendly_name; k = rendere(BuschUnraidSystemCard, core); assert.ok(namen(k).includes('Tctl'));
+  k10.label = ''; k = rendere(BuschUnraidSystemCard, core); assert.ok(namen(k).includes('temp3'));
   k = rendere(BuschUnraidSystemCard, core, { show_temperatures: false }); assert.equal(k.shadowRoot.querySelector('.grid'), null); assert.doesNotMatch(k.shadowRoot.textContent, /Temperaturen/);
+});
+test('Raster: jede Zelle trägt den vollen Namen als title', () => {
+  const { BuschUnraidSystemCard } = ladeKarte(['BuschUnraidSystemCard']); const k = rendere(BuschUnraidSystemCard, unraidAttrappe());
+  const zellen = [...k.shadowRoot.querySelectorAll('.cell-name')]; assert.ok(zellen.length >= 5); for (const z of zellen) assert.equal(z.title, z.textContent);
+});
+test('System: ohne Fühler und Werte Leerhinweis, nur bei eingeschalteten Temperaturen', () => {
+  const { BuschUnraidSystemCard } = ladeKarte(['BuschUnraidSystemCard']); const core = unraidAttrappe({ ausfall: true });
+  const weg = id => { core.entities.delete(id); }; for (const id of ['sensor.tower_nvme_composite', 'sensor.tower_nvme_composite_2', 'sensor.tower_k10temp_temp3']) weg(id);
+  core.entities.get('sensor.tower_board_temp').state = 'unknown'; core.entities.get('sensor.tower_board_temp').stateObject.state = 'unknown';
+  const alt = core.getDeviceEntities; core.getDeviceEntities = id => alt(id).filter(e => !e.entity_id.includes('nvme') && !e.entity_id.includes('k10temp'));
+  let k = rendere(BuschUnraidSystemCard, core); assert.match(k.shadowRoot.textContent, /Keine Temperaturfühler\./); assert.equal(k.shadowRoot.querySelector('.grid'), null);
+  k = rendere(BuschUnraidSystemCard, core, { show_temperatures: false }); assert.doesNotMatch(k.shadowRoot.textContent, /Keine Temperaturfühler/);
+  assert.doesNotMatch(rendere(BuschUnraidSystemCard, unraidAttrappe()).shadowRoot.textContent, /Keine Temperaturfühler/);
 });
 test('System-Editor: Schema und Texte', () => { const { BuschUnraidSystemCardEditor } = ladeKarte(['BuschUnraidSystemCardEditor']); const e = new BuschUnraidSystemCardEditor(); e.hass = { locale: { language: 'de' } }; e.setConfig({ type: 'custom:busch-unraid-system-card' }); const form = e.querySelector('ha-form'); assert.deepEqual(form.schema.map(s => s.name), ['device_id', 'title', 'show_temperatures']); assert.equal(form.data.show_temperatures, true); assert.equal(form.computeLabel({ name: 'show_temperatures' }), 'Temperaturen zeigen'); });
 test('CPU: Balken, Temperatur, Load', () => { const { BuschUnraidCpuCard } = ladeKarte(['BuschUnraidCpuCard']); const txt = rendere(BuschUnraidCpuCard, unraidAttrappe()).shadowRoot.textContent; assert.match(txt, /24 %/); assert.match(txt, /89 °C/); assert.match(txt, /3,2/); });
@@ -72,6 +91,12 @@ test('CPU: ohne callWS kein Verlauf und kein Fehler; mit callWS Linie, Abschaltu
 test('CPU: fehlgeschlagener Verlauf zeigt Hinweis', async () => {
   const { BuschUnraidCpuCard } = ladeKarte(['BuschUnraidCpuCard']); const k = new BuschUnraidCpuCard(); k._core = unraidAttrappe(); k._hass = { locale: { language: 'de' }, callWS: async () => { throw new Error('weg'); } }; k.setConfig({});
   await new Promise(r => setImmediate(r)); assert.match(k.shadowRoot.querySelector('.history').textContent, /Noch kein Verlauf/);
+});
+test('CPU: history_minutes zur Laufzeit auf 5/10/30/60 begrenzt, sonst 10', async () => {
+  // je Lauf frisch laden: der Verlaufscache ist modulweit und würde den zweiten 10-Minuten-Abruf schlucken
+  const lauf = async wert => { const { BuschUnraidCpuCard } = ladeKarte(['BuschUnraidCpuCard']); let abfrage; const k = new BuschUnraidCpuCard(); k._core = unraidAttrappe(); k._hass = { locale: { language: 'de' }, callWS: async m => { abfrage = m; return {}; } }; k.setConfig({ history_minutes: wert }); await new Promise(r => setImmediate(r)); return Math.round((Date.now() - Date.parse(abfrage.start_time)) / 60000); };
+  assert.equal(await lauf('60'), 60); assert.equal(await lauf(5), 5);
+  for (const falsch of ['7', '1000', '-5', 'abc', 0]) assert.equal(await lauf(falsch), 10, String(falsch));
 });
 test('CPU-Editor: Zeitraum-Auswahl und Texte', () => { const { BuschUnraidCpuCardEditor } = ladeKarte(['BuschUnraidCpuCardEditor']); const e = new BuschUnraidCpuCardEditor(); e.hass = { locale: { language: 'de' } }; e.setConfig({ type: 'custom:busch-unraid-cpu-card' }); const form = e.querySelector('ha-form'); assert.deepEqual(form.schema.map(s => s.name), ['device_id', 'title', 'history_minutes', 'show_history']); assert.equal(form.data.history_minutes, '10'); assert.equal(form.computeLabel({ name: 'history_minutes' }), 'Verlaufszeitraum'); });
 test('GPU: Werte und Leerzustand', () => { const { BuschUnraidGpuCard } = ladeKarte(['BuschUnraidGpuCard']); const txt = rendere(BuschUnraidGpuCard, unraidAttrappe()).shadowRoot.textContent; for (const r of [/19 %/, /9 %/, /52 °C/, /78 W/, /31 %/]) assert.match(txt, r); assert.match(rendere(BuschUnraidGpuCard, unraidAttrappe({ gpu: false })).shadowRoot.textContent, /Keine GPU/); });
