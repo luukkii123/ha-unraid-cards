@@ -1759,8 +1759,43 @@ class BuschUnraidAirflowCard extends BuschUnraidTile{
  static getStubConfig(){return {type:'custom:busch-unraid-airflow-card'};}
 }
 class BuschUnraidAirflowCardEditor extends BuschUnraidTileEditor{get _schema(){return SCHEMA_BUSCH_UNRAID_AIRFLOW_CARD;}get _texte(){return TEXTE_BUSCH_UNRAID_AIRFLOW_CARD;}get _defaults(){return new BuschUnraidAirflowCard()._vorgaben;}}
+// Bytes als Binärgröße (B … TiB). unraid_ssh liefert die VM-RAM-Werte nativ in Bytes (DATA_SIZE); hat der Nutzer in HA
+// eine andere Anzeigeeinheit gewählt, rechnet unraidInBytes über unit_of_measurement zurück.
+const UNRAID_BYTE_FAKTOR={B:1,kB:1e3,KB:1e3,KiB:1024,MB:1e6,MiB:1024**2,GB:1e9,GiB:1024**3,TB:1e12,TiB:1024**4,PB:1e15,PiB:1024**5};
+function unraidInBytes(e){const n=unraidNum(e);if(n===null)return null;const f=UNRAID_BYTE_FAKTOR[e?.attributes?.unit_of_measurement||'B'];return f?n*f:null;}
+function unraidBytes(b,lang){if(typeof b!=='number'||!Number.isFinite(b))return '–';const e=['B','KiB','MiB','GiB','TiB','PiB'];let i=0;while(b>=1024&&i<e.length-1){b/=1024;i++;}return unraidZahl(b,e[i],lang,b<10&&i?1:0);}
+// Shares: Gerät „Unraid share“ je Share, Sensoren share_used_<name>/share_free_<name>; Einheit wie in HA angezeigt (unit_of_measurement, Vorgabe GB).
+const SCHEMA_BUSCH_UNRAID_SHARES_CARD=[{name:'device_id',selector:{device:{integration:'unraid_ssh',model:'Unraid'}}},{name:'title',selector:{text:{}}}];
+const TEXTE_BUSCH_UNRAID_SHARES_CARD={de:{...UNRAID_TILE_TEXTE.de,name:'Unraid: Shares',description:'Shares mit belegtem und freiem Speicher.',labels:{device_id:'Server',title:'Titel'},helpers:{device_id:'Unraid-Server, dessen Daten die Karte zeigt. Leer: der einzige Server.',title:'Überschrift der Karte. Leer: Name der Kachel.'},tile:'Shares',count_one:'{count} Share',count_many:'{count} Shares',col_name:'Name',col_used:'Belegt',col_free:'Frei',none:'Keine Shares gefunden.'},
+ en:{...UNRAID_TILE_TEXTE.en,name:'Unraid: Shares',description:'Shares with used and free space.',labels:{device_id:'Server',title:'Title'},helpers:{device_id:'Unraid server whose data the card shows. Empty: the only server.',title:'Heading of the card. Empty: the tile name.'},tile:'Shares',count_one:'{count} share',count_many:'{count} shares',col_name:'Name',col_used:'Used',col_free:'Free',none:'No shares found.'}};
+class BuschUnraidSharesCard extends BuschUnraidTile{
+ static get kachel(){return 'shares';}get _texte(){return TEXTE_BUSCH_UNRAID_SHARES_CARD;}
+ _modell(core,config){const s=unraidServer(core,config);if(!s.server)return {fehler:s.fehler};
+  return {name:s.server.name_by_user||s.server.name,shares:s.geraete('Unraid share').map(d=>{const u=s.von(d,'share_used_'+d.name),f=s.von(d,'share_free_'+d.name);return {name:d.name_by_user||d.name,used:unraidNum(u),usedUnit:u?.attributes?.unit_of_measurement||'',free:unraidNum(f),freeUnit:f?.attributes?.unit_of_measurement||''};})};}
+ _kopf(m,t){const n=m.shares?.length;return {icon:'mdi:folder-network-outline',titel:t.tile,untertitel:m.shares?(n===1?t.count_one:t.count_many).replace('{count}',n):undefined};}
+ _inhalt(body,m,t){const lang=this._hass?.locale?.language;body.appendChild(unraidTabelle([{key:'n',label:t.col_name},{key:'u',label:t.col_used},{key:'f',label:t.col_free}],m.shares.map(x=>({n:x.name,u:unraidZahl(x.used,x.usedUnit,lang,1),f:unraidZahl(x.free,x.freeUnit,lang,1)})),{leer:t.none}));}
+ static getConfigElement(){return document.createElement('busch-unraid-shares-card-editor');}
+ static getStubConfig(){return {type:'custom:busch-unraid-shares-card'};}
+}
+class BuschUnraidSharesCardEditor extends BuschUnraidTileEditor{get _schema(){return SCHEMA_BUSCH_UNRAID_SHARES_CARD;}get _texte(){return TEXTE_BUSCH_UNRAID_SHARES_CARD;}get _defaults(){return new BuschUnraidSharesCard()._vorgaben;}}
+// VM-Nutzung: Gerät „Virtual machine“ mit Gerätename = VM-Name; Suffixe enthalten den Namen samt Leerzeichen (vm_state_Windows 11).
+// Gezeigt werden nur VMs im Zustand `running` (VM_STATES von unraid_ssh). vm_ram_used gibt es nur mit frischen Balloon-Werten, sonst –.
+const SCHEMA_BUSCH_UNRAID_VM_USAGE_CARD=[{name:'device_id',selector:{device:{integration:'unraid_ssh',model:'Unraid'}}},{name:'title',selector:{text:{}}}];
+const TEXTE_BUSCH_UNRAID_VM_USAGE_CARD={de:{...UNRAID_TILE_TEXTE.de,name:'Unraid: VM-Nutzung',description:'CPU und RAM laufender virtueller Maschinen.',labels:{device_id:'Server',title:'Titel'},helpers:{device_id:'Unraid-Server, dessen Daten die Karte zeigt. Leer: der einzige Server.',title:'Überschrift der Karte. Leer: Name der Kachel.'},tile:'VM-Nutzung',cpu:'Gast-CPU',ram:'RAM',running_one:'{count} VM läuft',running_many:'{count} VMs laufen',none:'Keine laufenden VMs.'},
+ en:{...UNRAID_TILE_TEXTE.en,name:'Unraid: VM usage',description:'CPU and RAM of running virtual machines.',labels:{device_id:'Server',title:'Title'},helpers:{device_id:'Unraid server whose data the card shows. Empty: the only server.',title:'Heading of the card. Empty: the tile name.'},tile:'VM usage',cpu:'Guest CPU',ram:'RAM',running_one:'{count} VM running',running_many:'{count} VMs running',none:'No running virtual machines.'}};
+class BuschUnraidVmUsageCard extends BuschUnraidTile{
+ static get kachel(){return 'vm-usage';}get _texte(){return TEXTE_BUSCH_UNRAID_VM_USAGE_CARD;}
+ _modell(core,config){const s=unraidServer(core,config);if(!s.server)return {fehler:s.fehler};
+  return {name:s.server.name_by_user||s.server.name,vms:s.geraete('Virtual machine').map(d=>{const n=d.name;return {name:d.name_by_user||n,state:s.von(d,'vm_state_'+n)?.state,cpu:unraidNum(s.von(d,'vm_cpu_'+n)),used:unraidInBytes(s.von(d,'vm_ram_used_'+n)),alloc:unraidInBytes(s.von(d,'vm_ram_allocated_'+n))};}).filter(v=>v.state==='running')};}
+ _kopf(m,t){const n=m.vms?.length;return {icon:'mdi:monitor-dashboard',titel:t.tile,untertitel:n?(n===1?t.running_one:t.running_many).replace('{count}',n):m.name};}
+ _inhalt(body,m,t){const lang=this._hass?.locale?.language;if(!m.vms.length){body.appendChild(buschUnraidNode('p',t.none,'message'));return;}
+  for(const v of m.vms){body.appendChild(buschUnraidNode('h3',v.name,'section'));body.appendChild(unraidBalken(v.cpu,`${t.cpu} ${unraidZahl(v.cpu,'%',lang)}`));body.appendChild(buschUnraidNode('p',`${t.ram}: ${unraidBytes(v.used,lang)} / ${unraidBytes(v.alloc,lang)}`,'detail'));}}
+ static getConfigElement(){return document.createElement('busch-unraid-vm-usage-card-editor');}
+ static getStubConfig(){return {type:'custom:busch-unraid-vm-usage-card'};}
+}
+class BuschUnraidVmUsageCardEditor extends BuschUnraidTileEditor{get _schema(){return SCHEMA_BUSCH_UNRAID_VM_USAGE_CARD;}get _texte(){return TEXTE_BUSCH_UNRAID_VM_USAGE_CARD;}get _defaults(){return new BuschUnraidVmUsageCard()._vorgaben;}}
 // [tag, Karte, Editor] — für den Vertragstest; registriert wird wörtlich je Kachel (Regelprüfer findet nur das).
-const UNRAID_KACHELN=[['busch-unraid-server-card',BuschUnraidServerCard,BuschUnraidServerCardEditor],['busch-unraid-system-card',BuschUnraidSystemCard,BuschUnraidSystemCardEditor],['busch-unraid-cpu-card',BuschUnraidCpuCard,BuschUnraidCpuCardEditor],['busch-unraid-gpu-card',BuschUnraidGpuCard,BuschUnraidGpuCardEditor],['busch-unraid-array-card',BuschUnraidArrayCard,BuschUnraidArrayCardEditor],['busch-unraid-parity-card',BuschUnraidParityCard,BuschUnraidParityCardEditor],['busch-unraid-airflow-card',BuschUnraidAirflowCard,BuschUnraidAirflowCardEditor]];
+const UNRAID_KACHELN=[['busch-unraid-server-card',BuschUnraidServerCard,BuschUnraidServerCardEditor],['busch-unraid-system-card',BuschUnraidSystemCard,BuschUnraidSystemCardEditor],['busch-unraid-cpu-card',BuschUnraidCpuCard,BuschUnraidCpuCardEditor],['busch-unraid-gpu-card',BuschUnraidGpuCard,BuschUnraidGpuCardEditor],['busch-unraid-array-card',BuschUnraidArrayCard,BuschUnraidArrayCardEditor],['busch-unraid-parity-card',BuschUnraidParityCard,BuschUnraidParityCardEditor],['busch-unraid-airflow-card',BuschUnraidAirflowCard,BuschUnraidAirflowCardEditor],['busch-unraid-shares-card',BuschUnraidSharesCard,BuschUnraidSharesCardEditor],['busch-unraid-vm-usage-card',BuschUnraidVmUsageCard,BuschUnraidVmUsageCardEditor]];
 if(!customElements.get?.('busch-unraid-server-card'))customElements.define('busch-unraid-server-card',BuschUnraidServerCard);
 if(!customElements.get?.('busch-unraid-server-card-editor'))customElements.define('busch-unraid-server-card-editor',BuschUnraidServerCardEditor);
 window.customCards=window.customCards||[];
@@ -1783,3 +1818,9 @@ if(!window.customCards.some(c=>c.type==='busch-unraid-parity-card'))window.custo
 if(!customElements.get?.('busch-unraid-airflow-card'))customElements.define('busch-unraid-airflow-card',BuschUnraidAirflowCard);
 if(!customElements.get?.('busch-unraid-airflow-card-editor'))customElements.define('busch-unraid-airflow-card-editor',BuschUnraidAirflowCardEditor);
 if(!window.customCards.some(c=>c.type==='busch-unraid-airflow-card'))window.customCards.push({type:'busch-unraid-airflow-card',name:buschTexte(TEXTE_BUSCH_UNRAID_AIRFLOW_CARD).name,description:buschTexte(TEXTE_BUSCH_UNRAID_AIRFLOW_CARD).description,preview:true,documentationURL:'https://github.com/luukkii123/ha-unraid-cards#busch-unraid-airflow-card'});
+if(!customElements.get?.('busch-unraid-shares-card'))customElements.define('busch-unraid-shares-card',BuschUnraidSharesCard);
+if(!customElements.get?.('busch-unraid-shares-card-editor'))customElements.define('busch-unraid-shares-card-editor',BuschUnraidSharesCardEditor);
+if(!window.customCards.some(c=>c.type==='busch-unraid-shares-card'))window.customCards.push({type:'busch-unraid-shares-card',name:buschTexte(TEXTE_BUSCH_UNRAID_SHARES_CARD).name,description:buschTexte(TEXTE_BUSCH_UNRAID_SHARES_CARD).description,preview:true,documentationURL:'https://github.com/luukkii123/ha-unraid-cards#busch-unraid-shares-card'});
+if(!customElements.get?.('busch-unraid-vm-usage-card'))customElements.define('busch-unraid-vm-usage-card',BuschUnraidVmUsageCard);
+if(!customElements.get?.('busch-unraid-vm-usage-card-editor'))customElements.define('busch-unraid-vm-usage-card-editor',BuschUnraidVmUsageCardEditor);
+if(!window.customCards.some(c=>c.type==='busch-unraid-vm-usage-card'))window.customCards.push({type:'busch-unraid-vm-usage-card',name:buschTexte(TEXTE_BUSCH_UNRAID_VM_USAGE_CARD).name,description:buschTexte(TEXTE_BUSCH_UNRAID_VM_USAGE_CARD).description,preview:true,documentationURL:'https://github.com/luukkii123/ha-unraid-cards#busch-unraid-vm-usage-card'});
