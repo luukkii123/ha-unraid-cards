@@ -44,3 +44,13 @@ test('Registrierung: Kartenwähler-Eintrag je Kachel', () => {
   const { UNRAID_KACHELN } = ladeKarte(['UNRAID_KACHELN'], kontext);
   for (const [tag] of UNRAID_KACHELN) { const c = kontext.window.customCards.find(x => x.type === tag); assert.ok(c, tag); assert.equal(c.preview, true); assert.equal(c.documentationURL, 'https://github.com/luukkii123/ha-unraid-cards#' + tag); assert.ok(c.name && c.description); }
 });
+test('System: RAM-Ring und Temperaturen', () => { const { BuschUnraidSystemCard } = ladeKarte(['BuschUnraidSystemCard']); const k = rendere(BuschUnraidSystemCard, unraidAttrappe()); const r = k.shadowRoot.querySelector('.ring'); assert.match(r.textContent, /67 %/); assert.match(k.shadowRoot.textContent, /CPU.*89 °C/s); assert.match(k.shadowRoot.textContent, /Mainboard.*41 °C/s); });
+test('System: Ausfall zeigt – statt NaN', () => { const { BuschUnraidSystemCard } = ladeKarte(['BuschUnraidSystemCard']); const txt = rendere(BuschUnraidSystemCard, unraidAttrappe({ ausfall: true })).shadowRoot.textContent; assert.doesNotMatch(txt, /NaN/); assert.match(txt, /–/); });
+test('System: Fühlername aus label, sonst friendly_name, sonst Kanal; abschaltbar', () => {
+  const { BuschUnraidSystemCard } = ladeKarte(['BuschUnraidSystemCard']); const core = unraidAttrappe();
+  const namen = k => [...k.shadowRoot.querySelectorAll('.cell-name')].map(n => n.textContent), werte = k => [...k.shadowRoot.querySelectorAll('.cell-value')].map(n => n.textContent);
+  let k = rendere(BuschUnraidSystemCard, core); assert.ok(namen(k).includes('Composite')); assert.ok(werte(k).includes('38,5 °C')); assert.ok(namen(k).includes('temp3'));
+  core.entities.get('sensor.tower_k10temp_temp3').attributes.friendly_name = 'Tower k10temp temp3'; k = rendere(BuschUnraidSystemCard, core); assert.ok(namen(k).includes('Tower k10temp temp3'));
+  k = rendere(BuschUnraidSystemCard, core, { show_temperatures: false }); assert.equal(k.shadowRoot.querySelector('.grid'), null); assert.doesNotMatch(k.shadowRoot.textContent, /Temperaturen/);
+});
+test('System-Editor: Schema und Texte', () => { const { BuschUnraidSystemCardEditor } = ladeKarte(['BuschUnraidSystemCardEditor']); const e = new BuschUnraidSystemCardEditor(); e.hass = { locale: { language: 'de' } }; e.setConfig({ type: 'custom:busch-unraid-system-card' }); const form = e.querySelector('ha-form'); assert.deepEqual(form.schema.map(s => s.name), ['device_id', 'title', 'show_temperatures']); assert.equal(form.data.show_temperatures, true); assert.equal(form.computeLabel({ name: 'show_temperatures' }), 'Temperaturen zeigen'); });

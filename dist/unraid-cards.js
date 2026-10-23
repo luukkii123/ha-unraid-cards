@@ -1509,7 +1509,8 @@ const UNRAID_TILE_STYLE=BUSCH_UNRAID_STYLE+`
 .dot.sem-ok{background:var(--success-color)}.dot.sem-warning{background:var(--warning-color)}.dot.sem-error{background:var(--error-color)}
 @container (max-width: 420px){.table thead{display:none}.table tr{display:grid;padding:6px 0;border-bottom:1px solid var(--divider-color)}.table td{display:flex;gap:8px}.table td::before{content:attr(data-label);color:var(--secondary-text-color);min-width:40%}}
 @media (prefers-reduced-motion: reduce){*{transition:none!important;animation:none!important}}
-.clock{font-size:40px;line-height:1.1;margin:8px 0 2px}`;
+.clock{font-size:40px;line-height:1.1;margin:8px 0 2px}
+.rings{display:flex;flex-wrap:wrap;gap:16px}.section{margin:12px 0 6px;font-size:var(--ha-font-size-m,14px);color:var(--secondary-text-color)}`;
 class BuschUnraidTile extends HTMLElement {
  constructor(){super();this.attachShadow({mode:'open'});this._config={};this._eingeklappt=false;this._busy=false;this._error=null;}
  static get kachel(){return 'tile';}
@@ -1624,9 +1625,29 @@ class BuschUnraidServerCard extends BuschUnraidTile{
  static getStubConfig(){return {type:'custom:busch-unraid-server-card'};}
 }
 class BuschUnraidServerCardEditor extends BuschUnraidTileEditor{get _schema(){return SCHEMA_BUSCH_UNRAID_SERVER_CARD;}get _texte(){return TEXTE_BUSCH_UNRAID_SERVER_CARD;}get _defaults(){return new BuschUnraidServerCard()._vorgaben;}}
+const SCHEMA_BUSCH_UNRAID_SYSTEM_CARD=[{name:'device_id',selector:{device:{integration:'unraid_ssh',model:'Unraid'}}},{name:'title',selector:{text:{}}},{name:'show_temperatures',selector:{boolean:{}}}];
+const TEXTE_BUSCH_UNRAID_SYSTEM_CARD={de:{...UNRAID_TILE_TEXTE.de,name:'Unraid: System',description:'RAM-Auslastung und Temperaturen eines Unraid-Servers.',labels:{device_id:'Server',title:'Titel',show_temperatures:'Temperaturen zeigen'},helpers:{device_id:'Unraid-Server, dessen Daten die Karte zeigt. Leer: der einzige Server.',title:'Überschrift der Karte. Leer: Name der Kachel.',show_temperatures:'Listet CPU-, Mainboard- und weitere aktive Temperaturfühler. Vorgabe an.'},tile:'System',ram:'RAM-Auslastung',temps:'Temperaturen',cpu:'CPU',board:'Mainboard',no_temps:'Keine Temperaturfühler.'},
+ en:{...UNRAID_TILE_TEXTE.en,name:'Unraid: System',description:'RAM usage and temperatures of an Unraid server.',labels:{device_id:'Server',title:'Title',show_temperatures:'Show temperatures'},helpers:{device_id:'Unraid server whose data the card shows. Empty: the only server.',title:'Heading of the card. Empty: the tile name.',show_temperatures:'Lists CPU, motherboard and other active temperature sensors. Default on.'},tile:'System',ram:'RAM usage',temps:'Temperatures',cpu:'CPU',board:'Motherboard',no_temps:'No temperature sensors.'}};
+class BuschUnraidSystemCard extends BuschUnraidTile{
+ static get kachel(){return 'system';}get _texte(){return TEXTE_BUSCH_UNRAID_SYSTEM_CARD;}get _vorgaben(){return {device_id:'',title:'',show_temperatures:true};}
+ // Weitere Fühler `temp_<key>` (HW_TEMP von unraid_ssh: attrs chip/channel/label; label kann leer sein) → label, sonst friendly_name, sonst Kanal.
+ _modell(core,config){const s=unraidServer(core,config);if(!s.server)return {fehler:s.fehler};
+  const temps=s.alle('temp_').map(({entity})=>{const a=entity.attributes||{};return {name:a.label||a.friendly_name||a.channel||entity.entity_id,wert:unraidNum(entity)};});
+  return {name:s.server.name_by_user||s.server.name,ram:unraidNum(s.wert('ram_percent')),cpu:unraidNum(s.wert('cpu_temp')),board:unraidNum(s.wert('board_temp')),temps};}
+ _kopf(m,t){return {icon:'mdi:memory',titel:t.tile,untertitel:m.name};}
+ _inhalt(body,m,t){const lang=this._hass?.locale?.language;const rings=buschUnraidNode('div',undefined,'rings');rings.appendChild(unraidRing(m.ram,t.ram));body.appendChild(rings);
+  if(!this._config.show_temperatures)return;const zeilen=[{name:t.cpu,wert:unraidZahl(m.cpu,'°C',lang)},{name:t.board,wert:unraidZahl(m.board,'°C',lang)},...m.temps.map(x=>({name:x.name,wert:unraidZahl(x.wert,'°C',lang,1)}))];
+  body.appendChild(buschUnraidNode('h3',t.temps,'section'));body.appendChild(unraidRaster(zeilen));}
+ static getConfigElement(){return document.createElement('busch-unraid-system-card-editor');}
+ static getStubConfig(){return {type:'custom:busch-unraid-system-card'};}
+}
+class BuschUnraidSystemCardEditor extends BuschUnraidTileEditor{get _schema(){return SCHEMA_BUSCH_UNRAID_SYSTEM_CARD;}get _texte(){return TEXTE_BUSCH_UNRAID_SYSTEM_CARD;}get _defaults(){return new BuschUnraidSystemCard()._vorgaben;}}
 // [tag, Karte, Editor] — für den Vertragstest; registriert wird wörtlich je Kachel (Regelprüfer findet nur das).
-const UNRAID_KACHELN=[['busch-unraid-server-card',BuschUnraidServerCard,BuschUnraidServerCardEditor]];
+const UNRAID_KACHELN=[['busch-unraid-server-card',BuschUnraidServerCard,BuschUnraidServerCardEditor],['busch-unraid-system-card',BuschUnraidSystemCard,BuschUnraidSystemCardEditor]];
 if(!customElements.get?.('busch-unraid-server-card'))customElements.define('busch-unraid-server-card',BuschUnraidServerCard);
 if(!customElements.get?.('busch-unraid-server-card-editor'))customElements.define('busch-unraid-server-card-editor',BuschUnraidServerCardEditor);
 window.customCards=window.customCards||[];
 if(!window.customCards.some(c=>c.type==='busch-unraid-server-card'))window.customCards.push({type:'busch-unraid-server-card',name:buschTexte(TEXTE_BUSCH_UNRAID_SERVER_CARD).name,description:buschTexte(TEXTE_BUSCH_UNRAID_SERVER_CARD).description,preview:true,documentationURL:'https://github.com/luukkii123/ha-unraid-cards#busch-unraid-server-card'});
+if(!customElements.get?.('busch-unraid-system-card'))customElements.define('busch-unraid-system-card',BuschUnraidSystemCard);
+if(!customElements.get?.('busch-unraid-system-card-editor'))customElements.define('busch-unraid-system-card-editor',BuschUnraidSystemCardEditor);
+if(!window.customCards.some(c=>c.type==='busch-unraid-system-card'))window.customCards.push({type:'busch-unraid-system-card',name:buschTexte(TEXTE_BUSCH_UNRAID_SYSTEM_CARD).name,description:buschTexte(TEXTE_BUSCH_UNRAID_SYSTEM_CARD).description,preview:true,documentationURL:'https://github.com/luukkii123/ha-unraid-cards#busch-unraid-system-card'});
