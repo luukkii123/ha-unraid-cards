@@ -21,8 +21,10 @@ function ent(id, suffix, device, state, attributes = {}, entry = ENTRY) {
 }
 function unraidAttrappe({ gpu = true, fans = true, parity = false, zweiterServer = false, ausfall = false } = {}) {
   const geraet = (id, name, model, entry = ENTRY) => [id, { id, name, name_by_user: null, model, manufacturer: 'Lime Technology', config_entries: [entry], via_device_id: model === 'Unraid' ? null : 'srv' }];
-  const devices = new Map([geraet('srv', 'Tower', 'Unraid'), geraet('d1', 'disk1', 'Data disk'), geraet('p1', 'cache', 'Cache disk'), geraet('r1', 'raid', 'Cache disk'), geraet('r2', 'raid2', 'Cache disk'), geraet('f1', 'flash', 'Flash disk'), geraet('sh1', 'appdata', 'Unraid share'), geraet('vm1', 'Windows 11', 'Virtual machine')]);
-  if (parity) devices.set(...geraet('par', 'parity', 'Parity disk'));
+  // Kindgeräte wie live: übersetzter Name mit Eintragstitel-Präfix (translations/de.json `device`: „{prefix} Festplatte {component}“ …),
+  // model f"{disk.kind} disk" mit kind = Unraid-`type` (Unraid 7: Flash heißt „Boot disk“). Der Rohname steckt nur in den unique_ids.
+  const devices = new Map([geraet('srv', 'Tower', 'Unraid'), geraet('d1', 'Tower Festplatte disk1', 'Data disk'), geraet('p1', 'Tower Festplatte cache', 'Cache disk'), geraet('r1', 'Tower Festplatte raid', 'Cache disk'), geraet('r2', 'Tower Festplatte raid2', 'Cache disk'), geraet('f1', 'Tower Festplatte flash', 'Boot disk'), geraet('sh1', 'Tower Share appdata', 'Unraid share'), geraet('vm1', 'Tower VM Windows 11', 'Virtual machine')]);
+  if (parity) devices.set(...geraet('par', 'Tower Festplatte parity', 'Parity disk'));
   const s = v => ausfall ? 'unavailable' : v;
   const list = [ent('sensor.tower_cpu', 'cpu_percent', 'srv', s(24.4)), ent('sensor.tower_ram', 'ram_percent', 'srv', s(67)), ent('sensor.tower_load', 'load_1', 'srv', s(3.2)), ent('sensor.tower_uptime', 'uptime', 'srv', '2026-10-16T14:41:00+00:00'), ent('sensor.tower_array', 'array_state', 'srv', 'started'), ent('sensor.tower_parity_progress', 'parity_progress', 'srv', parity ? 12.5 : 'unknown'), ent('sensor.tower_parity_errors', 'parity_errors', 'srv', 0), ent('sensor.tower_cpu_temp', 'cpu_temp', 'srv', s(89)), ent('sensor.tower_board_temp', 'board_temp', 'srv', 41),
     // Temperaturfühler wie HW_TEMP (has_entity_name, de: „Temperatur {chip} {label}“, chip über chip_display_name, label leer → Kanal):
@@ -35,6 +37,7 @@ function unraidAttrappe({ gpu = true, fans = true, parity = false, zweiterServer
     ent('sensor.cache_temp', 'disk_temp_cache', 'p1', 51), ent('sensor.cache_usage', 'disk_usage_cache', 'p1', 45), ent('sensor.cache_status', 'disk_status_cache', 'p1', 'ok'),
     ent('sensor.raid_temp', 'disk_temp_raid', 'r1', 44), ent('sensor.raid_usage', 'disk_usage_raid', 'r1', 60), ent('sensor.raid_status', 'disk_status_raid', 'r1', 'ok'), ent('sensor.raid2_temp', 'disk_temp_raid2', 'r2', 50), ent('sensor.raid2_status', 'disk_status_raid2', 'r2', 'ok'),
     ent('sensor.flash_usage', 'disk_usage_flash', 'f1', 35), ent('sensor.flash_status', 'disk_status_flash', 'f1', 'ok'),
+    ent('switch.win', 'vm_Windows 11', 'vm1', 'on'), ent('button.win_restart', 'restart_vm_Windows 11', 'vm1', 'unknown'),
     ent('sensor.appdata_used', 'share_used_appdata', 'sh1', 120.5, { unit_of_measurement: 'GB' }), ent('sensor.appdata_free', 'share_free_appdata', 'sh1', 450, { unit_of_measurement: 'GB' }),
     ent('sensor.win_state', 'vm_state_Windows 11', 'vm1', 'running'), ent('sensor.win_cpu', 'vm_cpu_Windows 11', 'vm1', 36), ent('sensor.win_ram_used', 'vm_ram_used_Windows 11', 'vm1', 17179869184), ent('sensor.win_ram_alloc', 'vm_ram_allocated_Windows 11', 'vm1', 17179869184),
     // deaktiviert (z. B. vom Nutzer abgeschaltet): im Register, ohne Zustand
@@ -50,7 +53,7 @@ function unraidAttrappe({ gpu = true, fans = true, parity = false, zweiterServer
   if (parity) list.push(ent('sensor.parity_temp', 'disk_temp_parity', 'par', 40), ent('sensor.parity_status', 'disk_status_parity', 'par', 'ok'));
   if (zweiterServer) {
     devices.set(...geraet('srv2', 'Backup', 'Unraid', 'e2'));
-    devices.set(...geraet('d2', 'backupdisk', 'Data disk', 'e2'));
+    devices.set(...geraet('d2', 'Backup Festplatte backupdisk', 'Data disk', 'e2'));
     list.push(ent('sensor.backup_cpu', 'cpu_percent', 'srv2', 5, {}, 'e2'), ent('sensor.backupdisk_temp', 'disk_temp_backupdisk', 'd2', 33, {}, 'e2'));
   }
   for (const e of list) { const d = devices.get(e.device_id); e.model = d?.model; e.manufacturer = d?.manufacturer; }
