@@ -1475,8 +1475,9 @@ class BuschUnraidVmCard extends BuschUnraidBaseCard {
  setConfig(config){const vorher=buschCoreKey(this._config);super.setConfig(config);if(buschCoreKey(this._config)!==vorher&&this._alle!==undefined){this._alle=undefined;this._render();}}
  // Der Schalter „Alle VMs“ ändert nur die Anzeige dieser Karte, nicht die gespeicherte Konfiguration.
  _zeigeAlle(){return this._alle??!!this._config.show_all;}
- _istListe(){const d=this._core?.devices?.get?.(this._config.device_id);return !this._config.device_id||d?.model==='Unraid';}
- _modellListe(){const s=unraidServer(this._core,this._config);if(!s.server)return {fehler:s.fehler};const alle=s.geraete('Virtual machine').map(d=>buschUnraidModel(this._core,{...this._config,device_id:d.id},'vm').selected).filter(Boolean);return {name:s.server.name_by_user||s.server.name,vms:alle.filter(r=>this._zeigeAlle()||r.status==='running')};}
+ // Unbekanntes Gerät (Kern noch nicht geladen): im Zweifel Liste mit Ladezustand statt kurz der Einzelpfad.
+ _istListe(){if(!this._config.device_id)return true;const d=this._core?.devices?.get?.(this._config.device_id);return !d||d.model==='Unraid';}
+ _modellListe(){const s=unraidServer(this._core,this._config);const z=unraidZustand(s);if(z)return z;const alle=s.geraete('Virtual machine').map(d=>buschUnraidModel(this._core,{...this._config,device_id:d.id},'vm').selected).filter(Boolean);return {name:s.server.name_by_user||s.server.name,vms:alle.filter(r=>this._zeigeAlle()||r.status==='running'),unbekannt:this._zeigeAlle()?[]:alle.filter(r=>['unavailable','unknown'].includes(r.status)).map(r=>r.name)};}
  async _zeilenAktion(action,row){return this._action(action,row);}
  getCardSize(){return this._istListe()?3:super.getCardSize();}
  disconnectedCallback(){super.disconnectedCallback();unraidBeobachten(this,[]);}
@@ -1492,11 +1493,11 @@ class BuschUnraidVmCard extends BuschUnraidBaseCard {
   const tx=buschUnraidNode('div',undefined,'tile-text');tx.appendChild(buschUnraidNode('h2',this._config.title||t.vm_list,'tile-title'));if(m.name)tx.appendChild(buschUnraidNode('p',m.name,'tile-sub'));head.appendChild(tx);
   const leiste=buschUnraidNode('div',undefined,'tile-actions'),schalter=BuschUI.action({label:t.show_all,text:t.show_all,onClick:()=>{this._alle=!this._zeigeAlle();this._render();},variant:'secondary'});schalter.dataset.focusKey='show-all';schalter.setAttribute('aria-pressed',String(alle));leiste.appendChild(schalter);head.appendChild(leiste);card.appendChild(head);
   const message=text=>card.appendChild(buschUnraidNode('p',text,'message'));
-  if(m.laedt)message(t.loading);else if(m.fehler)message(t[m.fehler]||t.empty);else if(!m.vms.length)message(t.none_vms);
+  if(m.laedt)message(t.loading);else if(m.fehler)message(t[m.fehler]||t.empty);else if(!m.vms.length)message(m.unbekannt?.length?t.unavailable:t.none_vms);
   else{const rows=buschUnraidNode('div',undefined,'rows');for(const r of m.vms){const row=buschUnraidNode('div',undefined,'row vm-row');row.dataset.entityId=r.switch?.entity_id||r.key||r.name;const id=buschUnraidNode('div',undefined,'row-identity'),nm=buschUnraidNode('div',undefined,'row-text');id.appendChild(buschMedia(this._config,r,'mdi:monitor','row-icon'));nm.appendChild(buschUnraidNode('div',r.name,'name'));id.appendChild(nm);row.appendChild(id);
    if(this._config.show_status)row.appendChild(buschUnraidBadge(r.status,buschUnraidStatusText(r,t,h?.locale?.language)));
    if(r.status==='running'&&(this._config.show_cpu||this._config.show_ram))row.appendChild(buschUnraidMetrics(r,this._config,t,h?.locale?.language));
-   this._actions(row,r,t);rows.appendChild(row);}card.appendChild(rows);}
+   this._actions(row,r,t);rows.appendChild(row);}card.appendChild(rows);if(m.unbekannt?.length)message(`${t.unavailable}: ${m.unbekannt.join(', ')}`);}
   if(this._error){const e=buschUnraidNode('p',this._error,'message error');e.setAttribute('role','alert');card.appendChild(e);}
   this.shadowRoot.replaceChildren(style,card);
   if(fokus?.key){const ziel=[...this.shadowRoot.querySelectorAll('button')].find(b=>b.dataset.focusKey===fokus.key&&(fokus.key==='show-all'||b.closest?.('.vm-row')?.dataset.entityId===fokus.entity));ziel?.focus?.({preventScroll:true});}
@@ -1835,11 +1836,18 @@ function unraidServer(core,config){
  const index=liste=>entry?new Map(liste.filter(e=>e&&e.platform==='unraid_ssh'&&e.config_entry_id===entry&&!e.registry?.disabled_by).map(e=>[unraidSuffix(e),e]).filter(([s])=>s)):new Map();
  const kinder=entry?[...core.devices.values()].filter(d=>d.id!==gewaehlt.id&&core.getDeviceEntities(d.id).some(e=>e?.platform==='unraid_ssh'&&e.config_entry_id===entry)):[];
  const haupt=index(eigene);
- return {server:gewaehlt,entry,wert:s=>haupt.get(s)||null,alle:p=>[...haupt].filter(([s])=>s.startsWith(p)).map(([suffix,entity])=>({suffix,entity})),
+ // R18: Hauptsensoren alle nicht verfügbar → Server nicht verfügbar (Kopf bleibt, Inhalt „Nicht verfügbar“).
+ const hauptwerte=['cpu_percent','array_state'].map(x=>haupt.get(x)).filter(Boolean),verfuegbar=!hauptwerte.length||hauptwerte.some(buschUnraidAvailable);
+ // Ohne Eintrag (Entitätsregister noch nicht geladen: hass.entities hat weder config_entry_id noch unique_id) im Zweifel laden,
+ // statt falsche Leerzustände zu zeigen; nur ein gemeldeter Registerfehler beendet das Warten.
+ const laedt=!entry&&!core.lastErrors?.has?.('entity');
+ return {server:gewaehlt,entry,verfuegbar,laedt,wert:s=>haupt.get(s)||null,alle:p=>[...haupt].filter(([s])=>s.startsWith(p)).map(([suffix,entity])=>({suffix,entity})),
   geraete:modell=>kinder.filter(d=>d.model===modell).map(d=>({...d,roh:unraidRohname(d,core.getDeviceEntities(d.id).filter(e=>e?.platform==='unraid_ssh'&&e.config_entry_id===entry))})).sort((a,b)=>a.roh.localeCompare(b.roh,undefined,{numeric:true})),
   von:(d,s)=>d?index(core.getDeviceEntities(d.id)).get(s)||null:null,ids:[gewaehlt.id,...kinder.map(d=>d.id)]};
 }
 // Geräte, deren Stream-Updates eine Kachel neu rendern sollen (Server und Kindgeräte desselben Eintrags).
+// Gemeinsamer Vorspann der Kachelmodelle: Fehler, Ladezustand oder Nicht verfügbar; null = Daten zeigen.
+function unraidZustand(s){if(!s.server)return {fehler:s.fehler};if(s.laedt)return {laedt:true};if(!s.verfuegbar)return {fehler:'unavailable',name:s.server.name_by_user||s.server.name};return null;}
 function unraidServerIds(core,config){try{const s=unraidServer(core,config);return s.server?s.ids:[];}catch{return [];}}
 // watchDevice wie BuschUnraidBaseCard: Rückruf rendert, die Render-Signatur verwirft Unverändertes. Leere Liste = abmelden.
 function unraidBeobachten(karte,ids){const key=ids.join('\n');if(karte._beobachtKey===key)return;for(const ab of karte._beobachtAb||[])ab?.();karte._beobachtAb=[];karte._beobachtKey=key;const core=karte._core;if(!ids.length||typeof core?.watchDevice!=='function')return;for(const id of ids)karte._beobachtAb.push(core.watchDevice(id,()=>karte._render()));}
@@ -1981,7 +1989,7 @@ const TEXTE_BUSCH_UNRAID_SERVER_CARD={de:{...UNRAID_TILE_TEXTE.de,name:'Unraid: 
 class BuschUnraidServerCard extends BuschUnraidTile{
  static get kachel(){return 'server';}get _texte(){return TEXTE_BUSCH_UNRAID_SERVER_CARD;}get _vorgaben(){return {device_id:'',title:'',show_clock:true};}
  // Der Uptime-Sensor von unraid_ssh ist ein Zeitstempel (Boot-Zeit, ISO); die Laufzeit rechnet die Karte selbst.
- _modell(core,config){const s=unraidServer(core,config);if(!s.server)return {fehler:s.fehler};const up=s.wert('uptime'),boot=up&&!['unavailable','unknown'].includes(up.state)?Date.parse(up.state):NaN;
+ _modell(core,config){const s=unraidServer(core,config);const z=unraidZustand(s);if(z)return z;const up=s.wert('uptime'),boot=up&&!['unavailable','unknown'].includes(up.state)?Date.parse(up.state):NaN;
   return {name:s.server.name_by_user||s.server.name,version:s.server.sw_version||'',uptime:Number.isFinite(boot)?Math.floor(Math.max(0,(Date.now()-boot)/1000)/60)*60:null,array:s.wert('array_state')?.state||null,mover:s.wert('mover_active')?.state||null};}
  _kopf(m,t){return {icon:'mdi:server',titel:m.name||t.tile,untertitel:m.version?`${t.version} ${m.version}`:undefined};}
  _inhalt(body,m,t){const lang=String(this._hass?.locale?.language||'en'),tz=this._hass?.config?.time_zone;
@@ -2008,7 +2016,7 @@ class BuschUnraidSystemCard extends BuschUnraidTile{
  // Weitere Fühler `temp_<key>` (HW_TEMP von unraid_ssh, Name „<Gerät> Temperatur <Chip> <label>“; attrs chip/channel/label, label kann leer sein).
  // Name = friendly_name ohne führenden Gerätenamen, sonst label, sonst Kanal. `label` allein („Composite“) ist nicht eindeutig;
  // zwei NVMe ergeben sogar denselben friendly_name (Chipname „NVMe“) → doppelte Namen bekommen den Rohchip („nvme-pci-0200“) angehängt.
- _modell(core,config){const s=unraidServer(core,config);if(!s.server)return {fehler:s.fehler};const geraet=s.server.name_by_user||s.server.name||'';
+ _modell(core,config){const s=unraidServer(core,config);const z=unraidZustand(s);if(z)return z;const geraet=s.server.name_by_user||s.server.name||'';
   const temps=unraidEindeutig(s.alle('temp_').map(({entity,suffix})=>{const a=entity.attributes||{};return {name:unraidOhneGeraet(geraet,a.friendly_name)||a.label||a.channel||suffix||entity.entity_id,chip:a.chip||suffix,wert:unraidNum(entity)};}));
   return {name:geraet,ram:unraidNum(s.wert('ram_percent')),cpu:unraidNum(s.wert('cpu_temp')),board:unraidNum(s.wert('board_temp')),temps};}
  _kopf(m,t){return {icon:'mdi:memory',titel:t.tile,untertitel:m.name};}
@@ -2039,7 +2047,7 @@ const TEXTE_BUSCH_UNRAID_CPU_CARD={de:{...UNRAID_TILE_TEXTE.de,name:'Unraid: Pro
 const UNRAID_VERLAUF_MINUTEN=[5,10,30,60];
 class BuschUnraidCpuCard extends BuschUnraidTile{
  static get kachel(){return 'cpu';}get _texte(){return TEXTE_BUSCH_UNRAID_CPU_CARD;}get _vorgaben(){return {device_id:'',title:'',history_minutes:'10',show_history:true};}
- _modell(core,config){const s=unraidServer(core,config);if(!s.server)return {fehler:s.fehler};const cpu=s.wert('cpu_percent');return {name:s.server.name_by_user||s.server.name,cpu:unraidNum(cpu),cpuId:cpu?.entity_id,temp:unraidNum(s.wert('cpu_temp')),load:unraidNum(s.wert('load_1'))};}
+ _modell(core,config){const s=unraidServer(core,config);const z=unraidZustand(s);if(z)return z;const cpu=s.wert('cpu_percent');return {name:s.server.name_by_user||s.server.name,cpu:unraidNum(cpu),cpuId:cpu?.entity_id,temp:unraidNum(s.wert('cpu_temp')),load:unraidNum(s.wert('load_1'))};}
  _kopf(m,t){return {icon:'mdi:cpu-64-bit',titel:t.tile,untertitel:m.name};}
  _signaturZusatz(){return this._config.show_history?Math.floor(Date.now()/60000):null;}
  _inhalt(body,m,t){const lang=this._hass?.locale?.language;body.appendChild(unraidTabelle([{key:'k',label:''},{key:'v',label:''}],[{k:t.temp,v:unraidZahl(m.temp,'°C',lang)},{k:t.load1,v:unraidZahl(m.load,'',lang,1)}],{leer:''}));
@@ -2060,7 +2068,7 @@ class BuschUnraidGpuCard extends BuschUnraidTile{
  static get kachel(){return 'gpu';}get _texte(){return TEXTE_BUSCH_UNRAID_GPU_CARD;}
  // Index aus dem Suffix `gpu_<metrik>_<i>`. Eine Karte ohne steuerbaren Lüfter hat keine gpu_fan-Entität → Zeile entfällt (fan undefined);
  // eine vorhandene, aber nicht verfügbare zeigt –.
- _modell(core,config){const s=unraidServer(core,config);if(!s.server)return {fehler:s.fehler};
+ _modell(core,config){const s=unraidServer(core,config);const z=unraidZustand(s);if(z)return z;
   const idx=[...new Set(s.alle('gpu_').map(x=>UNRAID_GPU_SUFFIX.exec(x.suffix)?.[1]).filter(i=>i!==undefined))].sort((a,b)=>Number(a)-Number(b));
   return {name:s.server.name_by_user||s.server.name,gpus:idx.map(i=>{const fan=s.wert('gpu_fan_'+i);return {name:'GPU '+i,util:unraidNum(s.wert('gpu_util_'+i)),vram:unraidNum(s.wert('gpu_vram_'+i)),temp:unraidNum(s.wert('gpu_temp_'+i)),power:unraidNum(s.wert('gpu_power_'+i)),fan:fan?unraidNum(fan):undefined};})};}
  _kopf(m,t){const g=m.gpus?.[0],lang=this._hass?.locale?.language;return {icon:'mdi:expansion-card',titel:t.tile,untertitel:g?`${t.util}: ${unraidZahl(g.util,'%',lang)} · ${t.temp}: ${unraidZahl(g.temp,'°C',lang)}`:m.name};}
@@ -2088,7 +2096,7 @@ const TEXTE_BUSCH_UNRAID_ARRAY_CARD={de:{...UNRAID_TILE_TEXTE.de,name:'Unraid: A
  en:{...UNRAID_TILE_TEXTE.en,name:'Unraid: Array',description:'Array, pool and boot disks with status, temperature and utilization.',labels:{device_id:'Server',title:'Title',show_boot:'Show boot device'},helpers:{device_id:'Unraid server whose data the card shows. Empty: the only server.',title:'Heading of the card. Empty: the tile name.',show_boot:'Shows the flash or boot device as its own group. Default on.'},tile:'Array and pools',array:'Array',boot:'Boot',col_device:'Device',col_status:'Status',col_temp:'Temp.',col_usage:'Utilization',sleeping:'spun down',device_one:'{count} device',device_many:'{count} devices',none:'No disks found.'}};
 class BuschUnraidArrayCard extends BuschUnraidTile{
  static get kachel(){return 'array';}get _texte(){return TEXTE_BUSCH_UNRAID_ARRAY_CARD;}get _vorgaben(){return {device_id:'',title:'',show_boot:true};}
- _modell(core,config){const s=unraidServer(core,config);if(!s.server)return {fehler:s.fehler};const t=buschTexte(this._texte,this._hass);return {name:s.server.name_by_user||s.server.name,gruppen:unraidGruppen(s,t).filter(g=>config.show_boot||g.art!==2)};}
+ _modell(core,config){const s=unraidServer(core,config);const z=unraidZustand(s);if(z)return z;const t=buschTexte(this._texte,this._hass);return {name:s.server.name_by_user||s.server.name,gruppen:unraidGruppen(s,t).filter(g=>config.show_boot||g.art!==2)};}
  _kopf(m,t){return {icon:'mdi:harddisk',titel:t.tile,untertitel:m.name};}
  _inhalt(body,m,t){const lang=String(this._hass?.locale?.language||'en'),st=UNRAID_DISK_STATUS[lang.startsWith('de')?'de':'en'];if(!m.gruppen.length){body.appendChild(buschUnraidNode('p',t.none,'message'));return;}
   const spalten=[{key:'n',label:t.col_device},{key:'s',label:t.col_status},{key:'t',label:t.col_temp},{key:'u',label:t.col_usage}];
@@ -2101,15 +2109,17 @@ class BuschUnraidArrayCardEditor extends BuschUnraidTileEditor{get _schema(){ret
 // Parität: Fortschritt/Fehler/Lauf vom Serverhauptgerät. Leerhinweis nur, wenn kein „Parity disk“-Gerät existiert UND
 // keine Prüfung läuft UND kein Fortschrittswert vorliegt (Plattengeräte können abgeschaltet sein, die Prüfung trotzdem laufen).
 const SCHEMA_BUSCH_UNRAID_PARITY_CARD=[{name:'device_id',selector:{device:{integration:'unraid_ssh',model:'Unraid'}}},{name:'title',selector:{text:{}}}];
-const TEXTE_BUSCH_UNRAID_PARITY_CARD={de:{...UNRAID_TILE_TEXTE.de,name:'Unraid: Parität',description:'Zustand, Fortschritt und Fehler der Paritätsprüfung.',labels:{device_id:'Server',title:'Titel'},helpers:{device_id:'Unraid-Server, dessen Daten die Karte zeigt. Leer: der einzige Server.',title:'Überschrift der Karte. Leer: Name der Kachel.'},tile:'Parität',none:'Keine Paritätsplatte vorhanden.',running:'Prüfung läuft',idle:'Keine Prüfung aktiv',progress:'Fortschritt',errors:'Fehler'},
- en:{...UNRAID_TILE_TEXTE.en,name:'Unraid: Parity',description:'State, progress and errors of the parity check.',labels:{device_id:'Server',title:'Title'},helpers:{device_id:'Unraid server whose data the card shows. Empty: the only server.',title:'Heading of the card. Empty: the tile name.'},tile:'Parity',none:'No parity disk present.',running:'Check running',idle:'No check running',progress:'Progress',errors:'Errors'}};
+const TEXTE_BUSCH_UNRAID_PARITY_CARD={de:{...UNRAID_TILE_TEXTE.de,name:'Unraid: Parität',description:'Zustand, Fortschritt und Fehler der Paritätsprüfung.',labels:{device_id:'Server',title:'Titel'},helpers:{device_id:'Unraid-Server, dessen Daten die Karte zeigt. Leer: der einzige Server.',title:'Überschrift der Karte. Leer: Name der Kachel.'},tile:'Parität',none:'Keine Paritätsplatte vorhanden.',running:'Prüfung läuft',idle:'Keine Prüfung aktiv',unknown:'Unbekannt',progress:'Fortschritt',errors:'Fehler'},
+ en:{...UNRAID_TILE_TEXTE.en,name:'Unraid: Parity',description:'State, progress and errors of the parity check.',labels:{device_id:'Server',title:'Title'},helpers:{device_id:'Unraid server whose data the card shows. Empty: the only server.',title:'Heading of the card. Empty: the tile name.'},tile:'Parity',none:'No parity disk present.',running:'Check running',idle:'No check running',unknown:'Unknown',progress:'Progress',errors:'Errors'}};
 class BuschUnraidParityCard extends BuschUnraidTile{
  static get kachel(){return 'parity';}get _texte(){return TEXTE_BUSCH_UNRAID_PARITY_CARD;}
- _modell(core,config){const s=unraidServer(core,config);if(!s.server)return {fehler:s.fehler};const laeuft=s.wert('parity_running')?.state==='on',fortschritt=unraidNum(s.wert('parity_progress'));
-  return {name:s.server.name_by_user||s.server.name,vorhanden:s.geraete('Parity disk').length>0||laeuft||fortschritt!==null,laeuft,fortschritt,fehler_anzahl:unraidNum(s.wert('parity_errors'))};}
- _kopf(m,t){return {icon:'mdi:shield-check-outline',titel:t.tile,untertitel:m.vorhanden===undefined?undefined:m.vorhanden?(m.laeuft?t.running:t.idle):m.name};}
+ _modell(core,config){const s=unraidServer(core,config);const z=unraidZustand(s);if(z)return z;const lauf=s.wert('parity_running'),laeuft=lauf?.state==='on',fortschritt=unraidNum(s.wert('parity_progress'));
+  // parity_running nicht verfügbar → Zustand unbekannt (nicht grün „Keine Prüfung aktiv“).
+  const unbekannt=!lauf||!buschUnraidAvailable(lauf);
+  return {name:s.server.name_by_user||s.server.name,vorhanden:s.geraete('Parity disk').length>0||laeuft||fortschritt!==null||(!!lauf&&unbekannt),laeuft,unbekannt,fortschritt,fehler_anzahl:unraidNum(s.wert('parity_errors'))};}
+ _kopf(m,t){return {icon:'mdi:shield-check-outline',titel:t.tile,untertitel:m.vorhanden===undefined?undefined:m.vorhanden?(m.unbekannt?t.unknown:m.laeuft?t.running:t.idle):m.name};}
  _inhalt(body,m,t){const lang=this._hass?.locale?.language;if(!m.vorhanden){body.appendChild(buschUnraidNode('p',t.none,'message'));return;}
-  body.appendChild(unraidPunkt(m.laeuft?'warning':'ok',m.laeuft?t.running:t.idle));
+  body.appendChild(m.unbekannt?unraidPunkt('unknown',t.unknown):unraidPunkt(m.laeuft?'warning':'ok',m.laeuft?t.running:t.idle));
   if(m.laeuft)body.appendChild(unraidBalken(m.fortschritt,`${t.progress} ${unraidZahl(m.fortschritt,'%',lang,1)}`,{warnung:101,kritisch:101}));
   body.appendChild(unraidTabelle([{key:'k',label:''},{key:'v',label:''}],[{k:t.errors,v:unraidZahl(m.fehler_anzahl,'',lang)}],{leer:''}));}
  static getConfigElement(){return document.createElement('busch-unraid-parity-card-editor');}
@@ -2125,7 +2135,7 @@ const TEXTE_BUSCH_UNRAID_AIRFLOW_CARD={de:{...UNRAID_TILE_TEXTE.de,name:'Unraid:
  en:{...UNRAID_TILE_TEXTE.en,name:'Unraid: Airflow',description:'Server fans with speed and level.',labels:{device_id:'Server',title:'Title',hide_idle:'Hide idle fans'},helpers:{device_id:'Unraid server whose data the card shows. Empty: the only server.',title:'Heading of the card. Empty: the tile name.',hide_idle:'Hides fans at 0 RPM. Default off.'},tile:'Airflow',count:'{count} fans',none:'No fans found.',rpm:'RPM'}};
 class BuschUnraidAirflowCard extends BuschUnraidTile{
  static get kachel(){return 'airflow';}get _texte(){return TEXTE_BUSCH_UNRAID_AIRFLOW_CARD;}get _vorgaben(){return {device_id:'',title:'',hide_idle:false};}
- _modell(core,config){const s=unraidServer(core,config);if(!s.server)return {fehler:s.fehler};const geraet=s.server.name_by_user||s.server.name||'';
+ _modell(core,config){const s=unraidServer(core,config);const z=unraidZustand(s);if(z)return z;const geraet=s.server.name_by_user||s.server.name||'';
   const fans=unraidEindeutig(s.alle('fan_').filter(x=>x.suffix.endsWith('_rpm')).map(({suffix,entity})=>{const basis=suffix.slice(0,-4),a=entity.attributes||{};return {name:unraidOhneGeraet(geraet,a.friendly_name)||a.channel||basis,chip:a.chip,rpm:unraidNum(entity),prozent:unraidNum(s.wert(basis+'_percent'))};}));
   return {name:geraet,fans:fans.filter(f=>!config.hide_idle||f.rpm!==0)};}
  _kopf(m,t){return {icon:'mdi:fan',titel:t.tile,untertitel:m.fans?t.count.replace('{count}',m.fans.length):undefined};}
@@ -2146,7 +2156,7 @@ const TEXTE_BUSCH_UNRAID_SHARES_CARD={de:{...UNRAID_TILE_TEXTE.de,name:'Unraid: 
  en:{...UNRAID_TILE_TEXTE.en,name:'Unraid: Shares',description:'Shares with used and free space.',labels:{device_id:'Server',title:'Title'},helpers:{device_id:'Unraid server whose data the card shows. Empty: the only server.',title:'Heading of the card. Empty: the tile name.'},tile:'Shares',count_one:'{count} share',count_many:'{count} shares',col_name:'Name',col_used:'Used',col_free:'Free',none:'No shares found.'}};
 class BuschUnraidSharesCard extends BuschUnraidTile{
  static get kachel(){return 'shares';}get _texte(){return TEXTE_BUSCH_UNRAID_SHARES_CARD;}
- _modell(core,config){const s=unraidServer(core,config);if(!s.server)return {fehler:s.fehler};
+ _modell(core,config){const s=unraidServer(core,config);const z=unraidZustand(s);if(z)return z;
   return {name:s.server.name_by_user||s.server.name,shares:s.geraete('Unraid share').map(d=>{const u=s.von(d,'share_used_'+d.roh),f=s.von(d,'share_free_'+d.roh);return {name:d.roh,used:unraidNum(u),usedUnit:u?.attributes?.unit_of_measurement||'',free:unraidNum(f),freeUnit:f?.attributes?.unit_of_measurement||''};})};}
  _kopf(m,t){const n=m.shares?.length;return {icon:'mdi:folder-network-outline',titel:t.tile,untertitel:m.shares?(n===1?t.count_one:t.count_many).replace('{count}',n):undefined};}
  _inhalt(body,m,t){const lang=this._hass?.locale?.language;body.appendChild(unraidTabelle([{key:'n',label:t.col_name},{key:'u',label:t.col_used},{key:'f',label:t.col_free}],m.shares.map(x=>({n:x.name,u:unraidZahl(x.used,x.usedUnit,lang,1),f:unraidZahl(x.free,x.freeUnit,lang,1)})),{leer:t.none}));}
@@ -2161,10 +2171,13 @@ const TEXTE_BUSCH_UNRAID_VM_USAGE_CARD={de:{...UNRAID_TILE_TEXTE.de,name:'Unraid
  en:{...UNRAID_TILE_TEXTE.en,name:'Unraid: VM usage',description:'CPU and RAM of running virtual machines.',labels:{device_id:'Server',title:'Title'},helpers:{device_id:'Unraid server whose data the card shows. Empty: the only server.',title:'Heading of the card. Empty: the tile name.'},tile:'VM usage',cpu:'Guest CPU',ram:'RAM',running_one:'{count} VM running',running_many:'{count} VMs running',none:'No running virtual machines.'}};
 class BuschUnraidVmUsageCard extends BuschUnraidTile{
  static get kachel(){return 'vm-usage';}get _texte(){return TEXTE_BUSCH_UNRAID_VM_USAGE_CARD;}
- _modell(core,config){const s=unraidServer(core,config);if(!s.server)return {fehler:s.fehler};
-  return {name:s.server.name_by_user||s.server.name,vms:s.geraete('Virtual machine').map(d=>{const n=d.roh;return {name:n,state:s.von(d,'vm_state_'+n)?.state,cpu:unraidNum(s.von(d,'vm_cpu_'+n)),used:unraidInBytes(s.von(d,'vm_ram_used_'+n)),alloc:unraidInBytes(s.von(d,'vm_ram_allocated_'+n))};}).filter(v=>v.state==='running')};}
+ _modell(core,config){const s=unraidServer(core,config);const z=unraidZustand(s);if(z)return z;
+  const alle=s.geraete('Virtual machine').map(d=>{const n=d.roh;return {name:n,state:s.von(d,'vm_state_'+n)?.state,cpu:unraidNum(s.von(d,'vm_cpu_'+n)),used:unraidInBytes(s.von(d,'vm_ram_used_'+n)),alloc:unraidInBytes(s.von(d,'vm_ram_allocated_'+n))};});
+  // VM-Zustand nicht verfügbar → eigener Hinweis statt „Keine laufenden VMs“.
+  return {name:s.server.name_by_user||s.server.name,vms:alle.filter(v=>v.state==='running'),unbekannt:alle.filter(v=>!v.state||['unavailable','unknown'].includes(v.state)).map(v=>v.name)};}
  _kopf(m,t){const n=m.vms?.length;return {icon:'mdi:monitor-dashboard',titel:t.tile,untertitel:n?(n===1?t.running_one:t.running_many).replace('{count}',n):m.name};}
- _inhalt(body,m,t){const lang=this._hass?.locale?.language;if(!m.vms.length){body.appendChild(buschUnraidNode('p',t.none,'message'));return;}
+ _inhalt(body,m,t){const lang=this._hass?.locale?.language,unbekannt=m.unbekannt||[];if(!m.vms.length){body.appendChild(buschUnraidNode('p',unbekannt.length?t.unavailable:t.none,'message'));return;}
+  if(unbekannt.length)body.appendChild(buschUnraidNode('p',`${t.unavailable}: ${unbekannt.join(', ')}`,'message'));
   for(const v of m.vms){body.appendChild(buschUnraidNode('h3',v.name,'section'));body.appendChild(unraidBalken(v.cpu,`${t.cpu} ${unraidZahl(v.cpu,'%',lang)}`));body.appendChild(buschUnraidNode('p',`${t.ram}: ${unraidBytes(v.used,lang)} / ${unraidBytes(v.alloc,lang)}`,'detail'));}}
  static getConfigElement(){return document.createElement('busch-unraid-vm-usage-card-editor');}
  static getStubConfig(){return {type:'custom:busch-unraid-vm-usage-card'};}
