@@ -40,7 +40,13 @@ function unraidAttrappe({ gpu = true, fans = true, parity = false, zweiterServer
     // deaktiviert (z. B. vom Nutzer abgeschaltet): im Register, ohne Zustand
     ent('sensor.tower_load_5', 'load_5', 'srv', undefined)];
   if (gpu) list.push(ent('sensor.gpu_util', 'gpu_util_0', 'srv', 19), ent('sensor.gpu_vram', 'gpu_vram_0', 'srv', 9), ent('sensor.gpu_temp', 'gpu_temp_0', 'srv', 52), ent('sensor.gpu_power', 'gpu_power_0', 'srv', 78), ent('sensor.gpu_fan', 'gpu_fan_0', 'srv', 31));
-  if (fans) list.push(ent('sensor.fan4', 'fan_nct6798_fan4_rpm', 'srv', 922, { label: 'FAN 4' }), ent('sensor.fan6', 'fan_nct6798_fan6_rpm', 'srv', 4821, { label: 'FAN 6' }), ent('sensor.fan6p', 'fan_nct6798_fan6_percent', 'srv', 100, { label: 'FAN 6' }));
+  // Lüfter wie FAN_RPM/FAN_PERCENT (has_entity_name, de: „Lüfter {label} Drehzahl“ / „Lüfter {label} PWM-Ansteuerung“, label = Chiplabel oder Kanalnummer);
+  // Attribute aus _fan_attributes: chip, channel, pwm, pwm_mode — KEIN label. fan4 ohne PWM-Steuerung hat keinen _percent-Sensor.
+  // Lüfter mit 0 U/min legt unraid_ssh deaktiviert an (fehlen hier also).
+  if (fans) list.push(ent('sensor.fan4', 'fan_nct6798_isa_0290_fan4_rpm', 'srv', 922, { chip: 'nct6798-isa-0290', channel: 'fan4', pwm: null, pwm_mode: null, friendly_name: 'Tower Lüfter 4 Drehzahl' }),
+    ent('sensor.fan6', 'fan_nct6798_isa_0290_fan6_rpm', 'srv', 4821, { chip: 'nct6798-isa-0290', channel: 'fan6', pwm: 255, pwm_mode: 'auto', friendly_name: 'Tower Lüfter FAN 6 Drehzahl' }),
+    ent('sensor.fan6p', 'fan_nct6798_isa_0290_fan6_percent', 'srv', 100, { chip: 'nct6798-isa-0290', channel: 'fan6', pwm: 255, pwm_mode: 'auto', friendly_name: 'Tower Lüfter FAN 6 PWM-Ansteuerung' }),
+    ent('sensor.fan1', 'fan_nct6798_isa_0290_fan1_rpm', 'srv', undefined));
   if (parity) list.push(ent('sensor.parity_temp', 'disk_temp_parity', 'par', 40), ent('sensor.parity_status', 'disk_status_parity', 'par', 'ok'));
   if (zweiterServer) {
     devices.set(...geraet('srv2', 'Backup', 'Unraid', 'e2'));

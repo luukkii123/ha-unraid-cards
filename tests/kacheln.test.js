@@ -128,3 +128,20 @@ test('Array: Boot abschaltbar, Leerzustand, Editor', () => {
   const core = unraidAttrappe(); for (const [id, d] of core.devices) if (/disk$/.test(d.model)) core.devices.delete(id); assert.match(rendere(BuschUnraidArrayCard, core).shadowRoot.textContent, /Keine Platten gefunden/);
   const e = new BuschUnraidArrayCardEditor(); e.hass = { locale: { language: 'de' } }; e.setConfig({ type: 'custom:busch-unraid-array-card' }); const form = e.querySelector('ha-form'); assert.deepEqual(form.schema.map(s => s.name), ['device_id', 'title', 'show_boot']); assert.equal(form.data.show_boot, true); assert.equal(form.computeLabel({ name: 'show_boot' }), 'Bootgerät zeigen');
 });
+// Task 10: Parität und Airflow.
+test('Parität: ohne Paritätsplatte', () => { const { BuschUnraidParityCard } = ladeKarte(['BuschUnraidParityCard']); assert.match(rendere(BuschUnraidParityCard, unraidAttrappe()).shadowRoot.textContent, /Keine Paritätsplatte/); });
+test('Parität: Prüfung läuft', () => { const { BuschUnraidParityCard } = ladeKarte(['BuschUnraidParityCard']); const txt = rendere(BuschUnraidParityCard, unraidAttrappe({ parity: true })).shadowRoot.textContent; assert.match(txt, /Prüfung läuft/); assert.match(txt, /12,5 %/); assert.match(txt, /Fehler.*0/s); });
+test('Parität: Fortschritt unknown ergibt – statt NaN, ruhend ohne Balken', () => {
+  const { BuschUnraidParityCard } = ladeKarte(['BuschUnraidParityCard']); const core = unraidAttrappe({ parity: true }); core.entities.get('sensor.tower_parity_progress').state = 'unknown';
+  let k = rendere(BuschUnraidParityCard, core); assert.doesNotMatch(k.shadowRoot.textContent, /NaN/); assert.equal(k.shadowRoot.querySelector('.bar').getAttribute('aria-valuetext'), '–');
+  core.entities.get('binary_sensor.tower_parity_running').state = 'off'; k = rendere(BuschUnraidParityCard, core); assert.match(k.shadowRoot.textContent, /Keine Prüfung aktiv/); assert.equal(k.shadowRoot.querySelector('.bar'), null);
+});
+test('Airflow: Lüfter mit U/min und Leerzustand', () => { const { BuschUnraidAirflowCard } = ladeKarte(['BuschUnraidAirflowCard']); const k = rendere(BuschUnraidAirflowCard, unraidAttrappe()); const txt = k.shadowRoot.textContent; assert.match(txt, /FAN 6/); assert.match(txt, /4\.821 U\/min/); assert.match(txt, /100 %/); assert.match(txt, /2 Lüfter/); assert.match(rendere(BuschUnraidAirflowCard, unraidAttrappe({ fans: false })).shadowRoot.textContent, /Keine Lüfter/); });
+test('Airflow: Name aus friendly_name ohne Gerät, Stufe nur mit PWM, hide_idle nur bei 0 U/min', () => {
+  const { BuschUnraidAirflowCard } = ladeKarte(['BuschUnraidAirflowCard']); const core = unraidAttrappe();
+  const zellen = k => [...k.shadowRoot.querySelectorAll('.cell')].map(c => [c.querySelector('.cell-name').textContent, c.querySelector('.cell-value').textContent]);
+  assert.deepEqual(zellen(rendere(BuschUnraidAirflowCard, core)), [['Lüfter 4 Drehzahl', '922 U/min'], ['Lüfter FAN 6 Drehzahl', '4.821 U/min · 100 %']]);
+  core.entities.get('sensor.fan4').state = '0'; core.entities.get('sensor.fan6').state = 'unavailable';
+  assert.deepEqual(zellen(rendere(BuschUnraidAirflowCard, core, { hide_idle: true })).map(z => z[0]), ['Lüfter FAN 6 Drehzahl']); assert.equal(zellen(rendere(BuschUnraidAirflowCard, core)).length, 2);
+});
+test('Airflow-Editor: Schema und Texte', () => { const { BuschUnraidAirflowCardEditor } = ladeKarte(['BuschUnraidAirflowCardEditor']); const e = new BuschUnraidAirflowCardEditor(); e.hass = { locale: { language: 'de' } }; e.setConfig({ type: 'custom:busch-unraid-airflow-card' }); const form = e.querySelector('ha-form'); assert.deepEqual(form.schema.map(s => s.name), ['device_id', 'title', 'hide_idle']); assert.equal(form.data.hide_idle, false); assert.equal(form.computeLabel({ name: 'hide_idle' }), 'Stehende Lüfter ausblenden'); });
