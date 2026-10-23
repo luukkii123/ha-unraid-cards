@@ -3,7 +3,7 @@
 // Selektoren: Tagname (`button`, `td`), Klasse (`.x`, `.x:pseudo`) und
 // Attribut (`[data-focus-key="x"]`, wirkt auf `dataset` und Attribute).
 class Element {
-  constructor(tag = 'div') { this.tagName = String(tag).toUpperCase(); this.childNodes = []; this.listeners = {}; this.attributes = {}; this.dataset = {}; this.style = {}; this.className = ''; this.title = ''; this._text = ''; this.isConnected = false; }
+  constructor(tag = 'div') { this.tagName = String(tag).toUpperCase(); this.childNodes = []; this.listeners = {}; this.attributes = {}; this.dataset = {}; this.style = {}; this.className = ''; this.title = ''; this._text = ''; this.isConnected = false; this.nodeType = 1; }
   attachShadow() { this.shadowRoot = new Element('#shadow'); return this.shadowRoot; }
   set textContent(v) { this._text = String(v); this.childNodes = []; }
   get textContent() { return this._text + this.childNodes.map((n) => n.textContent).join(''); }
@@ -94,4 +94,17 @@ function domMitHistory() {
   return umgebung;
 }
 
-module.exports = { Element, dokument, domMitHistory };
+/**
+ * Eine `Date`-Klasse mit fester Uhr: `Date.now()` und `new Date()` ohne
+ * Argument liefern `iso`; mit Argumenten verhält sie sich wie `Date`.
+ * Für die Sandbox von `ladeKarte` als Zusatz `{ Date: festesDatum(iso) }`.
+ */
+function festesDatum(iso) {
+  const fest = Date.parse(iso);
+  return class FestesDatum extends Date {
+    constructor(...args) { if (args.length) super(...args); else super(fest); }
+    static now() { return fest; }
+  };
+}
+
+module.exports = { Element, dokument, domMitHistory, festesDatum };

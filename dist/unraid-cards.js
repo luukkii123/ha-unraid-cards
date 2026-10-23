@@ -1506,7 +1506,8 @@ const UNRAID_TILE_STYLE=BUSCH_UNRAID_STYLE+`
 .dot-row{display:inline-flex;align-items:center;gap:6px;min-width:0}.dot-text{overflow-wrap:anywhere;min-width:0}.dot{width:10px;height:10px;border-radius:50%;background:var(--secondary-text-color)}
 .dot.sem-ok{background:var(--success-color)}.dot.sem-warning{background:var(--warning-color)}.dot.sem-error{background:var(--error-color)}
 @container (max-width: 420px){.table thead{display:none}.table tr{display:grid;padding:6px 0;border-bottom:1px solid var(--divider-color)}.table td{display:flex;gap:8px}.table td::before{content:attr(data-label);color:var(--secondary-text-color);min-width:40%}}
-@media (prefers-reduced-motion: reduce){*{transition:none!important;animation:none!important}}`;
+@media (prefers-reduced-motion: reduce){*{transition:none!important;animation:none!important}}
+.clock{font-size:40px;line-height:1.1;margin:8px 0 2px}`;
 class BuschUnraidTile extends HTMLElement {
  constructor(){super();this.attachShadow({mode:'open'});this._config={};this._eingeklappt=false;this._busy=false;this._error=null;}
  static get kachel(){return 'tile';}
@@ -1586,3 +1587,41 @@ class BuschUnraidConfirm extends HTMLElement {
 }
 function unraidBestaetigen(titel,text,aktion,gefahr){return BuschUnraidConfirm.frage({titel,text,aktion,gefahr});}
 if(!customElements.get?.('busch-unraid-confirm'))customElements.define('busch-unraid-confirm',BuschUnraidConfirm);
+
+/* === Kacheln === */
+// Gemeinsamer Editor aller Kacheln: `ha-form` mit Schema und Texten der Kachel
+// (`feld`/`feld_helper`), wie `BuschUnraidBaseEditor`; Echo-Schutz aus BuschUI.EditorBase.
+class BuschUnraidTileEditor extends BuschEditorBase {
+ get _schema(){return [];}get _texte(){return {de:{},en:{}};}get _defaults(){return {};}
+ setConfig(config){if(!this._acceptConfig(config,buschUnraidConfig))return;this._render();}
+ set hass(hass){this._hass=hass;this._render();}
+ get hass(){return this._hass;}
+ _render(){if(!this._config||!this._hass)return;const t=buschTexte(this._texte,this._hass);
+  if(!this._form){this._form=BuschUI.ha.form();this._form.addEventListener('value-changed',event=>{event.stopPropagation();this._publishConfig(buschUnraidConfig({...this._config,...event.detail.value}));this._form.data={...this._defaults,...this._config};});this.appendChild(this._form);}
+  this._form.hass=this._hass;this._form.data={...this._defaults,...this._config};this._form.schema=buschSchemaMitTexten(this._schema,t);this._form.computeLabel=s=>t[s.name]||s.name;this._form.computeHelper=s=>t[s.name+'_helper']||'';
+ }
+}
+const UNRAID_ARRAY_STATUS={de:{started:'Gestartet',stopped:'Gestoppt',starting:'Startet',stopping:'Stoppt'},en:{started:'Started',stopped:'Stopped',starting:'Starting',stopping:'Stopping'}};
+function unraidDauer(sek,t){if(typeof sek!=='number'||!Number.isFinite(sek)||sek<0)return '–';const d=Math.floor(sek/86400),h=Math.floor(sek%86400/3600),m=Math.floor(sek%3600/60);return [[d,t.day,t.days],[h,t.hour,t.hours],[m,t.minute,t.minutes]].filter(([n],i)=>n||i===2).map(([n,e,v])=>`${n} ${n===1?e:v}`).join(', ');}
+const SCHEMA_BUSCH_UNRAID_SERVER_CARD=[{name:'device_id',selector:{device:{integration:'unraid_ssh',model:'Unraid'}}},{name:'title',selector:{text:{}}},{name:'show_clock',selector:{boolean:{}}}];
+const TEXTE_BUSCH_UNRAID_SERVER_CARD={de:{...UNRAID_TILE_TEXTE.de,tile:'Server',show_clock:'Uhrzeit zeigen',show_clock_helper:'Zeigt Uhrzeit und Datum in der Zeitzone von Home Assistant. Vorgabe an.',uptime:'Laufzeit',array:'Array',mover:'Mover',mover_on:'läuft',mover_off:'ruht',day:'Tag',days:'Tage',hour:'Stunde',hours:'Stunden',minute:'Minute',minutes:'Minuten',version:'Unraid-Version'},
+ en:{...UNRAID_TILE_TEXTE.en,tile:'Server',show_clock:'Show clock',show_clock_helper:'Shows time and date in the Home Assistant time zone. Default on.',uptime:'Uptime',array:'Array',mover:'Mover',mover_on:'running',mover_off:'idle',day:'day',days:'days',hour:'hour',hours:'hours',minute:'minute',minutes:'minutes',version:'Unraid version'}};
+class BuschUnraidServerCard extends BuschUnraidTile{
+ static get kachel(){return 'server';}get _texte(){return TEXTE_BUSCH_UNRAID_SERVER_CARD;}get _vorgaben(){return {device_id:'',title:'',show_clock:true};}
+ // Der Uptime-Sensor von unraid_ssh ist ein Zeitstempel (Boot-Zeit, ISO); die Laufzeit rechnet die Karte selbst.
+ _modell(core,config){const s=unraidServer(core,config);if(!s.server)return {fehler:s.fehler};const up=s.wert('uptime'),boot=up&&!['unavailable','unknown'].includes(up.state)?Date.parse(up.state):NaN;
+  return {name:s.server.name_by_user||s.server.name,version:s.server.sw_version||'',uptime:Number.isFinite(boot)?Math.max(0,(Date.now()-boot)/1000):null,array:s.wert('array_state')?.state||null,mover:s.wert('mover_active')?.state||null};}
+ _kopf(m,t){return {icon:'mdi:server',titel:m.name||t.tile,untertitel:m.version?`${t.version} ${m.version}`:undefined};}
+ _inhalt(body,m,t){const lang=String(this._hass?.locale?.language||'en'),tz=this._hass?.config?.time_zone;
+  if(this._config.show_clock){const now=new Date();body.appendChild(buschUnraidNode('div',new Intl.DateTimeFormat(lang,{hour:'2-digit',minute:'2-digit',timeZone:tz}).format(now),'clock'));body.appendChild(buschUnraidNode('p',new Intl.DateTimeFormat(lang,{weekday:'long',day:'2-digit',month:'2-digit',year:'numeric',timeZoneName:'short',timeZone:tz}).format(now),'detail'));}
+  const st=UNRAID_ARRAY_STATUS[lang.startsWith('de')?'de':'en'],arr=m.array&&!['unavailable','unknown'].includes(m.array)?m.array:null;
+  body.appendChild(unraidTabelle([{key:'k',label:''},{key:'v',label:''}],[{k:t.uptime,v:unraidDauer(m.uptime,t)},{k:t.array,v:unraidPunkt(arr==='started'?'ok':arr?'warning':'unknown',arr?(st[arr]||arr):t.unavailable)},{k:t.mover,v:m.mover==='on'?t.mover_on:m.mover==='off'?t.mover_off:t.unavailable}],{leer:''}));}
+ connectedCallback(){super.connectedCallback();clearInterval(this._uhr);this._uhr=setInterval(()=>this._config.show_clock&&!this._eingeklappt&&this._render(),30000);}
+ disconnectedCallback(){super.disconnectedCallback();clearInterval(this._uhr);this._uhr=null;}
+ static getConfigElement(){return document.createElement('busch-unraid-server-card-editor');}
+ static getStubConfig(){return {type:'custom:busch-unraid-server-card'};}
+}
+class BuschUnraidServerCardEditor extends BuschUnraidTileEditor{get _schema(){return SCHEMA_BUSCH_UNRAID_SERVER_CARD;}get _texte(){return TEXTE_BUSCH_UNRAID_SERVER_CARD;}get _defaults(){return new BuschUnraidServerCard()._vorgaben;}}
+// [tag, Karte, Editor, [Name, Beschreibung] de, … en] — Vertragstest und Registrierung laufen über diese Liste.
+const UNRAID_KACHELN=[['busch-unraid-server-card',BuschUnraidServerCard,BuschUnraidServerCardEditor,['Unraid: Server','Name, Uhrzeit, Laufzeit und Array-Zustand eines Unraid-Servers.'],['Unraid: Server','Name, clock, uptime and array state of an Unraid server.']]];
+for(const [tag,karte,editor,de,en] of UNRAID_KACHELN){if(!customElements.get?.(tag))customElements.define(tag,karte);if(!customElements.get?.(tag+'-editor'))customElements.define(tag+'-editor',editor);window.customCards=window.customCards||[];const deutsch=typeof navigator!=='undefined'&&String(navigator.language||'').startsWith('de');if(!window.customCards.some(c=>c.type===tag))window.customCards.push({type:tag,name:deutsch?de[0]:en[0],description:deutsch?de[1]:en[1],preview:true,documentationURL:'https://github.com/luukkii123/ha-unraid-cards#'+tag});}
