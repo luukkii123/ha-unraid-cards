@@ -1,6 +1,13 @@
 """Synthetic UPDATED family gate; no HA access or real service calls."""
 import json,pathlib,sys
 from playwright.sync_api import sync_playwright
+# Bestaetigungen laufen ueber den eigenen Dialog busch-unraid-confirm (R04), nicht mehr ueber window.confirm:
+# Klick ausloesen, auf den Dialog warten, Abbrechen (erster) oder Bestaetigen (letzter Knopf) druecken.
+def antworte(page,klick,annehmen):
+ klick();page.wait_for_selector('[role=alertdialog]',timeout=5000)
+ text=page.evaluate("()=>document.querySelector('busch-unraid-confirm').shadowRoot.querySelector('p').textContent")
+ page.locator('[role=alertdialog] .buttons button:'+('last' if annehmen else 'first')+'-child').click()
+ page.wait_for_function("()=>!document.querySelector('busch-unraid-confirm')");page.wait_for_timeout(150);return text
 source=pathlib.Path(sys.argv[1]).read_text()
 out=pathlib.Path(sys.argv[2]);out.mkdir(parents=True,exist_ok=True)
 fixture='''
@@ -45,11 +52,11 @@ with sync_playwright() as p:
       assert badge==('Update läuft · 42,5 %' if scenario=='updating-percent' else 'Update läuft'),badge
       assert page.locator('[data-test-card]').get_by_role('button',name='Update läuft',exact=True).first.is_disabled()
      if scenario=='normal' and width==320 and not dark:
-      page.once('dialog',lambda d:d.dismiss());page.get_by_role('button',name='Herunterfahren' if kind=='vm' else 'Stoppen',exact=True).first.click();assert page.evaluate('calls.length')==0
-      page.once('dialog',lambda d:d.accept());page.get_by_role('button',name='Neu starten',exact=True).first.click();assert page.evaluate('calls[0][0]')=='button'
+      antworte(page,lambda:page.get_by_role('button',name='Herunterfahren' if kind=='vm' else 'Stoppen',exact=True).first.click(),False);assert page.evaluate('calls.length')==0
+      antworte(page,lambda:page.get_by_role('button',name='Neu starten',exact=True).first.click(),True);assert page.evaluate('calls[0][0]')=='button'
       if kind=='vm':
-       page.once('dialog',lambda d:d.dismiss());page.get_by_role('button',name='Sofort ausschalten',exact=True).click();assert page.evaluate('calls.length')==1
-       page.once('dialog',lambda d:d.accept());page.get_by_role('button',name='Sofort ausschalten',exact=True).click();assert page.evaluate("calls[1][0]==='button'&&calls[1][1]==='press'&&calls[1][2].entity_id==='button.vm_Guest_force_stop'")
+       antworte(page,lambda:page.locator('[data-test-card]').get_by_role('button',name='Sofort ausschalten',exact=True).click(),False);assert page.evaluate('calls.length')==1
+       antworte(page,lambda:page.locator('[data-test-card]').get_by_role('button',name='Sofort ausschalten',exact=True).click(),True);assert page.evaluate("calls[1][0]==='button'&&calls[1][1]==='press'&&calls[1][2].entity_id==='button.vm_Guest_force_stop'")
       detail=[];page.evaluate("document.querySelector('[data-test-card]').addEventListener('hass-more-info',e=>window.detail=e.detail)");page.get_by_role('button',name='Details',exact=True).first.click();assert page.evaluate('detail.entityId').startswith('switch.')
      file=f'{kind}-{scenario}-{width}-'+('dark' if dark else 'light')+'.png';page.locator('[data-test-card]').screenshot(path=str(out/file));report.append({'kind':kind,'scenario':scenario,'width':width,'dark':dark,'failures':findings,'screenshot':file})
  browser.close()

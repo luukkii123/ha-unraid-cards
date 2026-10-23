@@ -1,5 +1,12 @@
 import json,pathlib,sys
 from playwright.sync_api import sync_playwright
+# Bestaetigungen laufen ueber den eigenen Dialog busch-unraid-confirm (R04), nicht mehr ueber window.confirm:
+# Klick ausloesen, auf den Dialog warten, Abbrechen (erster) oder Bestaetigen (letzter Knopf) druecken.
+def antworte(page,klick,annehmen):
+ klick();page.wait_for_selector('[role=alertdialog]',timeout=5000)
+ text=page.evaluate("()=>document.querySelector('busch-unraid-confirm').shadowRoot.querySelector('p').textContent")
+ page.locator('[role=alertdialog] .buttons button:'+('last' if annehmen else 'first')+'-child').click()
+ page.wait_for_function("()=>!document.querySelector('busch-unraid-confirm')");page.wait_for_timeout(150);return text
 out=pathlib.Path(sys.argv[2] if len(sys.argv)>2 else '/tmp/unraid-browser');out.mkdir(exist_ok=True)
 source=pathlib.Path(sys.argv[1]).read_text()
 fixture="""
@@ -36,11 +43,9 @@ with sync_playwright() as p:
      file=f'{backend}-{kind}-{width}-'+('dark' if dark else 'light')+'.png';page.locator('busch-unraid-'+kind+'-card').screenshot(path=str(out/file))
      report.append({'backend':backend,'kind':kind,'width':width,'dark':dark,'failures':failures,**({'mobile':mobile} if backend=='metadata' and not dark and width==393 and kind=='stack' else {})})
      if backend=='metadata' and not dark and width==320 and kind=='stack':
-      page.once('dialog',lambda dialog:dialog.dismiss())
-      page.get_by_role('button',name='Stoppen',exact=True).first.click()
+      antworte(page,lambda:page.get_by_role('button',name='Stoppen',exact=True).first.click(),False)
       assert page.evaluate('window.unraidCalls.length')==0
-      page.once('dialog',lambda dialog:dialog.accept())
-      page.get_by_role('button',name='Neu starten',exact=True).first.click()
+      antworte(page,lambda:page.get_by_role('button',name='Neu starten',exact=True).first.click(),True)
       assert page.evaluate('window.unraidCalls[0][0]')=='button'
       assert page.evaluate('window.unraidCalls[0][1]')=='press'
  page.evaluate("""()=>{for(const [key,value] of [['--primary-text-color','#212121'],['--secondary-text-color','#555'],['--card-background-color','#fff'],['--secondary-background-color','#eef5fb'],['--divider-color','#dbe4ed'],['--success-color','#16864b'],['--warning-color','#a76900']])document.documentElement.style.setProperty(key,value);core.entities=new Map(JSON.parse(JSON.stringify(window.unraidModernRows)));for(let i=3;i<16;i++)for(const domain of ['switch','button','update']){const entry=structuredClone(core.entities.get(domain+'.renamed_0'));entry.entity_id=domain+'.renamed_'+i;entry.attributes.container_key='key'+i;entry.attributes.container_name='Anwendungscontainer mit einem sehr langen Namen '+i;core.entities.set(entry.entity_id,entry);}document.querySelectorAll('busch-unraid-stack-card,busch-unraid-container-card').forEach(node=>node.remove());const card=document.createElement('busch-unraid-stack-card');card.style.width='360px';card.setConfig({device_id:'stack',start_expanded:true});card.hass={locale:{language:'de'}};document.body.append(card)}""")

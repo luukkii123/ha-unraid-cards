@@ -195,11 +195,14 @@ def main():
         e2e["fokus_zurueck"] = page.evaluate("()=>document.querySelector('busch-unraid-docker-card').shadowRoot.activeElement?.dataset.key")
         # Stoppen mit Abbrechen → kein Aufruf; mit Bestätigen → switch.turn_off
         for antwort in ("dismiss", "accept"):
-            dialoge = []
-            page.once("dialog", lambda d, a=antwort: (dialoge.append(d.message), getattr(d, a)()))
+            # Bestätigung über den eigenen Dialog busch-unraid-confirm (R04), nicht mehr window.confirm.
             kachel(page, "stack:media").click()
             page.wait_for_timeout(150)
             page.locator("busch-unraid-docker-menu .item[data-action='stop']").click()
+            page.wait_for_selector("[role=alertdialog]", timeout=5000)
+            dialoge = [page.evaluate("()=>document.querySelector('busch-unraid-confirm').shadowRoot.querySelector('p').textContent")]
+            page.locator("[role=alertdialog] .buttons button:" + ("last" if antwort == "accept" else "first") + "-child").click()
+            page.wait_for_function("()=>!document.querySelector('busch-unraid-confirm')")
             page.wait_for_timeout(500)
             e2e["stop_" + antwort] = {"frage": dialoge, "aufrufe": page.evaluate("JSON.parse(JSON.stringify(window.calls))")}
         page.evaluate("window.calls=[]")

@@ -109,10 +109,35 @@ docker run --rm --network none \
 | `unraid-queue.py` | Update-Warteschlange und Fortschritt |
 | `unraid-updated-family.py` | Stack/Container/VM im Kachelstil |
 | `unraid-docker.py` | Docker-Übersicht, Menü, Bestätigung |
+| `kacheln.py` | neun Kacheln und VM-Liste bei 320/480/960 px hell/dunkel, Leerzustände, Bestätigungsdialog (Regel 2, R04), Kontrast |
 | `live-ha-unraid-family.py` | echte `ha-form`-Editoren in einem laufenden Home Assistant; braucht eine Zugangsdatei (`base_url`, `token`) außerhalb des Repos, die nie hineingehört |
 
 Ergebnisse landen in `docs/render/ergebnis/` (nicht im Repo).
 
 ## Geprüft
 
-<!-- Wird mit dem Abnahmelauf vor dem ersten Tag gefüllt. -->
+**23.10.2026 – 0.1.0, Abnahme vor dem ersten Tag (`main` 5510abb, Todo #564):**
+`node --check dist/unraid-cards.js` grün; `ui-regeln-pruefen.py` alle Repos
+0 Verstöße. Zentraler Runner `karten-alle.sh --repo ha-unraid-cards`
+(Lauf `karten-20261023-152420-982b56`): Node 188/188, `unraid-queue` und neues
+`kacheln` grün; `unraid-cards`, `unraid-updated-family` und `unraid-docker`
+rot, weil ihre E2E-Teile noch den nativen `window.confirm` beantworteten,
+den die Karten seit dem eigenen Bestätigungsdialog `busch-unraid-confirm`
+(R04) nicht mehr öffnen — Fehler der Prüfskripte, nicht des Kartencodes.
+Skripte auf den eigenen Dialog umgestellt (Abbrechen = erster, Bestätigen =
+letzter Knopf), nur diese drei Schritte wiederholt: grün
+(`karten-20261023-152839-bab508` 41 Bilder, `karten-20261023-152905-71a813`
+180 Bilder, `karten-20261023-152929-8c74a4` 35 Bilder).
+`docs/render/kacheln.py` (neu; Daten = `tests/attrappe.js` als JSON): 14 Fälle
+(9 Kacheln, VM-Liste, VM-Liste „alle“, Leerzustände GPU/Luftstrom/Parität) ×
+320/480/960 px × hell/dunkel, 1102 Textprüfungen, 0 Überlauf/außerhalb/
+Überlappung, 18 gewollt gekürzt; Selbsttest schlägt an. Bestätigungsdialog
+bei 320/480/960 px: Escape, Zurück, Abbrechen, obenauf bestanden, Scrim-Klick
+lässt ihn offen (R04); unter 450 px Blatt mit 96 % Höhe, darüber 320 px
+Inhaltsbreite; Abbrechen ruft nichts auf, Bestätigen genau
+`switch.turn_off switch.win`; kein verwaister Verlaufseintrag. Touchziele
+≥ 44 px, kein horizontales Scrollen, 0 Seiten-/Konsolenfehler, keine fremden
+Anfragen. Kontrast: nichts unter 2:1; Hinweise unter 4,5:1 nur für Knopfschrift
+in `--primary-color` bzw. `--error-color` des Attrappen-Themas (Themasache).
+Screenshots gesichtet (je Karte 320 px dunkel und 960 px hell, Dialog 320/960
+in beiden Themen).
