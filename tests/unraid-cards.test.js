@@ -16,21 +16,7 @@ function load(){
  context.unraidBestaetigen=async()=>true;
  return {...vm.runInContext('({buschMediaResolve:typeof buschMediaResolve==="undefined"?null:buschMediaResolve,buschMedia:typeof buschMedia==="undefined"?null:buschMedia,BuschUnraidVmCard:typeof BuschUnraidVmCard==="undefined"?null:BuschUnraidVmCard,BuschUnraidVmEditor:typeof BuschUnraidVmEditor==="undefined"?null:BuschUnraidVmEditor,buschUnraidModel,buschUnraidDevices,buschUnraidSchema,buschUiStatusSemantic,BUSCH_UNRAID_TEXT,BUSCH_UNRAID_DEFAULTS,BuschUnraidStackCard,BuschUnraidContainerCard,BuschUnraidStackEditor})',context),context,registered};
 }
-function fixture(){
- const core={devices:new Map(),entities:new Map(),getDeviceEntities(id){return [...this.entities.values()].filter(e=>e.device_id===id);}};
- core.devices.set('stack',{id:'stack',name:'Media',model:'Compose stack',config_entries:['instance']});
- core.devices.set('solo',{id:'solo',name:'Standalone',model:'Docker container',config_entries:['instance']});
- const add=(id,device,role,key,state='off',extra={})=>core.entities.set(id,{entity_id:id,device_id:device,platform:'unraid_ssh',config_entry_id:'instance',domain:id.split('.')[0],state,attributes:{kind:role.startsWith('stack')?'stack':'container',role:role.endsWith('restart')?'restart':role.endsWith('update')?'update':'control',config_entry_id:'instance',container_key:key,stack_key:device==='stack'?'media':null,container_name:key,...extra},registry:{}});
- add('switch.renamed','stack','container','web','on');
- add('switch.other','stack','container','db','off');
- add('switch.stack','stack','stack',null,'on');
- add('button.native','stack','container_restart','web','unknown');
- add('button.stack','stack','stack_restart',null,'unknown');
- add('update.correct','stack','container_update','web','on');
- add('update.wrong','stack','container_update','db','off');
- add('switch.solo','solo','container','solo','on');
- return {core,add};
-}
+const {familienFixture:fixture}=require('./familie-attrappe.js');
 test('both Unraid cards and editors register with HA discovery metadata',()=>{const l=load();for(const type of ['busch-unraid-stack-card','busch-unraid-container-card']){assert.ok(l.registered.has(type));assert.ok(l.registered.has(type+'-editor'));assert.ok(l.context.window.customCards.find(c=>c.type===type&&c.preview&&c.documentationURL));}});
 test('Unraid cards let Sections size their dynamic content naturally',()=>{
  const l=load(),stack=new l.BuschUnraidStackCard(),container=new l.BuschUnraidContainerCard();
@@ -141,3 +127,8 @@ test('update all dispatches matched native batch button and blocks repeated busy
 });
 test('offener Bestätigungsdialog: zweiter _action-Aufruf öffnet keinen zweiten, Dienst genau einmal',async()=>{const l=load(),calls=[],card=new l.BuschUnraidStackCard();card._render=()=>{};card._config={...l.BUSCH_UNRAID_DEFAULTS,confirm_stop:true};card._hass={locale:{language:'de'},callService:async(...args)=>calls.push(args)};const row={name:'Example',switch:{entity_id:'switch.actual',state:'on'},restart:{entity_id:'button.real',state:'unknown'}};let offen=0,loesen;l.context.unraidBestaetigen=()=>{offen++;return new Promise(r=>{loesen=r;});};const erster=card._action('stop',row);await card._action('stop',row);await card._action('restart',row);assert.equal(offen,1,'nur ein Dialog');assert.equal(calls.length,0);loesen(true);await erster;assert.equal(calls.length,1);assert.equal(calls[0][1],'turn_off');assert.equal(card._confirming,false);});
 test('nach der Bestätigung wird die Verfügbarkeit frisch geprüft',async()=>{const l=load(),calls=[],card=new l.BuschUnraidStackCard();card._render=()=>{};card._config={...l.BUSCH_UNRAID_DEFAULTS,confirm_stop:true};const states={'switch.actual':{state:'on'}};card._hass={states,locale:{language:'de'},callService:async(...args)=>calls.push(args)};const row={name:'Example',switch:{entity_id:'switch.actual',state:'on'}};l.context.unraidBestaetigen=async()=>{states['switch.actual']={state:'unavailable'};return true;};await card._action('stop',row);assert.equal(calls.length,0,'inzwischen nicht verfügbar');l.context.unraidBestaetigen=async()=>{states['switch.actual']={state:'on'};return true;};await card._action('stop',row);assert.equal(calls.length,1);l.context.unraidBestaetigen=async()=>{throw Error('weg');};await assert.rejects(card._action('stop',row));assert.equal(card._confirming,false,'finally gibt frei');});
+
+// Task 13 (#564): Kachel-Kopf für Stack und Container; alte Klassen bleiben für Fokuslogik und Renderskripte.
+const {familienKarte,familienFixture,ladeFamilie}=require('./familie-attrappe.js');
+test('Familie: Kopf nutzt Kachel-Klassen und behält die alten',()=>{for(const kind of ['stack','container']){const k=familienKarte(kind),r=k.shadowRoot;const head=r.querySelector('.tile-head');assert.ok(head,kind);assert.ok(/\bheader\b/.test(head.className),kind+' header bleibt');const title=r.querySelector('.tile-title');assert.ok(title,kind);assert.equal(title.tagName,'H2');const icon=r.querySelector('.tile-icon');assert.ok(icon,kind);assert.ok(/\bcard-icon\b/.test(icon.className),kind+' card-icon bleibt');assert.ok(r.querySelector('.tile-sub'),kind+' Untertitel');assert.ok(/\bdetail\b/.test(r.querySelector('.tile-sub').className),kind+' detail bleibt');assert.ok(head.childNodes.some(n=>/\bactions\b/.test(n.className)),kind+' .header > .actions');assert.match(r.childNodes[0].textContent,/\.tile-head\{/,kind+' Kachelstil');}});
+test('Familie: alle bisherigen Schlüssel stehen weiter im Schema',()=>{const l=ladeFamilie(),{core}=familienFixture(),namen=kind=>l.buschUnraidSchema(core,{device_id:'stack'},kind).map(f=>f.name);for(const n of ['title','device_id','switch_entity','layout','show_status','show_controls','show_updates','show_containers','state_filter','sort','start_expanded','show_restart','confirm_stop','confirm_restart','show_cpu','show_ram','debug','display_mode','image','icon'])assert.ok(namen('stack').includes(n),n);for(const n of ['container_key','update_entity','switch_entity','show_cpu','show_ram','debug'])assert.ok(namen('container').includes(n),n);for(const n of ['device_id','title','hide_stopped','sort','start_expanded','columns','confirm_stop','confirm_restart'])assert.ok(JSON.stringify(l.SCHEMA_BUSCH_UNRAID_DOCKER_CARD).includes(`"${n}"`),n);});

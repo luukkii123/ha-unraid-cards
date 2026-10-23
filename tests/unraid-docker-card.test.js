@@ -10,54 +10,9 @@ const fs = require('node:fs');
 const vm = require('node:vm');
 const path = require('node:path');
 
-const { Element, dokument } = require('./dom-attrappe.js');
+const { dockerFixture: fixture, BILD, ladeFamilie } = require('./familie-attrappe.js');
+const load = (language = 'de') => ladeFamilie({ language });
 
-function load(language = 'de') {
-  const source = fs.readFileSync(path.join(__dirname, '../dist/unraid-cards.js'), 'utf8');
-  const registered = new Map();
-  const document = dokument(registered), body = document.body;
-  const history = { stack: [null], get state() { return this.stack.at(-1); }, pushState(s) { this.stack.push(s); }, back() { this.stack.pop(); } };
-  const window = { customCards: [], innerWidth: 1000, innerHeight: 800, addEventListener() {}, removeEventListener() {}, scrollX: 0, scrollY: 0 };
-  const context = { performance, setTimeout, clearTimeout, HTMLElement: Element, customElements: { define: (k, v) => registered.set(k, v), get: (k) => registered.get(k) }, window, history, navigator: { language }, console, CustomEvent: class { constructor(type, init) { this.type = type; Object.assign(this, init); } }, document };
-  vm.createContext(context);
-  vm.runInContext(source, context);
-  context.unraidBestaetigen = async () => true; // Dialog im Test ersetzt: zugestimmt
-  const pick = vm.runInContext('({buschUnraidDockerModel,buschUnraidServers,buschUnraidSchema,BuschUnraidDockerCard,BuschUnraidDockerEditor,TEXTE_BUSCH_UNRAID_DOCKER_CARD,SCHEMA_BUSCH_UNRAID_DOCKER_CARD,BUSCH_UNRAID_DOCKER_DEFAULTS})', context);
-  return { ...pick, context, registered, body, history };
-}
-
-const BILD = (n) => `/api/unraid_ssh/icons/${n}.png`; // echte Integrationsform, kein Fake-Icon
-function fixture() {
-  const core = { devices: new Map(), entities: new Map(), getDeviceEntities(id) { return [...this.entities.values()].filter((e) => e.device_id === id); } };
-  core.devices.set('server', { id: 'server', name: 'Tower', model: 'Unraid', config_entries: ['entry'] });
-  core.devices.set('media', { id: 'media', name: 'Tower Stack media', model: 'Compose stack', config_entries: ['entry'] });
-  core.devices.set('tools', { id: 'tools', name: 'Tower Stack tools', model: 'Compose stack', config_entries: ['entry'] });
-  core.devices.set('solo', { id: 'solo', name: 'Tower webserver', model: 'Docker container', config_entries: ['entry'] });
-  core.devices.set('paused', { id: 'paused', name: 'Tower cache', model: 'Docker container', config_entries: ['entry'] });
-  core.devices.set('gone', { id: 'gone', name: 'Tower broken', model: 'Docker container', config_entries: ['entry'] });
-  core.devices.set('vm', { id: 'vm', name: 'Tower VM win', model: 'Virtual machine', config_entries: ['entry'] });
-  const ent = (id, device, state, attributes) => core.entities.set(id, { entity_id: id, device_id: device, platform: 'unraid_ssh', config_entry_id: 'entry', domain: id.split('.')[0], state, attributes: { config_entry_id: 'entry', ...attributes }, registry: {} });
-  ent('sensor.tower_cpu', 'server', '12', { kind: 'server', role: 'cpu' });
-  const container = (key, device, state, extra = {}) => {
-    const base = { kind: 'container', container_key: key, container_name: key, stack_name: extra.stack || null, container_state: extra.container_state || (state === 'on' ? 'running' : 'exited'), ...(extra.picture === false ? {} : { entity_picture: BILD(key) }) };
-    ent(`switch.${key}`, device, state, { ...base, role: 'control' });
-    if (extra.restart !== false) ent(`button.${key}_restart`, device, 'unknown', { ...base, role: 'restart' });
-    if (extra.update) ent(`update.${key}`, device, extra.update, { ...base, role: 'update' });
-  };
-  container('media', 'media', 'on', { stack: 'media', update: 'on' });
-  container('media-db', 'media', 'on', { stack: 'media', update: 'off' });
-  container('media-worker', 'media', 'off', { stack: 'media', picture: false });
-  ent('switch.stack_media', 'media', 'on', { kind: 'stack', role: 'control', stack_key: 'media', stack_name: 'media', running_containers: 2, total_containers: 3 });
-  ent('button.stack_media_restart', 'media', 'unknown', { kind: 'stack', role: 'restart', stack_key: 'media' });
-  ent('button.stack_media_update_all', 'media', 'unknown', { kind: 'stack', role: 'update_all', stack_key: 'media' });
-  container('tools-a', 'tools', 'off', { stack: 'tools', restart: false });
-  ent('switch.stack_tools', 'tools', 'off', { kind: 'stack', role: 'control', stack_key: 'tools', stack_name: 'tools', running_containers: 0, total_containers: 1 });
-  container('webserver-mit-einem-sehr-langen-namen-der-abgeschnitten-werden-muss', 'solo', 'on', { update: 'off' });
-  container('cache', 'paused', 'on', { container_state: 'paused', restart: false });
-  container('broken', 'gone', 'unavailable', { picture: false, restart: false });
-  ent('switch.vm_win', 'vm', 'on', { kind: 'vm', role: 'control', vm_key: 'win' });
-  return core;
-}
 const modell = (l, core, config = {}) => l.buschUnraidDockerModel(core, { ...l.BUSCH_UNRAID_DOCKER_DEFAULTS, device_id: 'server', ...config });
 
 test('gruppiert je Compose-Stack eine Kachel und je Einzelcontainer eine Kachel, ohne VMs', () => {
@@ -274,4 +229,52 @@ test('Unraid SSH 0.8.0: Anzeigename und Stackbild des Backends haben Vorrang', (
   assert.match(tile('container:media').querySelector('.tile-main').attributes['aria-label'], /In Media Center/);
   // Sortierung nach Anzeigename: „Media Center“ bleibt zwischen cache und tools
   same(card._lastModel.tiles.map((t) => t.name).slice(1, 4), ['cache', 'Media Center', 'tools']);
+});
+
+// Task 13 (#564): Kachel-Kopf mit gemerktem Einklappen; Menü schließt vor dem Bestätigungsdialog.
+const { dockerKarte, speicherAttrappe } = require('./familie-attrappe.js');
+test('Docker: Kopf nutzt Kachel-Klassen und Einklappen', () => {
+  const k = dockerKarte(), r = k.shadowRoot;
+  const head = r.querySelector('.tile-head');
+  assert.ok(head); assert.match(head.className, /\bheader\b/);
+  assert.equal(r.querySelector('.tile-title').tagName, 'H2');
+  assert.equal(r.querySelector('.tile-sub').textContent, '3 von 7 gestartet · Tower');
+  assert.ok(r.querySelector('.tile-body')); assert.ok(r.querySelector('.tile-body').querySelector('.grid'));
+  // Kopf-Icon ist KEIN .tile-icon: das Renderskript erwartet jedes .tile-icon in einer Rasterkachel.
+  assert.equal(head.querySelector('.tile-icon'), null); assert.ok(head.querySelector('.card-icon'));
+  const t = r.querySelector('[data-focus-key="toggle"]');
+  assert.equal(t.attributes['aria-expanded'], 'true'); assert.equal(t.attributes['aria-label'], 'Einklappen');
+  t.click();
+  assert.equal(k.shadowRoot.querySelector('.tile-body'), null);
+  assert.equal(k.shadowRoot.querySelector('.grid'), null);
+  const zu = k.shadowRoot.querySelector('[data-focus-key="toggle"]');
+  assert.equal(zu.attributes['aria-expanded'], 'false'); assert.equal(zu.focused, true, 'Fokus bleibt auf dem Schalter');
+  assert.equal(k.getCardSize(), 1);
+  zu.click(); assert.ok(k.shadowRoot.querySelector('.tile-body'));
+});
+
+test('Docker: Einklappen wird je Server und Titel gemerkt', () => {
+  const speicher = speicherAttrappe(), a = dockerKarte({ title: 'Apps' }, { speicher });
+  a.shadowRoot.querySelector('[data-focus-key="toggle"]').click();
+  assert.equal(speicher.daten.get('unraid-cards:docker:server:Apps'), '1');
+  const b = dockerKarte({ title: 'Apps' }, { speicher, l: a.l });
+  assert.equal(b.shadowRoot.querySelector('.tile-body'), null);
+  const c = dockerKarte({ title: 'Andere' }, { speicher, l: a.l });
+  assert.ok(c.shadowRoot.querySelector('.tile-body'));
+  // Ohne Speicher (privates Fenster): kein Fehler, startet ausgeklappt.
+  const d = dockerKarte({}, { speicher: { getItem() { throw Error('blockiert'); }, setItem() { throw Error('blockiert'); } } });
+  assert.ok(d.shadowRoot.querySelector('.tile-body'));
+  d.shadowRoot.querySelector('[data-focus-key="toggle"]').click();
+  assert.equal(d.shadowRoot.querySelector('.tile-body'), null);
+});
+
+test('Docker: Menü ist geschlossen, bevor der Bestätigungsdialog erscheint', async () => {
+  const k = dockerKarte(), l = k.l; let offenBeiDialog = null;
+  l.context.unraidBestaetigen = async () => { offenBeiDialog = l.body.childNodes.some((n) => n.tagName === 'BUSCH-UNRAID-DOCKER-MENU'); return true; };
+  k.shadowRoot.querySelectorAll('.tile-main').find((b) => b.dataset.key === 'stack:media').click();
+  const menu = l.body.childNodes.find((n) => n.tagName === 'BUSCH-UNRAID-DOCKER-MENU'); assert.ok(menu);
+  await menu.shadowRoot.querySelectorAll('.item').find((b) => b.dataset.action === 'stop').listeners.click[0]({ stopPropagation() {} });
+  await new Promise((r) => setTimeout(r, 0));
+  assert.equal(offenBeiDialog, false, 'Menü (z-index 100000) darf nicht über dem Dialog liegen');
+  assert.equal(k.calls.length, 1);
 });
