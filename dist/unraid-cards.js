@@ -565,7 +565,7 @@ class BuschCardsCore {
   watch(callback) { this._listeners.add(callback); return () => this._listeners.delete(callback); }
   retain(hass) { this.attach(hass); this.users++; let released = false; return () => { if (released) return; released = true; if (--this.users <= 0) this.dispose(); }; }
   query(spec) { return this.engine.query(spec); }
-  smartQuery(){throw new Error('smartQuery is not available in Unraid Cards');}
+  smartQuery(spec, scopeDeviceId) { this.smart ||= new BuschSmartQueries(this); return this.smart.query(spec, scopeDeviceId); }
   subscribe(query, callback) { return this.engine.subscribe(query, callback); }
   debugSnapshot() { return { ...this.metrics, entities: this.entities.size, devices: this.devices.size, registryRequests: { ...this.registry.requests }, errors: [...this.lastErrors.keys()] }; }
   dispose() {
@@ -580,6 +580,308 @@ function ensureBuschCore(requiredApiVersion = 1) {
   const core = globalThis[BUSCH_CORE_KEY] || (globalThis[BUSCH_CORE_KEY] = new BuschCardsCore());
   if (Number(String(core.apiVersion).split(".")[0]) !== major) throw new Error("Busch Cards Core API mismatch / inkompatible API-Version.");
   return core;
+}
+
+// auto-entities 1.16.1 compatibility semantics, adapted for Busch's shared index.
+// Upstream: https://github.com/thomasloven/lovelace-auto-entities
+// Attribution and MIT permission notice follow this compatibility section.
+function buschSmartMatch(value, pattern, now = Date.now()) {
+  const checks = [];
+  if (typeof pattern === 'string') {
+    if (pattern.startsWith('$$')) { pattern = pattern.slice(2); value = JSON.stringify(value); }
+    if ((pattern.startsWith('/') && pattern.endsWith('/')) || pattern.includes('*')) {
+      if (!pattern.startsWith('/')) pattern = '/^' + pattern.replace(/\*/g, '.*') + '$/';
+      const regex = new RegExp(pattern.slice(1, -1));
+      checks.push(v => typeof v === 'string' && regex.test(v));
+    }
+    const age = /([mhd])\s+ago\s*$/i.exec(pattern);
+    if (age) {
+      pattern = pattern.replace(age[0], '');
+      value = (now - new Date(value).getTime()) / 60000 / (age[1] === 'h' ? 60 : age[1] === 'd' ? 1440 : 1);
+    }
+    // Deliberately independent: upstream's overlapping != / ! comparisons
+    // and unescaped glob punctuation are part of the imported config contract.
+    const ops = {'<=':(a,b)=>a<=b,'>=':(a,b)=>a>=b,'==':(a,b)=>a===b,'!=':(a,b)=>a!==b,'<':(a,b)=>a<b,'>':(a,b)=>a>b,'!':(a,b)=>a!==b,'=':(a,b)=>a===b};
+    for (const [op, test] of Object.entries(ops)) if (pattern.startsWith(op)) {
+      const limit = parseFloat(pattern.slice(op.length)); checks.push(v => test(parseFloat(v), limit));
+    }
+  }
+  return value !== undefined && (value === pattern || checks.some(fn => fn(value)));
+}
+function buschSmartContext(core, id) {
+  const info = core.entities.get(id), entity = info?.registry;
+  const state = core.index.states.get(id);
+  const device = core.devices.get(entity?.device_id);
+  const area = core.areas.get(entity?.area_id) || core.areas.get(device?.area_id);
+  const floor = core.floors.get(area?.floor_id);
+  return {info, entity, state, device, area, floor};
+}
+function buschSmartPath(value, path, valueOutput = false) {
+  if (valueOutput && value && Object.hasOwn(value, String(path))) return value[String(path)];
+  return String(path).split(valueOutput ? /[.:]/ : ':').reduce((obj, key) => obj?.[key], value);
+}
+function buschSmartFilter(core, rule, id, now = Date.now()) {
+  if (typeof id !== 'string') id = id?.entity;
+  const {entity, state, device, area, floor} = buschSmartContext(core, id);
+  if (!state) return false;
+  const entries = Object.entries(rule).map(([key,value]) => [key.trim().split(' ')[0].trim(),value]).filter(([key]) => !['type','options','sort'].includes(key));
+  if (!entries.length) return false;
+  return entries.every(([key,value]) => {
+    const match = v => buschSmartMatch(v,value,now);
+    switch (key) {
+      case 'domain': return match(id.split('.')[0]);
+      case 'entity_id': return match(id);
+      case 'state': return match(state.state) || match(core.hass.formatEntityState(state));
+      case 'name': return match(state.attributes?.friendly_name);
+      case 'group': return !!core.index.states.get(value)?.attributes?.entity_id?.includes(id);
+      case 'attributes': return Object.entries(value).every(([k,v]) => buschSmartMatch(buschSmartPath(state.attributes,k.split(' ')[0]),v,now));
+      case 'not': return !buschSmartFilter(core,value,id,now);
+      case 'and': return value.every(v => buschSmartFilter(core,v,id,now));
+      case 'or': return value.some(v => buschSmartFilter(core,v,id,now));
+      case 'device': return !!device && (match(device.id) || match(device.name_by_user) || match(device.name));
+      case 'device_manufacturer': return !!device && match(device.manufacturer);
+      case 'device_model': return !!device && match(device.model);
+      case 'area': return !!entity && !!area && (match(area.name) || match(area.area_id));
+      case 'floor': return !!entity && !!floor && (match(floor.name) || match(floor.floor_id));
+      case 'level': return !!entity && !!floor && match(floor.level);
+      case 'entity_category': return !!entity && match(entity.entity_category);
+      case 'hidden_by': return !!entity && match(entity.hidden_by);
+      case 'integration': return !!entity && (match(entity.platform) || match(entity.config_entry_id));
+      case 'label': {
+        if (!entity?.labels) return false;
+        const labelMatch = label => match(label) || match(core.labels.get(label)?.name);
+        return entity.labels.some(labelMatch) || !!device && device.labels.some(labelMatch);
+      }
+      case 'last_changed': case 'last_updated': case 'last_triggered':
+        return buschSmartMatch(key === 'last_triggered' ? state.attributes.last_triggered : state[key], /([mhd])\s+ago\s*$/i.test(value) ? value : value + 'm ago',now);
+      default: return false;
+    }
+  });
+}
+function buschSmartCompare(a,b,sort) {
+  const [lt,gt] = sort.reverse ? [1,-1] : [-1,1];
+  if (sort.ignore_case) { a=a?.toLowerCase?.()??a; b=b?.toLowerCase?.()??b; }
+  if (sort.numeric && !(isNaN(parseFloat(a)) && isNaN(parseFloat(b)))) {
+    a=isNaN(parseFloat(a))?undefined:parseFloat(a); b=isNaN(parseFloat(b))?undefined:parseFloat(b);
+  }
+  if (a===undefined && b===undefined) return 0;
+  if (a===undefined) return gt;
+  if (b===undefined) return lt;
+  if (sort.numeric) return a===b?0:a<b?lt:gt;
+  if (sort.ip) {
+    const aa=a.split('.'),bb=b.split('.');
+    return (sort.reverse?-1:1) * ([0,1,2,3].map(i=>buschSmartCompare(aa[i],bb[i],{numeric:true})).find(v=>v!==0)||0);
+  }
+  return (sort.reverse?-1:1)*String(a).localeCompare(String(b),undefined,sort);
+}
+function buschSmartSort(core, rows, sort) {
+  const methods = ['none','domain','entity_id','friendly_name','name','device','device_name','area','state','attribute','last_changed','last_updated','last_triggered'];
+  if (!sort?.method || !methods.includes(sort.method)) return rows;
+  const method = {...sort};
+  if (['last_changed','last_updated','last_triggered'].includes(method.method)) method.numeric=true;
+  const prepare = row => {
+    const {state,device,area}=buschSmartContext(core,row.entity);
+    switch(method.method) {
+      case 'none': return 0;
+      case 'domain': return state?.entity_id?.split('.')[0];
+      case 'entity_id': return state?.entity_id;
+      case 'friendly_name': case 'name': return state?.attributes?.friendly_name || state?.entity_id?.split('.')[1];
+      case 'device': case 'device_name': return device?.name_by_user??device?.name;
+      case 'area': return area?.name;
+      case 'state': return state?.state;
+      case 'attribute': return method.attribute?.split(':').reduce((v,k)=>v?.[k],state?.attributes);
+      default: { const value=method.method==='last_triggered'?state?.attributes?.last_triggered:state?.[method.method]; return value?new Date(value).getTime():undefined; }
+    }
+  };
+  return rows.map(row=>({row,key:prepare(row)})).sort((a,b)=>buschSmartCompare(a.key,b.key,method)).map(x=>x.row);
+}
+function buschSmartPage(rows, sort) {
+  if (!sort?.count && !sort?.first) return rows;
+  const first=sort.first??0;return rows.slice(first,first+(sort.count??Infinity));
+}
+function buschSmartProcess(core, row, id) {
+  const {entity,device,area,state}=buschSmartContext(core,id);
+  let text=JSON.stringify(row).replace(/this.entity_id/g,id);
+  if (row.eval_js === true) {
+    const evaluate=new Function('entity_id','entity','device','area','state','"use strict"; return (String.raw`'+text+'`);');
+    try { text=evaluate(id,entity?.name_by_user??entity?.name,device?.name_by_user??device?.name,area?.name_by_user??area?.name,state); }
+    catch(error) { return {error:error.message}; }
+  }
+  return JSON.parse(text);
+}
+function buschSmartValueKey(value) {
+  if (value === null) return 'null';
+  if (Array.isArray(value)) return 'array:['+value.map(buschSmartValueKey).join(',')+']';
+  if (typeof value === 'object') return 'object:{'+Object.keys(value).sort().map(k=>JSON.stringify(k)+':'+buschSmartValueKey(value[k])).join(',')+'}';
+  return typeof value+':'+JSON.stringify(value);
+}
+function buschSmartUnique(rows, unique) {
+  if (!unique) return rows;
+  const seen=new Set();return rows.filter(row=>{const key=unique==='entity'?row.entity:buschSmartValueKey(row);if(seen.has(key))return false;seen.add(key);return true;});
+}
+function buschSmartResult(core, config, templateRows = [], matchedIncludes = null, trace = null) {
+  if(trace)Object.assign(trace,{rows:[],missing:0,duplicates:0,projected:0,output:0,truncated:false});
+  const record=entry=>{if(!trace)return;if(trace.rows.length<100)trace.rows.push(entry);else trace.truncated=true;};
+  const format=row=>!row?null:typeof row==='string'?{entity:row.trim()}:row;
+  const contexts=new Map();
+  let rows=[...(config.entities||[]),...(templateRows||[])].map(format).filter(Boolean);
+  for (const [index,rule] of (config.filter?.include||[]).entries()) {
+    if (rule.type!==undefined) { rows.push(rule);continue; }
+    const ids=matchedIncludes?.[index]??[...core.index.states.keys()].filter(id=>buschSmartFilter(core,rule,id));
+    const add=buschSmartPage(buschSmartSort(core,Array.from(ids,id=>({entity:id})),rule.sort),rule.sort);
+    rows.push(...add.map(row=>{const processed=buschSmartProcess(core,{...row,...rule.options},row.entity);contexts.set(processed,row.entity);return processed;}));
+  }
+  rows=rows.filter(row=>!(config.filter?.exclude||[]).some(rule=>buschSmartFilter(core,rule,row.entity)));
+  if (!config.value) return buschSmartPage(buschSmartUnique(buschSmartSort(core,config.unique_values?buschSmartUnique(rows,true):rows,config.sort),config.unique),config.sort);
+  rows=buschSmartUnique(rows,config.unique);
+  const seen=new Set(), projected=[];
+  for (const row of rows) {
+    const sourceId=contexts.get(row)??row.entity;
+    const {entity,state}=buschSmartContext(core,sourceId);
+    const type=config.value.type||'entity_id';
+    let value=type==='entity_id'?sourceId:type==='device_id'?entity?.device_id:buschSmartPath(state?.attributes,config.value.attribute??config.value.path??'',true);
+    if (value===undefined || value===null) {
+      if (config.value.missing!=='null' && config.value.missing!==null) {if(trace){trace.missing++;record({source:sourceId,value:null,status:'missing'});}continue;}
+      value=null;
+    }
+    const key=buschSmartValueKey(value);
+    if(config.unique_values && seen.has(key)){if(trace){trace.duplicates++;record({source:sourceId,value,status:'duplicate'});}continue;}
+    if(trace)record({source:sourceId,value,status:'limited'});seen.add(key);projected.push({entity:sourceId,value});
+  }
+  const selected=buschSmartPage(buschSmartSort(core,projected,config.sort),config.sort);
+  if(trace){trace.projected=projected.length;trace.output=selected.length;const ids=new Set(selected.map(row=>row.entity));for(const row of trace.rows)if(row.status==='limited'&&ids.has(row.source))row.status='selected';}
+  return selected.map(row=>row.value);
+}
+
+/*
+MIT License
+
+Copyright (c) 2019 Thomas Lovén
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+*/
+
+function buschSmartSnapshot(value) {
+  if (Array.isArray(value)) return Object.freeze(value.map(buschSmartSnapshot));
+  if (value && typeof value === 'object') return Object.freeze(Object.fromEntries(Object.entries(value).map(([key,item])=>[key,buschSmartSnapshot(item)])));
+  return value;
+}
+/* Smart Entities: shared incremental membership and final projection. */
+function buschSmartPlan(rule) {
+  const constraints = [], groups = new Set(), times = [];
+  const walk = (node, safe = true) => {
+    if (!node || typeof node !== 'object') return;
+    for (const [raw, value] of Object.entries(node)) {
+      const key = raw.trim().split(' ')[0];
+      if (key === 'group') groups.add(value);
+      if (key === 'and') { for (const child of value) walk(child, safe); }
+      if (key === 'or') { for (const child of value) walk(child, false); }
+      if (key === 'not') walk(value, false);
+      if (safe && ['domain', 'integration', 'entity_id'].includes(key) && typeof value === 'string' && !value.startsWith('$$') && !/[*/<>=!]/.test(value)) constraints.push([key, value]);
+      const time = (path, pattern) => {
+        const text=String(pattern),match=text.match(/([mhd])\s+ago\s*$/i);
+        const amount=match?parseFloat(text.slice(0,match.index).replace(/^\s*[<>=!]+/,'')):NaN;
+        if (Number.isFinite(amount)) times.push({path,duration:amount*(match[1]==='h'?3600000:match[1]==='d'?86400000:60000)});
+      };
+      if (['last_changed','last_updated','last_triggered'].includes(key)) time(key === 'last_triggered' ? ['attributes',key] : [key], /[mhd]\s+ago\s*$/i.test(value) ? value : value + 'm ago');
+      if (['state','entity_id','name'].includes(key)) time(key === 'name' ? ['attributes','friendly_name'] : [key], value);
+      if (key === 'attributes') for (const [attr, pattern] of Object.entries(value || {})) time(['attributes',...attr.split(' ')[0].split(':')], pattern);
+    }
+  };
+  walk(rule);
+  return { constraints, groups, times, guard: info => !!info && constraints.every(([key,value]) => key === 'entity_id' ? info.entity_id === value : key === 'domain' ? info.domain === value : info.registry?.platform === value || info.registry?.config_entry_id === value) };
+}
+class BuschSmartQueries {
+  constructor(core) { this.core = core; }
+  query(config, scopeDeviceId) {
+    const copy = JSON.parse(JSON.stringify(config)), cacheSpec = {...copy};
+    if (!copy.filter?.template) for (const key of ['type','card','card_param','item','item_param','else','show_empty','debug']) delete cacheSpec[key];
+    const key = 'smart:' + buschCoreKey(scopeDeviceId?{scopeDeviceId,spec:cacheSpec}:cacheSpec), engine = this.core.engine;
+    if (engine.cache.has(key)) return engine.cache.get(key);
+    const include = copy.filter?.include || [];
+    const query = { key, scopeDeviceId, spec: copy, smart: this, javascript:(copy.filter?.include||[]).some(rule=>rule.options?.eval_js===true), include: include.map(buschSmartPlan), extraPlans:(copy.filter?.exclude||[]).map(buschSmartPlan), matched:include.map(()=>new Set()), subscribers:new Set(), result:Object.freeze([]), nextDeadline:Infinity, deadlines:new Map(), metrics:{calculations:0,evaluated:0,candidates:0,executionMs:0}, templateRows:[], templateGeneration:0 };
+    engine.cache.set(key,query); this.calculate(query); engine.evict(); return query;
+  }
+  candidates(plan, query) { return this.core.engine.candidates({lookups:query.scopeDeviceId?[...plan.constraints,['device',query.scopeDeviceId]]:plan.constraints}); }
+  changed(query, change) {
+    const id = change.id;
+    if (query.javascript || [...query.include,...query.extraPlans].some(p=>p.groups.has(id))) return this.calculate(query);
+    if(query.scopeDeviceId && ![change.old,change.next].some(info=>info?.device_id===query.scopeDeviceId)){this.core.metrics.queriesSkipped++;return;}
+    const statics = [...(query.spec.entities||[]),...query.templateRows];
+    if (query.include.some(p=>p.guard(change.old)||p.guard(change.next)) || statics.some(row=>(typeof row==='string'?row.trim():row?.entity)===id)) this.calculate(query,[id]);
+    else this.core.metrics.queriesSkipped++;
+  }
+  calculate(query, ids) {
+    try { return this.compute(query, ids); } catch (error) { query.error=error; this.notify(query); }
+  }
+  compute(query, ids) {
+    const start=performance.now(),now=Date.now(); query.metrics.calculations++;this.core.metrics.queriesRecalculated++;
+    let touched=new Set();
+    for (const [index,rule] of (query.spec.filter?.include||[]).entries()) {
+      if (rule.type !== undefined) continue;
+      const plan=query.include[index], candidates=ids || this.candidates(plan,query);
+      if (!ids) query.matched[index].clear();
+      for (const id of candidates) {
+        if (!plan.guard(this.core.getEntity(id)) || (query.scopeDeviceId&&this.core.getEntity(id)?.device_id!==query.scopeDeviceId)) { query.matched[index].delete(id);continue; }
+        touched.add(id);query.metrics.evaluated++;
+        if (buschSmartFilter(this.core,rule,id,now)) query.matched[index].add(id);else query.matched[index].delete(id);
+      }
+    }
+    if (!ids) query.deadlines.clear();
+    // Plan every possible age boundary, including excluded and currently absent matches.
+    const timed=[...query.include,...query.extraPlans].filter(p=>p.times.length);
+    for(const id of ids || new Set([...touched,...[...(query.spec.entities||[]),...query.templateRows].map(e=>typeof e==='string'?e.trim():e.entity)])) {
+      let deadline=Infinity;const info=this.core.getEntity(id);
+      for(const plan of timed) if(plan.guard(info)) for(const time of plan.times) {
+        const stamp=time.path.reduce((v,k)=>v?.[k],info?.stateObject), boundary=new Date(stamp).getTime()+time.duration;
+        for(const at of [boundary,boundary+1]) if(at>now) deadline=Math.min(deadline,at);
+      }
+      if(Number.isFinite(deadline))query.deadlines.set(id,deadline);else query.deadlines.delete(id);
+    }
+    query.nextDeadline=Infinity;for(const at of query.deadlines.values())query.nextDeadline=Math.min(query.nextDeadline,at);
+    query.metrics.candidates=touched.size;
+    try {
+      const result=buschSmartResult(this.core,query.spec,query.templateRows,query.matched.map(set=>[...set].sort((a,b)=>this.core.index.order.get(a)-this.core.index.order.get(b))));
+      const signature=buschCoreKey(result);
+      if(signature!==query.signature || query.error){query.signature=signature;query.result=buschSmartSnapshot(result);query.error=query.templateError||null;this.notify(query);}
+    }catch(error){query.error=error;this.notify(query);}
+    query.metrics.executionMs=performance.now()-start;
+    if(query.subscribers.size)this.startTemplate(query);
+  }
+  notify(query){this.core.metrics.resultChanges++;for(const fn of query.subscribers){try{fn(query.result);}catch(error){console.warn('Busch Smart subscriber failed',error?.name);}}}
+  startTemplate(query){
+    const template=query.spec.filter?.template;
+    if(!template || query.templateActive || !/\{[{%#]/.test(template))return;
+    query.templateActive=true;const generation=++query.templateGeneration;
+    const connection=this.core.hass?.connection;
+    if(typeof connection?.subscribeMessage!=='function'){query.error=query.templateError=new Error('template_unavailable');this.notify(query);return;}
+    Promise.resolve().then(()=>connection.subscribeMessage(message=>{
+      if(generation!==query.templateGeneration)return;
+      if(message.error){query.error=query.templateError=new Error('template_error');this.notify(query);return;}
+      query.templateError=null;const raw=message.result;query.templateRows=typeof raw==='string'?raw.split(/[\s,]+/).filter(Boolean):Array.isArray(raw)?raw:[];
+      if(query.templateQueued)return;query.templateQueued=true;
+      Promise.resolve().then(()=>{query.templateQueued=false;if(generation!==query.templateGeneration)return;this.calculate(query);this.core.engine.schedule();});
+    },{type:'render_template',template,variables:{config:query.spec},strict:true})).then(off=>{
+      if(generation!==query.templateGeneration)off();else query.templateOff=off;
+    }).catch(()=>{if(generation===query.templateGeneration){query.error=query.templateError=new Error('template_error');this.notify(query);}});
+  }
+  stop(query){query.templateGeneration++;query.templateOff?.();query.templateOff=null;query.templateActive=false;query.templateRows=[];query.templateError=null;}
 }
 
 
