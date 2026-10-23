@@ -1670,8 +1670,26 @@ class BuschUnraidCpuCard extends BuschUnraidTile{
  static getStubConfig(){return {type:'custom:busch-unraid-cpu-card'};}
 }
 class BuschUnraidCpuCardEditor extends BuschUnraidTileEditor{get _schema(){return SCHEMA_BUSCH_UNRAID_CPU_CARD;}get _texte(){return TEXTE_BUSCH_UNRAID_CPU_CARD;}get _defaults(){return new BuschUnraidCpuCard()._vorgaben;}}
+const SCHEMA_BUSCH_UNRAID_GPU_CARD=[{name:'device_id',selector:{device:{integration:'unraid_ssh',model:'Unraid'}}},{name:'title',selector:{text:{}}}];
+const TEXTE_BUSCH_UNRAID_GPU_CARD={de:{...UNRAID_TILE_TEXTE.de,name:'Unraid: GPU',description:'Last, Speicher, Temperatur, Leistung und Lüfter der Grafikkarte.',labels:{device_id:'Server',title:'Titel'},helpers:{device_id:'Unraid-Server, dessen Daten die Karte zeigt. Leer: der einzige Server.',title:'Überschrift der Karte. Leer: Name der Kachel.'},tile:'GPU',util:'Last',vram:'Speicher',temp:'Temperatur',power:'Leistung',fan:'Lüfter',none:'Keine GPU gefunden.'},
+ en:{...UNRAID_TILE_TEXTE.en,name:'Unraid: GPU',description:'Load, memory, temperature, power and fan of the graphics card.',labels:{device_id:'Server',title:'Title'},helpers:{device_id:'Unraid server whose data the card shows. Empty: the only server.',title:'Heading of the card. Empty: the tile name.'},tile:'GPU',util:'Load',vram:'Memory',temp:'Temperature',power:'Power',fan:'Fan',none:'No GPU found.'}};
+const UNRAID_GPU_SUFFIX=/^gpu_(?:util|vram|temp|power|fan)_(\d+)$/;
+class BuschUnraidGpuCard extends BuschUnraidTile{
+ static get kachel(){return 'gpu';}get _texte(){return TEXTE_BUSCH_UNRAID_GPU_CARD;}
+ // Index aus dem Suffix `gpu_<metrik>_<i>`. Eine Karte ohne steuerbaren Lüfter hat keine gpu_fan-Entität → Zeile entfällt (fan undefined);
+ // eine vorhandene, aber nicht verfügbare zeigt –.
+ _modell(core,config){const s=unraidServer(core,config);if(!s.server)return {fehler:s.fehler};
+  const idx=[...new Set(s.alle('gpu_').map(x=>UNRAID_GPU_SUFFIX.exec(x.suffix)?.[1]).filter(i=>i!==undefined))].sort((a,b)=>Number(a)-Number(b));
+  return {name:s.server.name_by_user||s.server.name,gpus:idx.map(i=>{const fan=s.wert('gpu_fan_'+i);return {name:'GPU '+i,util:unraidNum(s.wert('gpu_util_'+i)),vram:unraidNum(s.wert('gpu_vram_'+i)),temp:unraidNum(s.wert('gpu_temp_'+i)),power:unraidNum(s.wert('gpu_power_'+i)),fan:fan?unraidNum(fan):undefined};})};}
+ _kopf(m,t){const g=m.gpus?.[0],lang=this._hass?.locale?.language;return {icon:'mdi:expansion-card',titel:t.tile,untertitel:g?`${t.util}: ${unraidZahl(g.util,'%',lang)} · ${t.temp}: ${unraidZahl(g.temp,'°C',lang)}`:m.name};}
+ _inhalt(body,m,t){const lang=this._hass?.locale?.language;if(!m.gpus.length){body.appendChild(buschUnraidNode('p',t.none,'message'));return;}
+  for(const g of m.gpus){if(m.gpus.length>1)body.appendChild(buschUnraidNode('h3',g.name,'section'));body.appendChild(unraidTabelle([{key:'k',label:''},{key:'v',label:''}],[{k:t.util,v:unraidBalken(g.util,unraidZahl(g.util,'%',lang))},{k:t.vram,v:unraidBalken(g.vram,unraidZahl(g.vram,'%',lang))},{k:t.temp,v:unraidZahl(g.temp,'°C',lang)},{k:t.power,v:unraidZahl(g.power,'W',lang)},...(g.fan===undefined?[]:[{k:t.fan,v:unraidZahl(g.fan,'%',lang)}])],{leer:''}));}}
+ static getConfigElement(){return document.createElement('busch-unraid-gpu-card-editor');}
+ static getStubConfig(){return {type:'custom:busch-unraid-gpu-card'};}
+}
+class BuschUnraidGpuCardEditor extends BuschUnraidTileEditor{get _schema(){return SCHEMA_BUSCH_UNRAID_GPU_CARD;}get _texte(){return TEXTE_BUSCH_UNRAID_GPU_CARD;}get _defaults(){return new BuschUnraidGpuCard()._vorgaben;}}
 // [tag, Karte, Editor] — für den Vertragstest; registriert wird wörtlich je Kachel (Regelprüfer findet nur das).
-const UNRAID_KACHELN=[['busch-unraid-server-card',BuschUnraidServerCard,BuschUnraidServerCardEditor],['busch-unraid-system-card',BuschUnraidSystemCard,BuschUnraidSystemCardEditor],['busch-unraid-cpu-card',BuschUnraidCpuCard,BuschUnraidCpuCardEditor]];
+const UNRAID_KACHELN=[['busch-unraid-server-card',BuschUnraidServerCard,BuschUnraidServerCardEditor],['busch-unraid-system-card',BuschUnraidSystemCard,BuschUnraidSystemCardEditor],['busch-unraid-cpu-card',BuschUnraidCpuCard,BuschUnraidCpuCardEditor],['busch-unraid-gpu-card',BuschUnraidGpuCard,BuschUnraidGpuCardEditor]];
 if(!customElements.get?.('busch-unraid-server-card'))customElements.define('busch-unraid-server-card',BuschUnraidServerCard);
 if(!customElements.get?.('busch-unraid-server-card-editor'))customElements.define('busch-unraid-server-card-editor',BuschUnraidServerCardEditor);
 window.customCards=window.customCards||[];
@@ -1682,3 +1700,6 @@ if(!window.customCards.some(c=>c.type==='busch-unraid-system-card'))window.custo
 if(!customElements.get?.('busch-unraid-cpu-card'))customElements.define('busch-unraid-cpu-card',BuschUnraidCpuCard);
 if(!customElements.get?.('busch-unraid-cpu-card-editor'))customElements.define('busch-unraid-cpu-card-editor',BuschUnraidCpuCardEditor);
 if(!window.customCards.some(c=>c.type==='busch-unraid-cpu-card'))window.customCards.push({type:'busch-unraid-cpu-card',name:buschTexte(TEXTE_BUSCH_UNRAID_CPU_CARD).name,description:buschTexte(TEXTE_BUSCH_UNRAID_CPU_CARD).description,preview:true,documentationURL:'https://github.com/luukkii123/ha-unraid-cards#busch-unraid-cpu-card'});
+if(!customElements.get?.('busch-unraid-gpu-card'))customElements.define('busch-unraid-gpu-card',BuschUnraidGpuCard);
+if(!customElements.get?.('busch-unraid-gpu-card-editor'))customElements.define('busch-unraid-gpu-card-editor',BuschUnraidGpuCardEditor);
+if(!window.customCards.some(c=>c.type==='busch-unraid-gpu-card'))window.customCards.push({type:'busch-unraid-gpu-card',name:buschTexte(TEXTE_BUSCH_UNRAID_GPU_CARD).name,description:buschTexte(TEXTE_BUSCH_UNRAID_GPU_CARD).description,preview:true,documentationURL:'https://github.com/luukkii123/ha-unraid-cards#busch-unraid-gpu-card'});

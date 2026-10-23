@@ -74,3 +74,15 @@ test('CPU: fehlgeschlagener Verlauf zeigt Hinweis', async () => {
   await new Promise(r => setImmediate(r)); assert.match(k.shadowRoot.querySelector('.history').textContent, /Noch kein Verlauf/);
 });
 test('CPU-Editor: Zeitraum-Auswahl und Texte', () => { const { BuschUnraidCpuCardEditor } = ladeKarte(['BuschUnraidCpuCardEditor']); const e = new BuschUnraidCpuCardEditor(); e.hass = { locale: { language: 'de' } }; e.setConfig({ type: 'custom:busch-unraid-cpu-card' }); const form = e.querySelector('ha-form'); assert.deepEqual(form.schema.map(s => s.name), ['device_id', 'title', 'history_minutes', 'show_history']); assert.equal(form.data.history_minutes, '10'); assert.equal(form.computeLabel({ name: 'history_minutes' }), 'Verlaufszeitraum'); });
+test('GPU: Werte und Leerzustand', () => { const { BuschUnraidGpuCard } = ladeKarte(['BuschUnraidGpuCard']); const txt = rendere(BuschUnraidGpuCard, unraidAttrappe()).shadowRoot.textContent; for (const r of [/19 %/, /9 %/, /52 °C/, /78 W/, /31 %/]) assert.match(txt, r); assert.match(rendere(BuschUnraidGpuCard, unraidAttrappe({ gpu: false })).shadowRoot.textContent, /Keine GPU/); });
+test('GPU: ohne Lüfter-Entität keine Lüfterzeile; Untertitel mit Last und Temperatur', () => {
+  const { BuschUnraidGpuCard } = ladeKarte(['BuschUnraidGpuCard']); const core = unraidAttrappe(); core.entities.delete('sensor.gpu_fan'); const alt = core.getDeviceEntities; core.getDeviceEntities = id => alt(id).filter(e => e.entity_id !== 'sensor.gpu_fan');
+  const k = rendere(BuschUnraidGpuCard, core); assert.doesNotMatch(k.shadowRoot.textContent, /Lüfter/); assert.match(k.shadowRoot.querySelector('.tile-sub').textContent, /Last: 19 % · Temperatur: 52 °C/);
+  assert.match(rendere(BuschUnraidGpuCard, unraidAttrappe()).shadowRoot.textContent, /Lüfter/);
+});
+test('GPU: mehrere Karten nach Index (numerisch) mit Überschrift', () => {
+  const { BuschUnraidGpuCard } = ladeKarte(['BuschUnraidGpuCard']); const core = unraidAttrappe(); const vorlage = core.entities.get('sensor.gpu_util');
+  const neu = { ...vorlage, entity_id: 'sensor.gpu10_util', state: '77', registry: { ...vorlage.registry, entity_id: 'sensor.gpu10_util', unique_id: 'e1_gpu_util_10' } }; core.entities.set(neu.entity_id, neu); const alt = core.getDeviceEntities; core.getDeviceEntities = id => id === 'srv' ? [...alt(id), neu] : alt(id);
+  const k = rendere(BuschUnraidGpuCard, core); assert.deepEqual([...k.shadowRoot.querySelectorAll('.section')].map(n => n.textContent), ['GPU 0', 'GPU 10']); assert.match(k.shadowRoot.textContent, /77 %/);
+});
+test('GPU-Editor: Schema und Texte', () => { const { BuschUnraidGpuCardEditor } = ladeKarte(['BuschUnraidGpuCardEditor']); const e = new BuschUnraidGpuCardEditor(); e.hass = { locale: { language: 'en' } }; e.setConfig({ type: 'custom:busch-unraid-gpu-card' }); const form = e.querySelector('ha-form'); assert.deepEqual(form.schema.map(s => s.name), ['device_id', 'title']); assert.equal(form.computeLabel({ name: 'device_id' }), 'Server'); });
