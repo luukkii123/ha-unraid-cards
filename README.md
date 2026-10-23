@@ -1,5 +1,7 @@
 # Unraid Cards
 
+![Unraid-Kacheln: Server, Prozessor, System, GPU, Array und Airflow](docs/preview-uebersicht.png)
+
 Dashboard-Karten für Home Assistant, die das Unraid-Dashboard nachbauen: je
 Unraid-Kachel eine Karte (Server, System, Prozessor, GPU, Array und Pools,
 Parität, Airflow, Shares, VMs, VM-Nutzung) sowie Steuerkarten für
@@ -235,6 +237,8 @@ show_all: true
 
 ## busch-unraid-docker-card
 
+![Docker-Karte mit Compose-Stacks und Containern neben der VM-Liste mit Aktionen für die VM Windows 11](docs/preview-docker-vm.png)
+
 Docker-Übersicht eines Unraid-Servers, angelehnt an das Docker-Widget des
 Unraid-Dashboards: je Compose-Stack eine Kachel, je eigenständigen Container
 eine Kachel, mit Containerbild (ersatzweise Symbol), Name und Zustand
@@ -331,6 +335,8 @@ container_key: YOUR_CONTAINER_KEY
 ```
 
 ## Bedienung und Darstellung
+
+![Prozessor- und Array-Karte bei 320 px Breite im dunklen Thema, untereinander](docs/preview-mobil-dunkel.png)
 
 - **Einklappen:** Der Pfeil im Kopf der Kacheln, der VM-Liste und der
   Docker-Karte klappt die Karte bis auf den Kopf ein. Der Zustand wird je Karte im Browser

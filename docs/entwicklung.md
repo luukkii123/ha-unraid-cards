@@ -141,3 +141,8 @@ Anfragen. Kontrast: nichts unter 2:1; Hinweise unter 4,5:1 nur für Knopfschrift
 in `--primary-color` bzw. `--error-color` des Attrappen-Themas (Themasache).
 Screenshots gesichtet (je Karte 320 px dunkel und 960 px hell, Dialog 320/960
 in beiden Themen).
+
+**23.10.2026 – 0.1.1 = 0.1.0 + README-Bilder (Todo #564):** kein Kartencode
+geändert (im Bundle nur `CARD_VERSION`), die Abnahme von 0.1.0 gilt. Bilder
+`docs/preview-*.png` aus `docs/render/vorschau.py` (Attrappe von `kacheln.py`,
+MDI-Pfaddatei außerhalb des Repos), gesichtet.
