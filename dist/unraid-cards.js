@@ -1462,20 +1462,20 @@ const UNRAID_TILE_STYLE=BUSCH_UNRAID_STYLE+`
 .tile-sub{margin:2px 0 0;color:var(--secondary-text-color);font-size:var(--ha-font-size-s,13px);overflow-wrap:anywhere}
 .tile-text{flex:1 1 auto;min-width:0}
 .tile-actions{display:flex;gap:4px;flex:0 0 auto}
-.tile-actions button{min-width:44px;min-height:44px}
+.tile-actions button{min-width:44px;min-height:44px}.tile-actions button[aria-disabled=true]{cursor:default;opacity:.5}
 .bar{position:relative;height:18px;border-radius:4px;background:var(--divider-color);overflow:hidden;min-width:0}
 .bar-fill{position:absolute;inset:0 auto 0 0;background:var(--secondary-text-color)}
 .bar.warn .bar-fill{background:var(--warning-color)}.bar.crit .bar-fill{background:var(--error-color)}
-.bar-text{position:relative;padding:0 6px;font-size:12px;line-height:18px;color:var(--primary-text-color);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:block}
+.bar-text{position:relative;padding:0 6px;font-size:12px;line-height:18px;color:var(--primary-text-color);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:block;min-width:0}
 .ring{margin:0;display:grid;justify-items:center;gap:4px;min-width:0}.ring svg{width:72px;height:72px;transform:rotate(-90deg)}
 .ring circle{fill:none;stroke-width:4}.ring-bg{stroke:var(--divider-color)}.ring-fg{stroke:var(--secondary-text-color)}
 .ring.warn .ring-fg{stroke:var(--warning-color)}.ring.crit .ring-fg{stroke:var(--error-color)}
 .ring-value{margin-top:-50px;height:46px;font-weight:600}.ring-label{font-size:12px;color:var(--secondary-text-color);overflow-wrap:anywhere;text-align:center}
 .table{width:100%;border-collapse:collapse;font-size:var(--ha-font-size-s,13px)}
-.table th{text-align:left;color:var(--secondary-text-color);font-weight:500;padding:4px}.table td{padding:4px;overflow-wrap:anywhere}
+.table th{text-align:left;color:var(--secondary-text-color);font-weight:500;padding:4px;overflow-wrap:anywhere}.table td{padding:4px;overflow-wrap:anywhere}
 .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:8px}
 .cell{display:grid;min-width:0}.cell-name{font-size:12px;color:var(--secondary-text-color);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}.cell-value{overflow-wrap:anywhere}
-.dot-row{display:inline-flex;align-items:center;gap:6px}.dot{width:10px;height:10px;border-radius:50%;background:var(--secondary-text-color)}
+.dot-row{display:inline-flex;align-items:center;gap:6px;min-width:0}.dot-text{overflow-wrap:anywhere;min-width:0}.dot{width:10px;height:10px;border-radius:50%;background:var(--secondary-text-color)}
 .dot.sem-ok{background:var(--success-color)}.dot.sem-warning{background:var(--warning-color)}.dot.sem-error{background:var(--error-color)}
 @container (max-width: 420px){.table thead{display:none}.table tr{display:grid;padding:6px 0;border-bottom:1px solid var(--divider-color)}.table td{display:flex;gap:8px}.table td::before{content:attr(data-label);color:var(--secondary-text-color);min-width:40%}}
 @media (prefers-reduced-motion: reduce){*{transition:none!important;animation:none!important}}`;
@@ -1503,8 +1503,9 @@ class BuschUnraidTile extends HTMLElement {
   const style=document.createElement('style');style.textContent=UNRAID_TILE_STYLE;const card=document.createElement('ha-card');card.className='tile';
   const k=this._kopf(m,t)||{},head=buschUnraidNode('div',undefined,'tile-head'),icon=BuschUI.ha.icon(k.icon||'mdi:server'),text=buschUnraidNode('div',undefined,'tile-text');icon.className='tile-icon';icon.setAttribute('aria-hidden','true');
   text.appendChild(buschUnraidNode('h2',this._config.title||k.titel||'','tile-title'));if(k.untertitel)text.appendChild(buschUnraidNode('p',k.untertitel,'tile-sub'));head.appendChild(icon);head.appendChild(text);
+  // Während `_busy` sperrt `aria-disabled` statt `disabled`: der fokussierte Knopf bleibt fokussierbar, der Fokus überlebt die Renders; Klicks verwirft `_ausfuehren`.
   const actions=buschUnraidNode('div',undefined,'tile-actions');
-  for(const a of (m.laedt||m.fehler?[]:this._aktionen(m,t)||[])){const b=BuschUI.action({label:a.label,icon:a.icon,onClick:()=>this._ausfuehren(a,t),disabled:!!(a.deaktiviert||this._busy),variant:a.gefahr?'danger':'secondary'});b.dataset.focusKey=a.key;actions.appendChild(b);}
+  for(const a of (m.laedt||m.fehler?[]:this._aktionen(m,t)||[])){const b=BuschUI.action({label:a.label,icon:a.icon,onClick:()=>this._ausfuehren(a,t),disabled:!!a.deaktiviert,variant:a.gefahr?'danger':'secondary'});if(this._busy&&!a.deaktiviert)b.setAttribute('aria-disabled','true');b.dataset.focusKey=a.key;actions.appendChild(b);}
   const toggle=BuschUI.action({label:this._eingeklappt?t.expand:t.collapse,icon:this._eingeklappt?'mdi:chevron-down':'mdi:chevron-up',onClick:()=>this._umschalten(),variant:'secondary'});toggle.setAttribute('aria-expanded',String(!this._eingeklappt));toggle.dataset.focusKey='toggle';actions.appendChild(toggle);head.appendChild(actions);card.appendChild(head);
   if(!this._eingeklappt){const body=buschUnraidNode('div',undefined,'tile-body');if(m.laedt)body.appendChild(buschUnraidNode('p',t.loading,'message'));else if(m.fehler)body.appendChild(buschUnraidNode('p',t[m.fehler]||m.fehler,'message'));else this._inhalt(body,m,t);card.appendChild(body);}
   if(this._error){const e=buschUnraidNode('p',this._error,'message error');e.setAttribute('role','alert');card.appendChild(e);}

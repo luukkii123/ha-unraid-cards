@@ -9,8 +9,8 @@ class Element {
   get textContent() { return this._text + this.childNodes.map((n) => n.textContent).join(''); }
   appendChild(n) { n.parentNode = this; this.childNodes.push(n); return n; }
   append(...n) { for (const x of n) this.appendChild(x); }
-  replaceChildren(...n) { this.childNodes = []; this.append(...n); }
-  remove() { if (this.parentNode) this.parentNode.childNodes = this.parentNode.childNodes.filter((c) => c !== this); }
+  replaceChildren(...n) { for (const c of this.childNodes) c.parentNode = null; this.childNodes = []; this.append(...n); }
+  remove() { if (this.parentNode) this.parentNode.childNodes = this.parentNode.childNodes.filter((c) => c !== this); this.parentNode = null; }
   setAttribute(k, v) { this.attributes[k] = String(v); if (k === 'class') this.className = String(v); }
   getAttribute(k) { return this.attributes[k] ?? null; }
   removeAttribute(k) { delete this.attributes[k]; }
@@ -18,7 +18,11 @@ class Element {
   addEventListener(type, fn) { (this.listeners[type] ||= []).push(fn); }
   removeEventListener() {}
   dispatchEvent(e) { this.event = e; (this.events ||= []).push(e); }
-  focus() { this.focused = true; }
+  // Fokus wie im Browser: deaktivierte Knöpfe nehmen keinen Fokus an; die
+  // Wurzel (Shadow-Root) merkt sich das aktive Element, solange es im Baum hängt.
+  focus() { if (this.disabled) return; this.focused = true; let wurzel = this; while (wurzel.parentNode) wurzel = wurzel.parentNode; wurzel._aktiv = this; }
+  blur() { this.focused = false; let wurzel = this; while (wurzel.parentNode) wurzel = wurzel.parentNode; if (wurzel._aktiv === this) wurzel._aktiv = null; }
+  get activeElement() { return this._aktiv && this.all().includes(this._aktiv) ? this._aktiv : null; }
   getBoundingClientRect() { return { left: 10, top: 10, right: 110, bottom: 74, width: 100, height: 64 }; }
   all() { return [this, ...this.childNodes.flatMap((c) => c.all())]; }
   matches(sel) {

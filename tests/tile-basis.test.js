@@ -25,3 +25,20 @@ test('Einklappen wird je Karte gemerkt', () => {
   const a = new T(); a.setConfig({device_id:'s'}); a._umschalten(); assert.equal(a._eingeklappt, true);
   const b = new T(); b.setConfig({device_id:'s'}); assert.equal(b._eingeklappt, true);
 });
+test('Fokus bleibt nach einer Kachel-Aktion auf dem Knopf', async () => {
+  const { BuschUnraidTile } = ladeKarte(['BuschUnraidTile']);
+  let aufrufe = 0, fertig; const laeuft = new Promise((r) => { fertig = r; });
+  class T extends BuschUnraidTile { static get kachel(){return 'fokus';} _modell(){return {server:{id:'s'}};} _kopf(){return {icon:'mdi:server',titel:'Fokus'};} _inhalt(){} _aktionen(){return [{key:'neustart',label:'Neustart',icon:'mdi:restart',ausfuehren:()=>{aufrufe++;return laeuft;}}];} }
+  const k = new T(); k._core = { attach() {} }; k._hass = { locale: { language: 'de' } }; k.setConfig({ device_id: 's' });
+  const knopf = () => k.shadowRoot.querySelector('[data-focus-key="neustart"]');
+  knopf().focus(); assert.equal(k.shadowRoot.activeElement?.dataset.focusKey, 'neustart');
+  knopf().click();
+  // Während der Aktion: gesperrt, aber weiter fokussiert (aria-disabled statt disabled).
+  assert.equal(k._busy, true); assert.equal(knopf().getAttribute('aria-disabled'), 'true'); assert.notEqual(knopf().disabled, true);
+  assert.equal(k.shadowRoot.activeElement?.dataset.focusKey, 'neustart');
+  knopf().click(); // zweiter Klick während _busy wird ignoriert
+  assert.equal(aufrufe, 1);
+  fertig(); await laeuft; await new Promise((r) => setImmediate(r));
+  assert.equal(k._busy, false); assert.equal(knopf().getAttribute('aria-disabled'), null);
+  assert.equal(k.shadowRoot.activeElement, knopf()); assert.equal(k.shadowRoot.activeElement.dataset.focusKey, 'neustart');
+});
