@@ -230,6 +230,11 @@ window.place=(tag,variante,config)=>{window.kern=baueKern(variante);const wrap=d
 window.addEventListener('hass-more-info',e=>window.calls.push(['more-info',e.detail.entityId]));
 </script></body></html>"""
 
+def seite_mit_attrappe(attrappe):
+    """Shared offline harness; Stage 2 passes only generated example data."""
+    return SEITE.replace("__ATTRAPPE__", json.dumps(attrappe, ensure_ascii=False))
+
+
 JS_HSCROLL = "()=>document.scrollingElement.scrollWidth>window.innerWidth"
 
 # Touchziele, Meldungen, Ladezustand und Kontrast an der gerenderten Karte.
@@ -268,7 +273,7 @@ def main():
         page.clock.set_fixed_time(JETZT)
         page.on("pageerror", lambda e: fehler.append("pageerror: " + str(e)))
         page.on("console", lambda m: m.type == "error" and fehler.append("console: " + m.text))
-        seite = SEITE.replace("__ATTRAPPE__", json.dumps(ATTRAPPE, ensure_ascii=False))
+        seite = seite_mit_attrappe(ATTRAPPE)
 
         def route(r):
             url = r.request.url

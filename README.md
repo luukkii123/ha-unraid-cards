@@ -4,7 +4,7 @@
 
 Dashboard-Karten für Home Assistant, die das Unraid-Dashboard nachbauen: je
 Unraid-Kachel eine Karte (Server, System, Prozessor, GPU, Array und Pools,
-Parität, Airflow, Shares, VMs, VM-Nutzung) sowie Steuerkarten für
+Parität, Airflow, Shares, Interfaces, VMs, VM-Nutzung) sowie Steuerkarten für
 Compose-Stacks, Container und die Docker-Übersicht. Die Daten kommen aus der
 Integration [**Unraid SSH**](https://github.com/luukkii123/ha-unraid-ssh-integrations).
 
@@ -17,7 +17,8 @@ Integration [**Unraid SSH**](https://github.com/luukkii123/ha-unraid-ssh-integra
 | [`busch-unraid-array-card`](#busch-unraid-array-card) | Platten von Array, Pools und Bootgerät mit Status, Temperatur, Belegung, Schlafzustand |
 | [`busch-unraid-parity-card`](#busch-unraid-parity-card) | Paritätsprüfung: läuft/ruht, Fortschritt, Fehler |
 | [`busch-unraid-airflow-card`](#busch-unraid-airflow-card) | Lüfter mit Drehzahl und Stufe |
-| [`busch-unraid-shares-card`](#busch-unraid-shares-card) | Shares mit belegtem und freiem Speicher |
+| [`busch-unraid-shares-card`](#busch-unraid-shares-card) | Shares mit Speicher, Sicherheit, Export und offenen Pfaden |
+| [`busch-unraid-interface-card`](#busch-unraid-interface-card) | Physische und virtuelle Interfaces mit Zustand und getrennten RX-/TX-Raten |
 | [`busch-unraid-vm-card`](#busch-unraid-vm-card) | Liste der VMs eines Servers oder eine einzelne VM, mit Aktionen |
 | [`busch-unraid-vm-usage-card`](#busch-unraid-vm-usage-card) | CPU und RAM je laufender VM |
 | [`busch-unraid-docker-card`](#busch-unraid-docker-card) | alle Docker-Container und Compose-Stacks eines Servers als Kacheln |
@@ -33,6 +34,10 @@ Jede Karte ist einzeln nutzbar und hat einen eigenen Editor.
   lesen nur deren Entitäten und lösen deren Aktionen aus; sie sprechen nie
   direkt mit dem Server. Ohne Server zeigt eine Karte „Kein Unraid-Server
   gefunden. Die Integration Unraid SSH einrichten.“
+- Zusatzwerte und Serveraktionen benötigen **Unraid SSH 0.9 oder neuer**.
+  Mit 0.8 bleiben bestehende Karten und Konfigurationen verwendbar; ein
+  kurzer Hinweis zeigt fehlende Zusatzdaten an. Unbekannte Werte erscheinen
+  als „–“, bekannte Nullwerte bleiben sichtbar.
 - Die Prozessor-Karte zeichnet ihren Lastverlauf aus dem Verlauf von Home
   Assistant (Recorder). Ist die Last-Entität vom Recorder ausgenommen, zeigt
   sie „Noch kein Verlauf.“
@@ -72,7 +77,7 @@ VM-Karte werden die entfallenen Schlüssel `show_uptime`, `show_ip` und
 ## Gemeinsame Parameter der Kacheln
 
 Gelten für Server-, System-, Prozessor-, GPU-, Array-, Paritäts-, Airflow-,
-Shares- und VM-Nutzungs-Karte.
+Shares-, Interface- und VM-Nutzungs-Karte.
 
 | Schlüssel | Typ | Vorgabe | Bedeutung |
 | --- | --- | --- | --- |
@@ -86,7 +91,8 @@ verfügbar“.
 ## busch-unraid-server-card
 
 Vorgabetitel: der Servername (ersatzweise „Server“), darunter die
-Unraid-Version. Zeigt Laufzeit, Array-Zustand und ob der Mover läuft.
+Unraid-Version. Zeigt Laufzeit, Array-Zustand, Mover, Servermodell und
+Registrierungstyp. Bestätigte Aktionen: Neustarten, Ausschalten, Mover starten.
 
 | Schlüssel | Typ | Vorgabe | Bedeutung |
 | --- | --- | --- | --- |
@@ -98,7 +104,11 @@ type: custom:busch-unraid-server-card
 
 ## busch-unraid-system-card
 
-Vorgabetitel: „System“. RAM-Auslastung als Ring, darunter die Temperaturen.
+Vorgabetitel: „System“. RAM-Auslastung als Ring, Mainboard und BIOS sowie
+die disjunkte RAM-Aufteilung in System, Cache, Puffer und frei. Verfügbarer
+RAM ist eine zusätzliche Kennzahl. Boot, Log und Docker-Image haben eigene
+Ringe und Kapazitäten; bei Docker im Verzeichnismodus gibt es keinen
+Image-Ring. Temperaturen folgen darunter.
 
 | Schlüssel | Typ | Vorgabe | Bedeutung |
 | --- | --- | --- | --- |
@@ -111,7 +121,9 @@ type: custom:busch-unraid-system-card
 ## busch-unraid-cpu-card
 
 Vorgabetitel: „Prozessor“. Gesamtlast als Balken, Load (1 min),
-CPU-Temperatur und die Gesamtlast als Verlaufslinie. Der Verlauf wird nur
+CPU-Temperatur, CPU-Modell, Package-Leistung und die Gesamtlast als
+Verlaufslinie. Der sichtbare Details-Knopf öffnet ein Raster der CPU-Kerne
+mit ihren numerischen Linux-IDs. Der Verlauf wird nur
 geladen, solange die Karte sichtbar ist, und höchstens einmal je Minute.
 
 | Schlüssel | Typ | Vorgabe | Bedeutung |
@@ -127,7 +139,7 @@ history_minutes: "30"
 ## busch-unraid-gpu-card
 
 Vorgabetitel: „GPU“. Last, Speicher, Temperatur, Leistung und Lüfter der
-Grafikkarte; ohne GPU „Keine GPU gefunden.“ Keine weiteren Parameter.
+Grafikkarte, ergänzt um Modell und Treiberversion; ohne GPU „Keine GPU gefunden.“ Keine weiteren Parameter.
 
 ```yaml
 type: custom:busch-unraid-gpu-card
@@ -139,7 +151,10 @@ Vorgabetitel: „Array und Pools“. Je Gruppe (Array, jeder Pool, Boot) ein
 Untertitel mit gemessener Belegung und Kapazität (z. B. „Array · 768 GiB von
 1,5 TiB“) und eine Tabelle Gerät · Status · Temp. · Belegung; schlafende
 Platten sind als „schläft“ markiert. Auf schmalen Karten werden die
-Tabellenzeilen gestapelt statt seitlich gescrollt.
+Tabellenzeilen gestapelt statt seitlich gescrollt. SMART-Textstatus,
+Cachezeitpunkt und Warnungsdetails ergänzen die Platten; Poolzustand,
+Dateisystem und explizite Mitglieder ergänzen die Gruppen. Die Aktionen
+Array starten/stoppen und alle Platten schlafen legen sind immer bestätigt.
 
 Die Kapazitäten benötigen die Sensoren `disk_used` und `disk_total` aus
 Unraid SSH ab 0.8.1. Das Array summiert ausschließlich Datenlaufwerke, keine
@@ -161,8 +176,10 @@ show_boot: false
 ## busch-unraid-parity-card
 
 Vorgabetitel: „Parität“. Zeigt „Prüfung läuft“ oder „Keine Prüfung aktiv“,
-den Fortschritt und die Fehlerzahl; ohne Paritätsplatte „Keine Paritätsplatte
-vorhanden.“ Keine weiteren Parameter.
+„Prüfung pausiert“ oder eine andere Sync-Aktion, den Fortschritt und die
+Fehlerzahl; ohne Paritätsplatte „Keine Paritätsplatte
+vorhanden.“ Starten prüft ausschließlich ohne Korrektur; Pausieren,
+Fortsetzen und Abbrechen verlangen ebenfalls eine Bestätigung. Keine weiteren Parameter.
 
 ```yaml
 type: custom:busch-unraid-parity-card
@@ -185,7 +202,10 @@ hide_idle: true
 ## busch-unraid-shares-card
 
 Vorgabetitel: „Shares“. Tabelle Name · Belegt · Frei, sortiert nach Name; die
-Anzahl steht im Untertitel. Keine weiteren Parameter.
+Anzahl steht im Untertitel. Mit aktuellen Zusatzdaten kommen Sicherheit,
+Exportstatus und Streams hinzu. Streams zählen offene eindeutige Pfade
+wie im Unraid-Dashboard; sie sind keine Anzahl von SMB-Sitzungen.
+Keine weiteren Parameter.
 
 ```yaml
 type: custom:busch-unraid-shares-card
@@ -194,11 +214,37 @@ type: custom:busch-unraid-shares-card
 ## busch-unraid-vm-usage-card
 
 Vorgabetitel: „VM-Nutzung“. Je laufender VM ein Balken für die Gast-CPU und
-der RAM; ohne laufende VM „Keine laufenden VMs.“ Keine weiteren Parameter.
+der RAM; die Gast-CPU bleibt 100 % je vollständig belegtem Hostkern und
+kann deshalb über 100 % liegen. Daneben stehen der gesonderte Host-CPU-Anteil,
+Netz empfangen/senden und Datenträger lesen/schreiben. Ohne laufende VM
+„Keine laufenden VMs.“ Keine weiteren Parameter.
 
 ```yaml
 type: custom:busch-unraid-vm-usage-card
 ```
+
+## busch-unraid-interface-card
+
+Vorgabetitel: „Interfaces“. Jedes Interface steht für sich: Name, Zustand,
+Typ, Empfang, Senden, Linkgeschwindigkeit und MTU. Empfang und Senden sind
+Byte pro Sekunde, keine Bitrate. Überlappende physische, Bond-, Bridge- und
+VLAN-Links werden nicht addiert. Namen sind natürlich sortiert.
+
+| Schlüssel | Typ | Vorgabe | Bedeutung |
+| --- | --- | --- | --- |
+| `show_virtual` | Wahrheitswert | `true` | Zeigt virtuelle Interfaces; ausgeschaltet bleiben nur physische Links |
+
+```yaml
+type: custom:busch-unraid-interface-card
+show_virtual: true
+```
+
+Serveraktionen sind unabhängig von alten Container-/VM-Bestätigungsoptionen
+immer bestätigt. Der Dialog nennt den Zielserver und die Auswirkung. Die
+Integration prüft den aktuellen Zustand vor dem Ausführen. Nach Annahme
+lautet das Feedback „Anfrage gesendet; Verbindung/Serverzustand prüfen“;
+Verbindungsabbruch oder Timeout gilt nicht als bestätigter Erfolg und löst
+keine automatische Wiederholung aus.
 
 ## busch-unraid-vm-card
 
