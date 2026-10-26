@@ -191,6 +191,21 @@ ATTRAPPE = json.loads(r"""
 }
 """)
 
+# Real capacity contracts from Unraid SSH: one FS source per pool, no FS on raid2.
+for device, name, used, total in (
+    ("d1", "disk1", 768, 1024), ("p1", "cache", 100, 200),
+    ("r1", "raid", 512, 1024), ("f1", "flash", 1, 2),
+):
+    for role, value in (("used", used), ("total", total)):
+        sample = next(e for e in ATTRAPPE["voll"]["entities"] if e["device_id"] == device)
+        entity_id = f"sensor.capacity_{role}_{name}"
+        ATTRAPPE["voll"]["entities"].append({
+            **sample, "entity_id": entity_id, "state": str(value),
+            "attributes": {"unit_of_measurement": "GiB"},
+            "registry": {**sample["registry"], "entity_id": entity_id,
+                         "unique_id": f"e1_disk_{role}_{name}"},
+        })
+
 SEITE = """<!doctype html><html lang="de"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <style>body{margin:0;font-family:Roboto,Arial,sans-serif;background:var(--primary-background-color)}
@@ -280,6 +295,11 @@ def main():
             for name, tag, variante, cfg in FAELLE:
                 pg.evaluate("([t,v,c])=>place(t,v,c)", [tag, variante, cfg])
                 pg.wait_for_timeout(350)
+                if name == "array":
+                    assert pg.locator(tag + " h3").all_text_contents() == [
+                        "Array · 768 GiB von 1,0 TiB", "cache · 100 GiB von 200 GiB",
+                        "raid · 512 GiB von 1,0 TiB", "Boot · 1,0 GiB von 2,0 GiB",
+                    ], "Array capacity headings differ from the measured filesystems"
                 fall = f"{name}-{variante}"
                 datei = f"{fall}-{breite}-{t}.png"
                 pg.locator(tag).screenshot(path=str(OUT / datei))

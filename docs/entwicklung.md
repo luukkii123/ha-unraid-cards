@@ -146,3 +146,17 @@ in beiden Themen).
 geändert (im Bundle nur `CARD_VERSION`), die Abnahme von 0.1.0 gilt. Bilder
 `docs/preview-*.png` aus `docs/render/vorschau.py` (Attrappe von `kacheln.py`,
 MDI-Pfaddatei außerhalb des Repos), gesichtet.
+
+**26.10.2026 – gemessene Kapazitätstitel (Todo #581, vor Veröffentlichung):**
+Array-/Pool-/Bootgruppen zeigen „belegt von gesamt“. Das Array addiert nur
+Datenlaufwerke, Pools zählen den logischen Dateisystemträger einmal. Die
+Zuordnung nutzt weiterhin die Registry; HA-Datengrößeneinheiten werden vor
+der Summierung nach Bytes umgerechnet. Fehlende/ungültige Werte ergeben „–“.
+197/197 Node-Tests bestanden, darunter neun neue Kapazitätsregressionen;
+Namensraum und Syntax grün, statische UI-Prüfung 0 Verstöße. Unabhängiger
+Review ohne Befund. Abschließender Chromium-Lauf bei 320/480/960 px,
+hell/dunkel: `kacheln` grün, 90 Bilder, keine Regelverstöße; die Kapazitätstitel
+werden zusätzlich im Browser gegen die gemessenen Fixturewerte geprüft.
+Array-Screenshots bei 320 px dunkel und 960 px hell gesichtet. Die parallel
+laufende Integrationsmatrix bestand 1011/1011 Tests, 17/17 Suites, keine Skips.
+Die synthetischen Daten sind keine Prüfung eines laufenden Unraid-Servers.

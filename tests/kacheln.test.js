@@ -120,11 +120,11 @@ test('Array: Parität zuerst in „Array“, Statustexte, schlafende Platte ohne
   core.entities.get('sensor.cache_status').state = 'disabled'; core.entities.get('binary_sensor.disk1_spundown').state = 'on';
   const k = rendere(BuschUnraidArrayCard, core), zeile = n => [...k.shadowRoot.querySelectorAll('tr')].find(r => r.querySelector('td')?.textContent === n).textContent;
   assert.match(zeile('parity'), /OK/); assert.match(zeile('cache'), /deaktiviert/); assert.match(zeile('disk1'), /schläft/); assert.doesNotMatch(zeile('disk1'), /45 °C/);
-  assert.match(k.shadowRoot.textContent, /Array · 2 Geräte/); assert.match(k.shadowRoot.querySelector('.sem-error').parentNode.textContent, /deaktiviert/);
+  assert.match(k.shadowRoot.textContent, /Array · –/); assert.match(k.shadowRoot.querySelector('.sem-error').parentNode.textContent, /deaktiviert/);
 });
 test('Array: Boot abschaltbar, Leerzustand, Editor', () => {
   const { BuschUnraidArrayCard, BuschUnraidArrayCardEditor } = ladeKarte(['BuschUnraidArrayCard', 'BuschUnraidArrayCardEditor']);
-  assert.match(rendere(BuschUnraidArrayCard, unraidAttrappe()).shadowRoot.textContent, /Boot · 1 Gerät(?!e)/); assert.doesNotMatch(rendere(BuschUnraidArrayCard, unraidAttrappe(), { show_boot: false }).shadowRoot.textContent, /Boot/);
+  assert.match(rendere(BuschUnraidArrayCard, unraidAttrappe()).shadowRoot.textContent, /Boot · –/); assert.doesNotMatch(rendere(BuschUnraidArrayCard, unraidAttrappe(), { show_boot: false }).shadowRoot.textContent, /Boot/);
   const core = unraidAttrappe(); for (const [id, d] of core.devices) if (/disk$/.test(d.model)) core.devices.delete(id); assert.match(rendere(BuschUnraidArrayCard, core).shadowRoot.textContent, /Keine Platten gefunden/);
   const e = new BuschUnraidArrayCardEditor(); e.hass = { locale: { language: 'de' } }; e.setConfig({ type: 'custom:busch-unraid-array-card' }); const form = e.querySelector('ha-form'); assert.deepEqual(form.schema.map(s => s.name), ['device_id', 'title', 'show_boot']); assert.equal(form.data.show_boot, true); assert.equal(form.computeLabel({ name: 'show_boot' }), 'Bootgerät zeigen');
 });
