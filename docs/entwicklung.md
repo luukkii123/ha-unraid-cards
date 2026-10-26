@@ -165,3 +165,30 @@ Die synthetischen Daten sind keine Prüfung eines laufenden Unraid-Servers.
 frische GitHub-CI grün. Gegenüber der obigen finalen Browserabnahme ändert
 sich im Bundle nur CARD_VERSION. Syntax und statische UI-Prüfung vor dem
 Tag erneut grün. Kapazitätssensoren stammen aus Unraid SSH 0.8.1.
+
+
+**26.10.2026 – 0.2.0, Dashboarddaten und Serveraktionen:**
+Erweiterte Kacheln für CPU, RAM, Hardware, Dateisysteme, SMART/Pools, Shares
+und VM-Durchsatz sowie die neue Interfacekarte. Zehn Serveraktionen besitzen
+eine feste Zielbestätigung; Paritätsstart prüft ausschließlich ohne Korrektur.
+Der gemeinsame Dialog hat ein lokalisiertes Schließen-X und umbrechende
+Footeraktionen. CPU-Details behalten Offen-Zustand und Fokus auch vor einem
+verzögerten nativen Toggle.
+
+276/276 Node-Tests und 6/6 Busch-Namensraumtests ohne Skips; Syntax und
+statische UI-Prüfung grün. Shared UI und 46.470-Byte-Core sind bytegleich.
+Unabhängige Reviews und gezielte RED/GREEN-Regressionen für Zustände, Ziel-
+wechsel, asynchronen Anfragekontext, Dialogabbruch und Detailszustand.
+Chromium mit vollständig erfundenen Daten bei 320/480/960 px hell/dunkel:
+312 Bilder, 4.462 Textprüfungen, kein Überlauf/außerhalb/Überlappung,
+keine Seitenfehler; 150/150 Popup-Prüfungen bestanden. Sechs Gegenproben
+unterscheiden geschlossene von offenen Details und erkennen weiterhin
+einen absichtlich erzeugten offenen Überlauf. 82 Bilder repräsentativ
+gesichtet, einschließlich aller offenen CPU-Varianten und der langen
+Dialogaktionen bei 320 px. Frühere fehlerhafte Prüfläufe wurden erst nach
+gezielter Korrektur des Prüfers und der gefundenen Produktfehler ersetzt.
+
+Browsernachweise verwenden HA-/Icon-/Formularattrappen; sie belegen keine
+native HA-Editor- oder Hardwarebedienung. Serveraktionen werden nur gegen
+Attrappen ausgeführt. Reale Installations- und Laufzeitbelege gehören nicht
+in diese öffentliche Entwicklungsdokumentation.
