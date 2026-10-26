@@ -66,8 +66,51 @@ def fixtures():
     return data
 
 
+def details_gegenprobe(page, tag, geschlossen, offen, check):
+    """Closed content is excluded; real open core text/overflow stays measurable.
+
+    The injected overflow is a tool probe, never a product-layout exemption.
+    All changed attributes are restored before the next capture/action.
+    """
+    def kernpfade(messung):
+        return [p for p in messung.get("geprueft_liste", []) if ".core-details > div.grid" in p]
+    expected = page.evaluate("tag=>document.querySelector(tag).shadowRoot.querySelectorAll('.core-details .cell-name,.core-details .cell-value').length", tag)
+    closed_paths, open_paths = kernpfade(geschlossen), kernpfade(offen)
+    complete = all(len(m.get("geprueft_liste", [])) == m.get("geprueft") for m in (geschlossen, offen))
+    summary_counted = any(p.endswith("details.core-details > summary") for p in geschlossen.get("geprueft_liste", []))
+    check(complete and expected > 0, "Core visibility probe has incomplete/empty measurement evidence")
+    check(summary_counted and not closed_paths, "Closed details content counted or summary missing")
+    check(len(open_paths) == expected and offen.get("geprueft", 0) - geschlossen.get("geprueft", 0) == expected,
+          "Open core text not fully counted")
+    original = page.evaluate("""tag=>{
+        const n=document.querySelector(tag).shadowRoot.querySelector('.core-details .cell-value');
+        const original={id:n.getAttribute('id'),style:n.getAttribute('style')};
+        n.id='stufe2-offene-kernsonde';
+        n.style.cssText+=';display:block;box-sizing:border-box;width:1px;min-width:0;max-width:1px;white-space:nowrap;overflow:visible;text-overflow:clip';
+        return original;
+    }""", tag)
+    try:
+        probe = messe_text(page, tag)
+        hits = [e for e in probe.get("ueberlauf", []) if "#stufe2-offene-kernsonde" in e["selektor"]]
+        check(bool(hits), "Intentional open core overflow not detected")
+    finally:
+        page.evaluate("""([tag,original])=>{
+            const n=document.querySelector(tag).shadowRoot.querySelector('#stufe2-offene-kernsonde');
+            for(const [key,value] of Object.entries(original)){
+                if(value===null)n.removeAttribute(key);else n.setAttribute(key,value);
+            }
+        }""", [tag, original])
+    restored = messe_text(page, tag) == offen
+    check(restored, "Core overflow probe did not restore the full original measurement")
+    return {"breite": page.viewport_size["width"], "thema": page.evaluate("document.documentElement.dataset.theme"),
+            "geschlossen_summary_geprueft": summary_counted, "geschlossen_kerntexte": len(closed_paths),
+            "offen_kerntexte": len(open_paths), "erwartete_kerntexte": expected,
+            "offener_ueberlauf_erkannt": bool(hits), "zustand_wiederhergestellt": restored,
+            "sonde_ueberlauf": hits}
+
+
 def main():
-    report = {"abgeschlossen": False, "selbsttest": {}, "breiten": {}, "popup": {}, "actions": [], "eigene_verstoesse": [], "seitenfehler": [], "netz": []}
+    report = {"abgeschlossen": False, "selbsttest": {}, "details_sichtbarkeit": [], "breiten": {}, "popup": {}, "actions": [], "eigene_verstoesse": [], "seitenfehler": [], "netz": []}
     failures = report["eigene_verstoesse"]
     def check(ok, message):
         if not ok:
@@ -124,6 +167,8 @@ def main():
             check("br-demo" not in pg.evaluate("tag=>document.querySelector(tag).shadowRoot.textContent", tag), "Virtual filter failed")
             results["interfaces-physical"] = capture("interfaces-physical", tag)
             tag = place("cpu")
+            check(pg.locator(tag + " details").get_attribute("open") is None, "Initial core details unexpectedly open")
+            geschlossen = messe_text(pg, tag)
             summary = pg.locator(tag + " summary")
             summary.focus()
             summary.press("Enter")
@@ -139,6 +184,7 @@ def main():
             }""")
             check(focus_retained, "Keyboard focus/open state lost on core telemetry render")
             results["cores-open"] = capture("cores-open", tag)
+            report["details_sichtbarkeit"].append(details_gegenprobe(pg, tag, geschlossen, results["cores-open"], check))
             editor = "busch-unraid-interface-card-editor"
             pg.evaluate("tag=>{document.querySelector('#wrap').replaceChildren();const e=document.createElement(tag);e.setConfig({type:'custom:busch-unraid-interface-card',device_id:'demo'});e.hass={locale:{language:'de'}};e.addEventListener('config-changed',ev=>window.editorConfig=ev.detail.config);document.querySelector('#wrap').append(e)}", editor)
             results["interface-editor"] = capture("interface-editor", editor)
