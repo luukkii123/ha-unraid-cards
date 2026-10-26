@@ -1,0 +1,5 @@
+'use strict';
+const test=require('node:test'),assert=require('node:assert/strict');
+const {render,text,sensor,inventoryFixture}=require('./inventory-card-helpers.js');
+test('Coral PCI status and temperature, USB source limits and missing temperature remain distinct',()=>{const k=render('Coral'),content=text(k);assert.match(content,/Coral TPU 1.*Bereit.*42.*°C/s);assert.match(content,/USB erkannt, Status\/Temperatur nicht verfügbar/);assert.match(content,/Coral TPU 2.*Fehler.*Nicht verfügbar/s);assert.doesNotMatch(content,/(?<![\d,.])0 °C/);assert.equal(k.calls.length,0);});
+test('USB Coral never claims ready or a temperature from accidental fields; nonfinite PCI temperature unknown',()=>{const c=inventoryFixture(),e=sensor(c,'coral');e.attributes.devices=[{name:'USB device',transport:'usb',state:'ready',temperature_c:0},{name:'Unknown PCI',transport:'pci',state:'future',temperature_c:Infinity}];const content=text(render('Coral',c));assert.doesNotMatch(content,/Bereit|0 °C/);assert.match(content,/Unbekannt.*Nicht verfügbar/s);});

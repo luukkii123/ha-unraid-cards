@@ -4,7 +4,7 @@
 
 Dashboard-Karten für Home Assistant, die das Unraid-Dashboard nachbauen: je
 Unraid-Kachel eine Karte (Server, System, Prozessor, GPU, Array und Pools,
-Parität, Airflow, Shares, Interfaces, VMs, VM-Nutzung) sowie Steuerkarten für
+Parität, Airflow, Shares, Interfaces, Benutzer, USB-Geräte, Coral TPU, VMs, VM-Nutzung) sowie Steuerkarten für
 Compose-Stacks, Container und die Docker-Übersicht. Die Daten kommen aus der
 Integration [**Unraid SSH**](https://github.com/luukkii123/ha-unraid-ssh-integrations).
 
@@ -19,6 +19,9 @@ Integration [**Unraid SSH**](https://github.com/luukkii123/ha-unraid-ssh-integra
 | [`busch-unraid-airflow-card`](#busch-unraid-airflow-card) | Lüfter mit Drehzahl und Stufe |
 | [`busch-unraid-shares-card`](#busch-unraid-shares-card) | Shares mit Speicher, Sicherheit, Export und offenen Pfaden |
 | [`busch-unraid-interface-card`](#busch-unraid-interface-card) | Physische und virtuelle Interfaces mit Zustand und getrennten RX-/TX-Raten |
+| [`busch-unraid-users-card`](#busch-unraid-users-card) | Benutzer, Kennwortwarnung und SMB-Shareberechtigungszahlen |
+| [`busch-unraid-usb-card`](#busch-unraid-usb-card) | USB-Inventar mit belegten VM-/Remotezuordnungen und optionalem Hubfilter |
+| [`busch-unraid-coral-card`](#busch-unraid-coral-card) | PCI-Coral mit Status und Temperatur sowie erkannte USB-Coral-Geräte |
 | [`busch-unraid-vm-card`](#busch-unraid-vm-card) | Liste der VMs eines Servers oder eine einzelne VM, mit Aktionen |
 | [`busch-unraid-vm-usage-card`](#busch-unraid-vm-usage-card) | CPU und RAM je laufender VM |
 | [`busch-unraid-docker-card`](#busch-unraid-docker-card) | alle Docker-Container und Compose-Stacks eines Servers als Kacheln |
@@ -38,6 +41,9 @@ Jede Karte ist einzeln nutzbar und hat einen eigenen Editor.
   Mit 0.8 bleiben bestehende Karten und Konfigurationen verwendbar; ein
   kurzer Hinweis zeigt fehlende Zusatzdaten an. Unbekannte Werte erscheinen
   als „–“, bekannte Nullwerte bleiben sichtbar.
+- Benutzer-, USB- und Coral-Karte benötigen **Unraid SSH 0.10 oder neuer**.
+  Fehlende Inventarsensoren zeigen einen konkreten Updatehinweis;
+  Quellenausfälle und Teilbestände bleiben von erfolgreichen Leerbeständen getrennt.
 - Die Prozessor-Karte zeichnet ihren Lastverlauf aus dem Verlauf von Home
   Assistant (Recorder). Ist die Last-Entität vom Recorder ausgenommen, zeigt
   sie „Noch kein Verlauf.“
@@ -77,7 +83,7 @@ VM-Karte werden die entfallenen Schlüssel `show_uptime`, `show_ip` und
 ## Gemeinsame Parameter der Kacheln
 
 Gelten für Server-, System-, Prozessor-, GPU-, Array-, Paritäts-, Airflow-,
-Shares-, Interface- und VM-Nutzungs-Karte.
+Shares-, Interface-, Benutzer-, USB-, Coral- und VM-Nutzungs-Karte.
 
 | Schlüssel | Typ | Vorgabe | Bedeutung |
 | --- | --- | --- | --- |
@@ -245,6 +251,53 @@ Integration prüft den aktuellen Zustand vor dem Ausführen. Nach Annahme
 lautet das Feedback „Anfrage gesendet; Verbindung/Serverzustand prüfen“;
 Verbindungsabbruch oder Timeout gilt nicht als bestätigter Erfolg und löst
 keine automatische Wiederholung aus.
+
+## busch-unraid-users-card
+
+Vorgabetitel: „Benutzer“. Zeigt Benutzeranzahl, Anzahl ohne gesetztes Kennwort
+und Benutzer · Beschreibung · Schreiben · Lesen. Die Kennwortwarnung ist
+zusätzlich als Text sichtbar. Schreiben/Lesen zählt SMB-Shares mit der jeweiligen
+Berechtigung; diese Werte sind keine I/O-Zähler oder Sitzungszahlen. Root und
+Benutzer bei deaktiviertem SMB zeigen „–“ für unbekannte Berechtigungszahlen.
+Die Quelle berücksichtigt bekannte exportierte User-, Disk- und Flash-Shares;
+unsichere oder unvollständige Quellen werden sichtbar bezeichnet. Benutzernamen
+und Beschreibungen sind für berechtigte Home-Assistant-Nutzer lesbar.
+Keine weiteren Parameter und keine Benutzer- oder Kennwortaktionen.
+
+```yaml
+type: custom:busch-unraid-users-card
+```
+
+## busch-unraid-usb-card
+
+Vorgabetitel: „USB-Geräte“. Tabelle Port · Name · Zustand · VM/Remote, optional
+mit Linkgeschwindigkeit. „Am Host erkannt“ behauptet keine freie Verfügbarkeit.
+VM- und Remoteziele erscheinen nur für belegte aktuelle Verbindungen;
+fehlendes Mapping bleibt unbekannt. USB-Manager ist optional. Geräte hinter
+vollständig per VFIO durchgereichten USB-Controllern sind am Host unsichtbar;
+das Inventar kann sie daher nicht vollständig erfassen. Keine USB-Steuerung.
+
+| Schlüssel | Typ | Vorgabe | Bedeutung |
+| --- | --- | --- | --- |
+| `show_hubs` | Wahrheitswert | `true` | Zeigt USB-Hubs zusätzlich zu den übrigen erkannten Geräten |
+
+```yaml
+type: custom:busch-unraid-usb-card
+show_hubs: false
+```
+
+## busch-unraid-coral-card
+
+Vorgabetitel: „Coral TPU“. Tabelle Gerät · Zustand · Temperatur für PCI-Coral;
+nur bekannter Kernelstatus führt zu „Bereit“. Fehlende Temperaturen erscheinen
+als „Nicht verfügbar“. USB-Coral erscheint mit „USB erkannt, Status/Temperatur
+nicht verfügbar“: Anwesenheit belegt weder Betriebsbereitschaft noch Inferenz.
+Ohne Geräte erscheint „Keine Coral TPU gefunden“, bei Quellenfehlern ein
+Fehlerhinweis. Keine weiteren Parameter, kein Reset oder Treiberwechsel.
+
+```yaml
+type: custom:busch-unraid-coral-card
+```
 
 ## busch-unraid-vm-card
 

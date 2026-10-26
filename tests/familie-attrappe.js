@@ -160,3 +160,19 @@ function dashboardFixture({ legacy = false, second = false, partial = false } = 
   return { devices, entities, add, getDevice: id => devices.get(id), getEntity: id => entities.get(id), getDeviceEntities: id => [...entities.values()].filter(e => e.device_id === id), attach() {}, retain() { return () => {}; }, watch() { return () => {}; } };
 }
 module.exports.dashboardFixture = dashboardFixture;
+
+/** Stage 3, wholly invented inventory; count states deliberately include zero. */
+function inventoryFixture(options = {}) {
+  const core = dashboardFixture(options);
+  if (!options.legacy) {
+    const add = (key, list, extra = {}) => core.add('dashboard_' + key, list.length, { schema_version: 1, sampled_at: { ['inv_' + key]: 12345 }, failed_sections: [], [key === 'users' ? 'users' : 'devices']: list, ...extra });
+    add('users', [{ name: 'user10', description: 'Example description', protected: false, read_shares: 2, write_shares: 0 }, { name: 'root', description: 'Example administrator', protected: true, read_shares: null, write_shares: null }, { name: 'user2', description: '<img src=x onerror=alert(1)>', protected: true, read_shares: 3, write_shares: 1 }], { smb_enabled: true, unprotected_count: 1 });
+    add('usb', [{ id: '1-10', port: '1-10', name: 'Example remote adapter', state: 'remote', remote_host: 'example.invalid', assigned_vm: null }, { id: '1-2', port: '1-2', name: 'Example keyboard', state: 'host', speed_mbps: 12 }, { id: '1-3', port: '1-3', name: 'Example camera', state: 'vm', assigned_vm: 'Example guest', assignment_source: 'libvirt' }, { id: 'usb1', port: 'usb1', name: 'Example hub', state: 'host', is_hub: true }], { mapping_status: 'ok' });
+    add('coral', [{ id: '0000:02:00.0', name: 'Coral TPU 1', transport: 'pci', state: 'ready', temperature_c: 42, driver_version: '1.2' }, { id: '1-4', name: 'Example USB Coral', transport: 'usb', state: 'unknown', temperature_c: null }, { id: '0000:03:00.0', name: 'Coral TPU 2', transport: 'pci', state: 'error', temperature_c: null }]);
+  }
+  if (options.second) {
+    for (const key of ['users', 'usb', 'coral']) core.add('dashboard_' + key, 1, { schema_version: 1, failed_sections: [], [key === 'users' ? 'users' : 'devices']: [{ name: 'FOREIGN', port: 'FOREIGN' }] }, 'other', 'other-entry');
+  }
+  return core;
+}
+module.exports.inventoryFixture = inventoryFixture;
