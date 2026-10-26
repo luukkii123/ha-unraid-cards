@@ -66,7 +66,7 @@ def fixtures():
 
 
 def main():
-    report = {"selbsttest": {}, "breiten": {}, "popup": {}, "actions": [], "eigene_verstoesse": [], "seitenfehler": [], "netz": []}
+    report = {"abgeschlossen": False, "selbsttest": {}, "breiten": {}, "popup": {}, "actions": [], "eigene_verstoesse": [], "seitenfehler": [], "netz": []}
     failures = report["eigene_verstoesse"]
     def check(ok, message):
         if not ok:
@@ -101,7 +101,10 @@ def main():
             theme = page.evaluate("document.documentElement.dataset.theme")
             page.locator(selector).screenshot(path=str(OUT / f"{name}-{width}-{theme}.png"))
             check(not page.evaluate(base.JS_HSCROLL), f"Horizontal scroll: {name}/{width}/{theme}")
-            return messe_text(page, selector)
+            text = messe_text(page, selector)
+            check(text.get("geprueft", 0) > 0 and text.get("geprueft_mit_kasten", 0) > 0,
+                  f"Empty text measurement: {name}/{width}/{theme}: {text}")
+            return text
         def measurement(pg):
             results = {}
             for kind in CARDS:
@@ -120,8 +123,20 @@ def main():
             check("br-demo" not in pg.evaluate("tag=>document.querySelector(tag).shadowRoot.textContent", tag), "Virtual filter failed")
             results["interfaces-physical"] = capture("interfaces-physical", tag)
             tag = place("cpu")
-            pg.locator(tag + " summary").click()
-            check(pg.locator(tag + " details").get_attribute("open") is not None, "Core disclosure failed")
+            summary = pg.locator(tag + " summary")
+            summary.focus()
+            summary.press("Enter")
+            check(pg.locator(tag + " details").get_attribute("open") is not None, "Keyboard core disclosure failed")
+            focus_retained = pg.evaluate("""()=>{
+                const card=document.querySelector('busch-unraid-cpu-card');
+                const before=card.shadowRoot.querySelector('summary');
+                const entity=kern.entities.get('sensor.demo_dashboard_cpu');
+                entity.attributes={...entity.attributes,cores:entity.attributes.cores.map((row,index)=>index?row:{...row,percent:1})};
+                card.hass={...card._hass};
+                const after=card.shadowRoot.querySelector('summary');
+                return before!==after&&after===card.shadowRoot.activeElement&&card.shadowRoot.querySelector('details').open;
+            }""")
+            check(focus_retained, "Keyboard focus/open state lost on core telemetry render")
             results["cores-open"] = capture("cores-open", tag)
             editor = "busch-unraid-interface-card-editor"
             pg.evaluate("tag=>{document.querySelector('#wrap').replaceChildren();const e=document.createElement(tag);e.setConfig({type:'custom:busch-unraid-interface-card',device_id:'demo'});e.hass={locale:{language:'de'}};e.addEventListener('config-changed',ev=>window.editorConfig=ev.detail.config);document.querySelector('#wrap').append(e)}", editor)
@@ -137,7 +152,7 @@ def main():
                     pg.wait_for_selector(base.DIALOG)
                     check("Example server" in pg.locator(base.DIALOG).inner_text(), "Missing confirmation target: " + key)
                     check(pg.evaluate("document.querySelector('busch-unraid-confirm').shadowRoot.activeElement.textContent") == "Abbrechen", "Confirmation did not focus cancel: " + key)
-                    results[key + "-dialog"] = capture(key + "-dialog", "busch-unraid-confirm .dialog")
+                    results[key + "-dialog"] = capture(key + "-dialog", base.DIALOG)
                     pg.locator(base.ABBRECHEN).click()
                     check(pg.evaluate("window.calls.length") == 0, "Cancel sent service: " + key)
                     pg.locator(opener).click()
@@ -148,14 +163,29 @@ def main():
                     report["actions"].append({"key": key, "width": pg.viewport_size["width"], "calls": calls})
             return results
         report["breiten"] = lauf_breiten(page, breiten=(320, 480, 960), messung=measurement, hoehe=1200)
+        schreibe(OUT / "report.json", report, zeige=0)
         for width in (320, 480, 960):
             page.set_viewport_size({"width": width, "height": 800})
             for kind, keys in ACTIONS.items():
                 for key in keys:
                     tag = place(kind)
                     opener = tag + f' [data-focus-key="{key}"]'
-                    report["popup"][f"{key}-{width}"] = messe_popup(page, lambda o=opener: page.locator(o).click(), "busch-unraid-confirm .dialog", schliessen_knopf_selektor=base.ABBRECHEN, dialog_typ="bestaetigung")
+                    # Shared JS helpers query each shadow root separately: the
+                    # selector must name the inner sheet without crossing hosts.
+                    popup = messe_popup(page, lambda o=opener: page.locator(o).click(), base.DIALOG, schliessen_knopf_selektor=base.ABBRECHEN, dialog_typ="bestaetigung")
+                    report["popup"][f"{key}-{width}"] = popup
+                    for rule in ("escape", "zurueck", "schliessknopf", "obenauf", "scrim"):
+                        verdict = popup.get(rule, {})
+                        # A narrow fullscreen sheet may leave no outside point;
+                        # at 480/960 px even Scrim must have a real verdict.
+                        no_outside_point = (rule == "scrim" and width == 320
+                                            and verdict.get("ergebnis") == "kein_urteil"
+                                            and verdict.get("beleg", {}).get("kein_punkt") is True)
+                        check(verdict.get("ergebnis") in ("bestanden", "verletzt") or no_outside_point,
+                              f"Missing popup verdict: {key}/{width}/{rule}: {popup.get(rule)}")
+                    schreibe(OUT / "report.json", report, zeige=0)
         browser.close()
+    report["abgeschlossen"] = True
     schreibe(OUT / "report.json", report, zeige=0)
     code = max(bewerte(report), int(bool(failures or report["seitenfehler"])))
     print(json.dumps({"zaehlung": zaehle(report), "eigene": failures, "seitenfehler": report["seitenfehler"], "report": str(OUT / "report.json"), "exit": code}, ensure_ascii=False))
