@@ -142,7 +142,7 @@ Platten sind als „schläft“ markiert. Auf schmalen Karten werden die
 Tabellenzeilen gestapelt statt seitlich gescrollt.
 
 Die Kapazitäten benötigen die Sensoren `disk_used` und `disk_total` aus
-Unraid SSH. Das Array summiert ausschließlich Datenlaufwerke, keine
+Unraid SSH ab 0.8.1. Das Array summiert ausschließlich Datenlaufwerke, keine
 Paritätsplatten. Je Pool wird das logische Dateisystem einmal gezählt;
 weitere Poolmitglieder erhöhen die Kapazität nicht. Boot bleibt separat.
 Fehlende, nicht verfügbare oder unvollständige Messwerte erscheinen als „–“;

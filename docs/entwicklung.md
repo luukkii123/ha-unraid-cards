@@ -160,3 +160,8 @@ werden zusätzlich im Browser gegen die gemessenen Fixturewerte geprüft.
 Array-Screenshots bei 320 px dunkel und 960 px hell gesichtet. Die parallel
 laufende Integrationsmatrix bestand 1011/1011 Tests, 17/17 Suites, keine Skips.
 Die synthetischen Daten sind keine Prüfung eines laufenden Unraid-Servers.
+
+**26.10.2026 – 0.1.2:** Die geprüfte Änderung aus PR #1 wird veröffentlicht;
+frische GitHub-CI grün. Gegenüber der obigen finalen Browserabnahme ändert
+sich im Bundle nur CARD_VERSION. Syntax und statische UI-Prüfung vor dem
+Tag erneut grün. Kapazitätssensoren stammen aus Unraid SSH 0.8.1.
