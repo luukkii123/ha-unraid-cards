@@ -2071,12 +2071,11 @@ function unraidSmartText(e,t){
 }
 const UNRAID_SERVER_AKTIONEN={server_reboot:'mdi:restart',server_shutdown:'mdi:power',mover_start:'mdi:folder-move-outline',array_start:'mdi:play',array_stop:'mdi:stop',spindown_all:'mdi:power-sleep',parity_start:'mdi:shield-search',parity_pause:'mdi:pause',parity_resume:'mdi:play',parity_cancel:'mdi:close'};
 function unraidServerButtons(server,keys){return keys.map(key=>{const e=server.wert(key),button=e?.domain==='button'&&e.entity_id?.startsWith('button.');return {key,id:button?e.entity_id:null,verfuegbar:!!(button&&!e.registry?.disabled_by&&e.state!=null&&e.state!=='unavailable')};});}
-function unraidServerAktionen(karte,modell,t){return (modell.buttons||[]).map(b=>({key:b.key,label:t[b.key],icon:UNRAID_SERVER_AKTIONEN[b.key],gefahr:true,deaktiviert:!b.verfuegbar,bestaetigen:t['confirm_'+b.key].replace('{server}',modell.name),fehler:t.action_unconfirmed,ausfuehren:async()=>{
+function unraidServerAktionen(karte,modell,t){return (modell.buttons||[]).map(b=>({key:b.key,label:t[b.key],icon:UNRAID_SERVER_AKTIONEN[b.key],gefahr:true,deaktiviert:!b.verfuegbar,bestaetigen:t['confirm_'+b.key].replace('{server}',modell.name),fehler:t.action_unconfirmed,ausfuehren:async anfrage=>{
  // Resolve again after confirmation. Changing the selected server while the dialog is open cannot send a request to a new target.
  const aktuell=unraidServer(karte._core,karte._config),ziel=aktuell.wert?.(b.key);
  if(!aktuell.server||aktuell.server.id!==modell.serverId||ziel?.entity_id!==b.id||ziel?.domain!=='button'||ziel.registry?.disabled_by||ziel.state==null||ziel.state==='unavailable')throw new Error('Unavailable action');
- const generation=karte._actionGeneration;
- await karte._hass.callService('button','press',{entity_id:b.id});if(generation===karte._actionGeneration&&unraidServer(karte._core,karte._config).server?.id===modell.serverId)karte._notice=t.sent;
+ await karte._hass.callService('button','press',{entity_id:b.id});if(anfrage.generation===karte._actionGeneration&&unraidServer(karte._core,karte._config).server?.id===anfrage.serverId)karte._notice=t.sent;
 }}));}
 function unraidServerIds(core,config){try{const s=unraidServer(core,config);return s.server?s.ids:[];}catch{return [];}}
 // watchDevice wie BuschUnraidBaseCard: Rückruf rendert, die Render-Signatur verwirft Unverändertes. Leere Liste = abmelden.
@@ -2160,11 +2159,14 @@ class BuschUnraidTile extends HTMLElement {
  // Ruling R2: `_busy` wird synchron VOR dem ersten `await` gesetzt (Doppelklick-Schutz) und bei abgelehnter Bestätigung zurückgenommen.
  async _ausfuehren(a,t){
   if(this._busy||a.deaktiviert)return;this._busy=true;this._error=null;this._notice=null;
-  const fokus=this.shadowRoot.activeElement?.dataset?.focusKey,device=this._config.device_id,generation=this._actionGeneration,serverId=this._core?.devices?unraidServer(this._core,this._config).server?.id:null;
+  const fokus=this.shadowRoot.activeElement?.dataset?.focusKey,device=this._config.device_id,serverId=this._core?.devices?unraidServer(this._core,this._config).server?.id:null;
   // The modal may outlive a telemetry render; return focus to the current copy of its opener.
   const zurueck=()=>{if(fokus&&device===this._config.device_id)this.shadowRoot.querySelector(`[data-focus-key="${fokus}"]`)?.focus({preventScroll:true});};
   if(a.bestaetigen){let ok=false;try{ok=await this._bestaetigen(a.bestaetigen,a.label,a.gefahr);}catch{ok=false;}if(!ok){this._busy=false;this._render();zurueck();return;}}
-  this._render();zurueck();try{await a.ausfuehren();}catch{if(generation===this._actionGeneration&&(this._core?.devices?unraidServer(this._core,this._config).server?.id:null)===serverId)this._error=a.fehler||t.failed;}finally{this._busy=false;this._render();}
+  this._render();zurueck();
+  // Bind both feedback paths to dispatch time, retaining the original confirmation target.
+  const anfrage=Object.freeze({generation:this._actionGeneration,serverId});
+  try{await a.ausfuehren(anfrage);}catch{if(anfrage.generation===this._actionGeneration&&(this._core?.devices?unraidServer(this._core,this._config).server?.id:null)===anfrage.serverId)this._error=a.fehler||t.failed;}finally{this._busy=false;this._render();}
  }
  _bestaetigen(text,aktion,gefahr){return unraidBestaetigen(aktion,text,aktion,gefahr);}
 }

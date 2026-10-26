@@ -25,18 +25,20 @@ for (const state of ['unavailable', 'unknown']) for (const phase of ['idle', 'pa
   });
 }
 
-for (const change of ['server', 'roundtrip', 'auto']) for (const result of ['resolve', 'reject']) {
+for (const change of ['server', 'roundtrip', 'auto', 'auto-roundtrip']) for (const result of ['resolve', 'reject']) {
   test(`Pending server request ${result} has no stale feedback after ${change} context change`, async () => {
     const { k, core, calls } = setup('BuschUnraidServerCard');
-    if (change === 'auto') { core.devices.delete('other'); k.setConfig({ device_id: '', show_clock: false }); }
+    if (change.startsWith('auto')) { core.devices.delete('other'); k.setConfig({ device_id: '', show_clock: false }); }
     let finish;
     k._hass.callService = (...args) => { calls.push(args); return new Promise((resolve, reject) => { finish = result === 'reject' ? () => reject(new Error('Synthetic timeout')) : resolve; }); };
     k._bestaetigen = async () => true;
     const action = k._aktionen(k._modell(core, k._config), k._texte.de).find(a => a.key === 'server_reboot');
     const pending = k._ausfuehren(action, k._texte.de); await tick();
-    if (change === 'auto') {
+    if (change.startsWith('auto')) {
+      const original = core.devices.get('demo');
       core.devices.set('other', { id: 'other', name: 'Other example', model: 'Unraid', config_entries: ['other-entry'] });
       core.devices.delete('demo'); k._render();
+      if (change === 'auto-roundtrip') { core.devices.delete('other'); core.devices.set('demo', original); k._render(); }
     } else {
       k.setConfig({ device_id: 'other', show_clock: false });
       if (change === 'roundtrip') k.setConfig({ device_id: 'demo', show_clock: false });
@@ -48,6 +50,52 @@ for (const change of ['server', 'roundtrip', 'auto']) for (const result of ['res
     assert.equal(k._busy, false);
   });
 }
+
+for (const selection of ['selected', 'auto']) for (const result of ['resolve', 'reject']) {
+  test(`Confirmation roundtrip with ${selection} selection keeps dispatch ${result} feedback`, async () => {
+    const { k, core, calls, env } = setup('BuschUnraidServerCard');
+    const original = core.devices.get('demo'), other = core.devices.get('other');
+    if (selection === 'auto') { core.devices.delete('other'); k.setConfig({ device_id: '', show_clock: false }); }
+    let finish;
+    k._hass.callService = (...args) => { calls.push(args); return new Promise((resolve, reject) => { finish = result === 'reject' ? () => reject(new Error('Synthetic timeout')) : resolve; }); };
+    const action = k._aktionen(k._modell(core, k._config), k._texte.de).find(a => a.key === 'server_reboot');
+    const pending = k._ausfuehren(action, k._texte.de);
+    if (selection === 'auto') {
+      core.devices.delete('demo'); core.devices.set('other', other); k._render();
+      core.devices.delete('other'); core.devices.set('demo', original); k._render();
+    } else {
+      k.setConfig({ device_id: 'other', show_clock: false });
+      k.setConfig({ device_id: 'demo', show_clock: false });
+    }
+    assert.equal(calls.length, 0, 'no dispatch while confirmation is open');
+    env.document.body.lastChild._ok.click(); await tick();
+    assert.deepEqual(calls.map(args => JSON.parse(JSON.stringify(args))), [['button', 'press', { entity_id: 'button.demo_server_reboot' }]]);
+    finish(); await pending;
+    if (result === 'reject') {
+      assert.match(k.shadowRoot.querySelector('[role="alert"]')?.textContent || '', /nicht bestätigt.*Verbindung.*prüfen/s);
+      assert.equal(k.shadowRoot.querySelector('[role="status"]'), null);
+    } else {
+      assert.match(k.shadowRoot.querySelector('[role="status"]')?.textContent || '', /Anfrage gesendet.*prüfen/s);
+      assert.equal(k.shadowRoot.querySelector('[role="alert"]'), null);
+    }
+    assert.equal(calls.length, 1, 'no automatic retry');
+    assert.equal(k._busy, false);
+  });
+}
+
+test('Auto-selection changing during confirmation cannot dispatch the previous server button', async () => {
+  const { k, core, calls, env } = setup('BuschUnraidServerCard');
+  const other = core.devices.get('other'); core.devices.delete('other');
+  k.setConfig({ device_id: '', show_clock: false });
+  const action = k._aktionen(k._modell(core, k._config), k._texte.de).find(a => a.key === 'server_reboot');
+  const pending = k._ausfuehren(action, k._texte.de);
+  core.devices.delete('demo'); core.devices.set('other', other); k._render();
+  env.document.body.lastChild._ok.click(); await pending;
+  assert.equal(calls.length, 0);
+  assert.equal(k.shadowRoot.querySelector('[role="alert"]'), null);
+  assert.equal(k.shadowRoot.querySelector('[role="status"]'), null);
+  assert.equal(k._busy, false);
+});
 
 for (const state of [undefined, null, 'unavailable', 'unknown']) {
   test(`Confirmation rechecks button state ${String(state)} before dispatch`, async () => {
