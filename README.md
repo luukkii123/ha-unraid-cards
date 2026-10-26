@@ -136,15 +136,18 @@ type: custom:busch-unraid-gpu-card
 ## busch-unraid-array-card
 
 Vorgabetitel: „Array und Pools“. Je Gruppe (Array, jeder Pool, Boot) ein
-Untertitel mit der Geräteanzahl (z. B. „Array · 3 Geräte“) und eine Tabelle
-Gerät · Status · Temp. · Belegung; schlafende Platten sind als „schläft“
-markiert.
+Untertitel mit gemessener Belegung und Kapazität (z. B. „Array · 768 GiB von
+1,5 TiB“) und eine Tabelle Gerät · Status · Temp. · Belegung; schlafende
+Platten sind als „schläft“ markiert. Auf schmalen Karten werden die
+Tabellenzeilen gestapelt statt seitlich gescrollt.
 
-> **Abweichung bis Stufe 2:** Geplant ist je Gruppe „belegt von gesamt“.
-> Unraid SSH 0.8.0 liefert aber keine Platten- oder Poolgrößen als Entität
-> (nur die Belegung in Prozent), deshalb zeigt die Karte vorerst die Anzahl
-> der Geräte. Auf schmalen Karten
-werden die Tabellenzeilen gestapelt statt seitlich gescrollt.
+Die Kapazitäten benötigen die Sensoren `disk_used` und `disk_total` aus
+Unraid SSH. Das Array summiert ausschließlich Datenlaufwerke, keine
+Paritätsplatten. Je Pool wird das logische Dateisystem einmal gezählt;
+weitere Poolmitglieder erhöhen die Kapazität nicht. Boot bleibt separat.
+Fehlende, nicht verfügbare oder unvollständige Messwerte erscheinen als „–“;
+aus Prozentwerten werden keine Größen geschätzt. Die Anzeige berücksichtigt
+die in Home Assistant gewählte Einheit und formatiert binär (KiB bis PiB).
 
 | Schlüssel | Typ | Vorgabe | Bedeutung |
 | --- | --- | --- | --- |
