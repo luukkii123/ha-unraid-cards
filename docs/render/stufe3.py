@@ -89,6 +89,46 @@ customElements.define('ha-form',class extends HTMLElement {
 </script>"""
 
 
+# Short field names and status words must not be fragmented by long names in
+# another column. Range rectangles measure actual line fragments, not CSS text.
+JS_INVENTORY_READABILITY = r"""({tag,kind})=>{
+ const root=document.querySelector(tag)?.shadowRoot,table=root?.querySelector('table');
+ const result={checked:0,failures:[]};
+ if(!table)return result;
+ const inspect=(element,whole=false)=>{
+  const walker=document.createTreeWalker(element,NodeFilter.SHOW_TEXT);
+  for(let node=walker.nextNode();node;node=walker.nextNode()){
+   const text=node.textContent;
+   const tokens=whole?[{0:text,index:0}]:[...text.matchAll(/[\p{L}\p{N}]+(?:[/.][\p{L}\p{N}]+)*/gu)];
+   for(const token of tokens){
+    if(!token[0].trim())continue;
+    const range=document.createRange();range.setStart(node,token.index);range.setEnd(node,token.index+token[0].length);
+    const rects=[...range.getClientRects()].filter(r=>r.width>0&&r.height>0),lines=[];
+    for(const r of rects)if(!lines.some(top=>Math.abs(top-r.top)<1))lines.push(r.top);
+    result.checked++;
+    if(lines.length!==1)result.failures.push({text:token[0],lines:lines.length,column:element.closest('th,td')?.cellIndex});
+   }
+  }
+ };
+ if(getComputedStyle(table.querySelector('thead')).display!=='none')for(const th of table.querySelectorAll('th'))inspect(th);
+ for(const row of table.querySelectorAll('tbody tr')){
+  const cells=row.cells;
+  if(kind==='users'){
+   // Names/descriptions are untrusted and may wrap at any character.
+   for(const status of cells[0].querySelectorAll('.message'))inspect(status);
+   inspect(cells[2],true);inspect(cells[3],true);
+  }else if(kind==='usb'){
+   inspect(cells[0],true);inspect(cells[2]);
+  }else if(kind==='coral'){
+   inspect(cells[1]);
+   // A numeric temperature and its unit are a single readable measurement.
+   inspect(cells[2],/^[−-]?\d+[.,]\d+\s+°C$/.test(cells[2].textContent.trim()));
+  }
+ }
+ return result;
+}"""
+
+
 def main():
     sys.path.insert(0, '/work')
     from playwright.sync_api import sync_playwright
@@ -99,6 +139,7 @@ def main():
     out.mkdir(parents=True, exist_ok=True)
     report = {'abgeschlossen': False, 'selbsttest': {}, 'breiten': {}, 'interaktionen': [],
               'eigene_verstoesse': [], 'seitenfehler': [], 'netz': [],
+              'lesbarkeit': {}, 'lesbarkeit_selbsttest': {},
               'grenzen': ['Synthetic HA form fixture; real HA editor dialog behavior belongs to HA.',
                           'No screen reader or field performance measurement.']}
     failures = report['eigene_verstoesse']
@@ -134,6 +175,13 @@ def main():
             theme = page.evaluate('document.documentElement.dataset.theme')
             page.locator(selector).screenshot(path=str(out / f'{name}-{width}-{theme}.png'))
             check(not page.evaluate(base.JS_HSCROLL), f'Horizontal scroll: {name}/{width}/{theme}')
+            if width in (480, 960) and not selector.endswith('-editor'):
+                kind = selector.removeprefix('busch-unraid-').removesuffix('-card')
+                readable = page.evaluate(JS_INVENTORY_READABILITY, {'tag': selector, 'kind': kind})
+                report['lesbarkeit'][f'{name}/{width}/{theme}'] = readable
+                if '-voll-' in name or '-filtered-' in name or ('-partial-' in name and kind != 'users'):
+                    check(readable['checked'] > 0, f'Empty readability measurement: {name}/{width}/{theme}')
+                check(not readable['failures'], f'Fragmented inventory text: {name}/{width}/{theme}: {readable}')
             measurement = messe_text(page, selector)  # selector names ONE host; helpers enter its shadow root.
             check(measurement.get('geprueft', 0) > 0 and measurement.get('geprueft_mit_kasten', 0) > 0,
                   f'Empty text measurement: {name}/{width}/{theme}: {measurement}')
@@ -141,6 +189,19 @@ def main():
         for kind in ('users', 'usb', 'coral'):
             tag = place(kind)
             report['selbsttest'][kind] = selbsttest(page, tag)
+            # A real narrow text box must trigger this additional gate, while
+            # the unmodified production table must pass. Always restore the DOM.
+            before = page.evaluate(JS_INVENTORY_READABILITY, {'tag': tag, 'kind': kind})
+            page.evaluate("tag=>{const h=document.querySelector(tag).shadowRoot.querySelector('th');window.readabilityHeader={h,nodes:[...h.childNodes]};const s=document.createElement('span');s.textContent='State';s.style.cssText='display:inline-block;width:1ch;overflow-wrap:anywhere';h.replaceChildren(s)}", tag)
+            try:
+                probe = page.evaluate(JS_INVENTORY_READABILITY, {'tag': tag, 'kind': kind})
+                detected = any(f['text'] == 'State' and f['lines'] > 1 for f in probe['failures'])
+            finally:
+                page.evaluate("()=>{const {h,nodes}=window.readabilityHeader;h.replaceChildren(...nodes);delete window.readabilityHeader}")
+            after = page.evaluate(JS_INVENTORY_READABILITY, {'tag': tag, 'kind': kind})
+            report['lesbarkeit_selbsttest'][kind] = {'vorher': before, 'sonde': probe, 'nachher': after, 'erkannt': detected}
+            check(before['checked'] > 0 and not before['failures'] and detected and after == before,
+                  f'Invalid readability counterprobe: {kind}')
         def measurement(pg):
             results = {}
             for language in ('de', 'en'):

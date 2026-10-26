@@ -2483,6 +2483,20 @@ class BuschUnraidInterfaceCard extends BuschUnraidTile{
  static getStubConfig(){return {type:'custom:busch-unraid-interface-card'};}
 }
 class BuschUnraidInterfaceCardEditor extends BuschUnraidTileEditor{get _schema(){return SCHEMA_BUSCH_UNRAID_INTERFACE_CARD;}get _texte(){return TEXTE_BUSCH_UNRAID_INTERFACE_CARD;}get _defaults(){return new BuschUnraidInterfaceCard()._vorgaben;}}
+/* Only the new inventory tables reserve balanced columns. The existing
+ * <=420px stacked rules remain untouched, including all labels and values. */
+const UNRAID_INVENTAR_SPALTEN_STYLE=`
+@container (min-width:421px){
+.table.inventory-users,.table.inventory-usb,.table.inventory-coral{table-layout:fixed}
+.table.inventory-users th:nth-child(1){width:27%}.table.inventory-users th:nth-child(2){width:37%}.table.inventory-users th:nth-child(3){width:20%}.table.inventory-users th:nth-child(4){width:16%}
+.table.inventory-usb th:nth-child(1){width:15%}.table.inventory-usb th:nth-child(2){width:31%}.table.inventory-usb th:nth-child(3){width:27%}.table.inventory-usb th:nth-child(4){width:27%}
+.table.inventory-coral th:nth-child(1){width:35%}.table.inventory-coral th:nth-child(2){width:38%}.table.inventory-coral th:nth-child(3){width:27%}
+}`;
+function unraidInventarTabelle(body,typ,spalten,zeilen,optionen){
+ const table=unraidTabelle(spalten,zeilen,optionen);
+ if(zeilen.length){table.className+=' inventory-'+typ;const style=document.createElement('style');style.textContent=UNRAID_INVENTAR_SPALTEN_STYLE;body.appendChild(style);}
+ body.appendChild(table);
+}
 /* Stage 3 inventory uses numeric count states (including 0), not ok/partial. */
 function unraidInventar(server,key){
  const e=server.wert('dashboard_'+key);if(!e)return {zustand:'legacy',daten:{},liste:null,count:null};
@@ -2504,7 +2518,7 @@ class BuschUnraidUsersCard extends BuschUnraidTile{
   if(q.daten.smb_enabled!==true)body.appendChild(buschUnraidNode('p',q.daten.smb_enabled===false?t.smb_disabled:t.smb_unknown,'message'));
   body.appendChild(buschUnraidNode('p',t.permission_help,'message'));
   const rows=[...q.liste].sort((a,b)=>String(a.name).localeCompare(String(b.name),undefined,{numeric:true})).map(x=>{const user=buschUnraidNode('div');user.appendChild(buschUnraidNode('span',x.name));user.appendChild(buschUnraidNode('p',x.protected===false?t.password_missing:x.protected===true?t.password_set:t.unknown,'message'));const allowed=q.daten.smb_enabled===true&&x.name!=='root';return {user,description:x.description,write:unraidZahl(allowed?x.write_shares:null,'',lang),read:unraidZahl(allowed?x.read_shares:null,'',lang)};});
-  body.appendChild(unraidTabelle([{key:'user',label:t.col_user},{key:'description',label:t.col_description},{key:'write',label:t.col_write},{key:'read',label:t.col_read}],rows,{leer:q.zustand==='partial'?t.inventory_empty_partial:t.none}));}
+  unraidInventarTabelle(body,'users',[{key:'user',label:t.col_user},{key:'description',label:t.col_description},{key:'write',label:t.col_write},{key:'read',label:t.col_read}],rows,{leer:q.zustand==='partial'?t.inventory_empty_partial:t.none});}
  static getConfigElement(){return document.createElement('busch-unraid-users-card-editor');}static getStubConfig(){return {type:'custom:busch-unraid-users-card'};}
 }
 class BuschUnraidUsersCardEditor extends BuschUnraidTileEditor{get _schema(){return SCHEMA_BUSCH_UNRAID_USERS_CARD;}get _texte(){return TEXTE_BUSCH_UNRAID_USERS_CARD;}get _defaults(){return new BuschUnraidUsersCard()._vorgaben;}}
@@ -2516,7 +2530,7 @@ class BuschUnraidUsbCard extends BuschUnraidTile{
  _kopf(m,t){return {icon:'mdi:usb',titel:t.tile,untertitel:[m.name,m.inventory?.count!=null?`${m.inventory.count} ${t.count}`:null].filter(Boolean).join(' · ')};}
  _inhalt(body,m,t){if(!unraidInventarHinweis(body,m,t))return;const q=m.inventory,lang=this._hass?.locale?.language;body.appendChild(buschUnraidNode('p',t.limits,'message'));if(q.daten.mapping_status!=='ok')body.appendChild(buschUnraidNode('p',t.mapping_missing,'message'));
   const rows=q.liste.filter(x=>this._config.show_hubs||!x.is_hub).sort((a,b)=>String(a.port).localeCompare(String(b.port),undefined,{numeric:true})).map(x=>{const name=buschUnraidNode('div');name.appendChild(buschUnraidNode('span',x.name));if(typeof x.speed_mbps==='number'&&Number.isFinite(x.speed_mbps))name.appendChild(buschUnraidNode('p',unraidZahl(x.speed_mbps,t.speed_unit,lang),'message'));return {port:x.port,name,state:['host','vm','remote','usbip_bound','unauthorized'].includes(x.state)?t[x.state]:t.unknown,assignment:x.state==='vm'?x.assigned_vm||t.vm_unknown:x.state==='remote'?x.remote_host||t.remote_unknown:'–'};});
-  body.appendChild(unraidTabelle([{key:'port',label:t.col_port},{key:'name',label:t.col_name},{key:'state',label:t.col_state},{key:'assignment',label:t.col_assignment}],rows,{leer:q.liste.length?t.filtered_empty:q.zustand==='partial'?t.inventory_empty_partial:t.none}));}
+  unraidInventarTabelle(body,'usb',[{key:'port',label:t.col_port},{key:'name',label:t.col_name},{key:'state',label:t.col_state},{key:'assignment',label:t.col_assignment}],rows,{leer:q.liste.length?t.filtered_empty:q.zustand==='partial'?t.inventory_empty_partial:t.none});}
  static getConfigElement(){return document.createElement('busch-unraid-usb-card-editor');}static getStubConfig(){return {type:'custom:busch-unraid-usb-card'};}
 }
 class BuschUnraidUsbCardEditor extends BuschUnraidTileEditor{get _schema(){return SCHEMA_BUSCH_UNRAID_USB_CARD;}get _texte(){return TEXTE_BUSCH_UNRAID_USB_CARD;}get _defaults(){return new BuschUnraidUsbCard()._vorgaben;}}
@@ -2526,7 +2540,7 @@ class BuschUnraidCoralCard extends BuschUnraidTile{
  static get kachel(){return 'coral';}get _texte(){return TEXTE_BUSCH_UNRAID_CORAL_CARD;}
  _modell(core,config){return unraidInventarModell(core,config,'coral');}
  _kopf(m,t){return {icon:'mdi:chip',titel:t.tile,untertitel:[m.name,m.inventory?.count!=null?`${m.inventory.count} ${t.count}`:null].filter(Boolean).join(' · ')};}
- _inhalt(body,m,t){if(!unraidInventarHinweis(body,m,t))return;const lang=this._hass?.locale?.language,rows=[...m.inventory.liste].sort((a,b)=>String(a.name).localeCompare(String(b.name),undefined,{numeric:true})).map(x=>{const usb=x.transport==='usb',temp=x.temperature_c;return {name:x.name,state:usb?t.usb_notice:['ready','error'].includes(x.state)?t[x.state]:t.unknown,temp:!usb&&typeof temp==='number'&&Number.isFinite(temp)&&temp>-50&&temp<=150?unraidZahl(temp,'°C',lang,1):t.temperature_missing};});body.appendChild(unraidTabelle([{key:'name',label:t.col_name},{key:'state',label:t.col_state},{key:'temp',label:t.col_temp}],rows,{leer:m.inventory.zustand==='partial'?t.inventory_empty_partial:t.none}));}
+ _inhalt(body,m,t){if(!unraidInventarHinweis(body,m,t))return;const lang=this._hass?.locale?.language,rows=[...m.inventory.liste].sort((a,b)=>String(a.name).localeCompare(String(b.name),undefined,{numeric:true})).map(x=>{const usb=x.transport==='usb',temp=x.temperature_c;return {name:x.name,state:usb?t.usb_notice:['ready','error'].includes(x.state)?t[x.state]:t.unknown,temp:!usb&&typeof temp==='number'&&Number.isFinite(temp)&&temp>-50&&temp<=150?unraidZahl(temp,'°C',lang,1):t.temperature_missing};});unraidInventarTabelle(body,'coral',[{key:'name',label:t.col_name},{key:'state',label:t.col_state},{key:'temp',label:t.col_temp}],rows,{leer:m.inventory.zustand==='partial'?t.inventory_empty_partial:t.none});}
  static getConfigElement(){return document.createElement('busch-unraid-coral-card-editor');}static getStubConfig(){return {type:'custom:busch-unraid-coral-card'};}
 }
 class BuschUnraidCoralCardEditor extends BuschUnraidTileEditor{get _schema(){return SCHEMA_BUSCH_UNRAID_CORAL_CARD;}get _texte(){return TEXTE_BUSCH_UNRAID_CORAL_CARD;}get _defaults(){return new BuschUnraidCoralCard()._vorgaben;}}
