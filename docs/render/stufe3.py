@@ -165,9 +165,14 @@ def main():
                             check(('USB erkannt' in content if language == 'de' else 'USB detected' in content), f'Missing USB Coral limit: {name}')
                     tag = place(kind, language=language)
                     toggle = pg.locator(tag + ' [data-focus-key="toggle"]')
-                    toggle.focus()
-                    focused = pg.evaluate("tag=>{const r=document.querySelector(tag).shadowRoot,b=r.querySelector('[data-focus-key=toggle]'),s=getComputedStyle(b);return r.activeElement===b&&s.outlineStyle!=='none'&&parseFloat(s.outlineWidth)>0}", tag)
-                    check(focused, f'No visible keyboard focus: {kind}/{language}')
+                    # place() removed the preceding editor/card. Tab reaches the fresh
+                    # card's only focusable control and establishes keyboard modality,
+                    # including after the USB editor's pointer-driven hub.uncheck().
+                    pg.keyboard.press('Tab')
+                    focus = pg.evaluate("tag=>{const c=document.querySelector(tag),r=c.shadowRoot,b=r.querySelector('[data-focus-key=toggle]'),s=getComputedStyle(b);return {active:document.activeElement===c&&r.activeElement===b,focus_visible:b.matches(':focus-visible'),outline_style:s.outlineStyle,outline_width:s.outlineWidth}}", tag)
+                    focused = (focus['active'] and focus['focus_visible'] and
+                               focus['outline_style'] != 'none' and float(focus['outline_width'].removesuffix('px')) > 0)
+                    check(focused, f'No visible keyboard focus after Tab: {kind}/{language}: {focus}')
                     toggle.press('Enter')
                     check(pg.locator(tag + ' table').count() == 0, f'Keyboard collapse failed: {kind}/{language}')
                     results[f'{kind}-collapsed-{language}'] = capture(f'{kind}-collapsed-{language}', tag)
@@ -179,7 +184,7 @@ def main():
                     toggle.press('Enter')
                     persisted = pg.evaluate("tag=>{const c=document.querySelector(tag);c.setConfig({...c._config});return c._eingeklappt&&c.shadowRoot.querySelector('[data-focus-key=toggle]').getAttribute('aria-expanded')==='false'}", tag)
                     check(persisted, f'Collapse preference lost: {kind}/{language}')
-                    report['interaktionen'].append({'karte': kind, 'sprache': language, 'breite': pg.viewport_size['width'], 'thema': pg.evaluate('document.documentElement.dataset.theme'), 'fokus_sichtbar': focused, 'fokus_stream': retained, 'einklappen_gespeichert': persisted})
+                    report['interaktionen'].append({'karte': kind, 'sprache': language, 'breite': pg.viewport_size['width'], 'thema': pg.evaluate('document.documentElement.dataset.theme'), 'fokus_sichtbar': focused, 'fokus_eingabe': 'Tab', 'fokus_details': focus, 'fokus_stream': retained, 'einklappen_gespeichert': persisted})
                     editor = tag + '-editor'
                     pg.evaluate("([tag,lang])=>{const e=document.createElement(tag);e.setAttribute('data-stage3-editor','');e.setConfig({type:'custom:'+tag.replace(/-editor$/,''),device_id:'demo'});e.hass={locale:{language:lang}};window.editorConfig=null;e.addEventListener('config-changed',ev=>window.editorConfig=ev.detail.config);document.querySelector('#wrap').replaceChildren(e)}", [editor, language])
                     results[f'{kind}-editor-{language}'] = capture(f'{kind}-editor-{language}', editor)
