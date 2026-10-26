@@ -192,3 +192,36 @@ Browsernachweise verwenden HA-/Icon-/Formularattrappen; sie belegen keine
 native HA-Editor- oder Hardwarebedienung. Serveraktionen werden nur gegen
 Attrappen ausgeführt. Reale Installations- und Laufzeitbelege gehören nicht
 in diese öffentliche Entwicklungsdokumentation.
+
+## Inventarkarten 0.3.0
+
+Users, USB und Coral verwenden einen eigenen Schema-1-Vertrag mit numerischen
+Anzahlen. Legacy, Quellenfehler, Teilbestand und erfolgreich leere Listen sind
+getrennte Zustände; die Auflösung bleibt streng beim gewählten Server. Die
+Karten liefern keine Services und starten keine Browserpolls. Benutzerrechte
+sind SMB-Sharezahlen, USB-Hostanwesenheit bedeutet keine freie Verfügbarkeit,
+USB-Coral-Anwesenheit keine angenommene Bereitschaft oder Temperatur.
+
+Lange erfundene Beschreibungen deckten einen visuellen Fehler auf, den eine
+reine Überlaufmessung nicht findet: automatische Tabellenbreiten konnten kurze
+Feldnamen mitten im Wort zerlegen. Ausschließlich die neuen Inventartabellen
+reservieren deshalb relative Spaltenanteile; der vorhandene Stapelmodus bis
+420 px, alte Tabellen, Shared UI und Core bleiben unverändert. Zusätzlich
+misst der Renderer tatsächliche DOM-Range-Zeilenfragmente kurzer Wörter und
+zusammengehöriger Temperaturwerte. Drei vorübergehend zu schmale Testelemente
+müssen als Fehler erkannt und vollständig zurückgesetzt werden.
+
+Reproduzierbare Nachweise ausschließlich mit erfundenen Fixtures: 296
+Frontendtests vor der begrenzten Layoutkorrektur; danach 48 betroffene
+Karten-/Vertragstests sowie sechs Busch-Namensraumtests ohne Fehler. Der finale
+Offline-Renderer erzeugt 264 Bilder über drei Breiten, zwei Themen, de/en und
+fünf Quellenzustände einschließlich Editoren und Einklappen. Alle 36 Fälle
+belegen echten Tab-Fokus, Streamfokus und gespeicherte Einklapppräferenz.
+2.408 Textprüfungen melden keine Überlauf-/Außerhalb-/Überlappungsbefunde;
+484 nicht beurteilbare Fälle zählen ausdrücklich nicht als bestanden.
+664 zusätzliche Wort-/Temperaturprüfungen und drei tatsächliche
+Lesbarkeits-Gegenproben bestehen. UI-Regeln ohne Verstöße, fünf Shared-Blöcke
+und 46.470-Byte-Core unverändert; Quellhashes vor/nach dem Offline-Lauf gleich.
+Die synthetische ha-form-Attrappe belegt keine native HA-Editoroptik, keinen
+Screenreader und keine Feldperformance. Reale Installationsdaten gehören
+nicht zu diesen Entwicklungsnachweisen.
