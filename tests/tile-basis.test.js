@@ -72,8 +72,12 @@ test('Dialog: Aufbau, Fokus auf Abbrechen, Fokusfalle, Abbrechen liefert false',
   assert.equal(d.shadowRoot.activeElement, d._abbr, 'Fokus beim Öffnen auf Abbrechen');
   const tab = (shiftKey) => { const e = new umgebung.KeyboardEvent('keydown',{key:'Tab',shiftKey}); d.dispatchEvent(e); return e; };
   assert.ok(tab(false).defaultPrevented); assert.equal(d.shadowRoot.activeElement, d._ok);
-  tab(false); assert.equal(d.shadowRoot.activeElement, d._abbr, 'Tab läuft im Dialog im Kreis');
-  tab(true); assert.equal(d.shadowRoot.activeElement, d._ok, 'Umschalt+Tab rückwärts');
+  const close = d.shadowRoot.querySelector('.close'); assert.ok(close, 'Schließen-X im Dialogkopf');
+  tab(false); assert.equal(d.shadowRoot.activeElement, close, 'Tab läuft zum Schließen-X im Kreis');
+  tab(false); assert.equal(d.shadowRoot.activeElement, d._abbr);
+  tab(true); assert.equal(d.shadowRoot.activeElement, close, 'Umschalt+Tab erreicht Schließen-X');
+  tab(true); assert.equal(d.shadowRoot.activeElement, d._ok, 'Umschalt+Tab rückwärts im Kreis');
+  tab(true); assert.equal(d.shadowRoot.activeElement, d._abbr);
   d._abbr.click(); assert.equal(await p, false); assert.equal(d.isConnected, false);
 });
 test('Dialog: ohne Gefahr normaler Knopf, deutsche Texte mit hass', async () => {
@@ -117,8 +121,9 @@ test('Dialog: nach Scrim-Klick bleiben Escape und Fokusfalle wirksam', async () 
   assert.ok(md.defaultPrevented, 'mousedown auf dem Scrim nimmt dem Dialog den Fokus nicht'); d._scrim.click(); assert.ok(d.isConnected);
   d._abbr.blur(); assert.equal(d.shadowRoot.activeElement, null, 'Fokus liegt außerhalb (body)');
   const vor = new umgebung.KeyboardEvent('keydown',{key:'Tab',shiftKey:false}); umgebung.document.dispatchEvent(vor);
-  assert.ok(vor.defaultPrevented); assert.equal(d.shadowRoot.activeElement, d._abbr, 'Tab von außen springt auf den ersten Knopf');
-  d._abbr.blur(); umgebung.document.dispatchEvent(new umgebung.KeyboardEvent('keydown',{key:'Tab',shiftKey:true}));
+  const close = d.shadowRoot.querySelector('.close'); assert.ok(close);
+  assert.ok(vor.defaultPrevented); assert.equal(d.shadowRoot.activeElement, close, 'Tab von außen springt auf den ersten Knopf (Schließen-X)');
+  close.blur(); umgebung.document.dispatchEvent(new umgebung.KeyboardEvent('keydown',{key:'Tab',shiftKey:true}));
   assert.equal(d.shadowRoot.activeElement, d._ok, 'Umschalt+Tab von außen springt auf den letzten Knopf');
   d._ok.blur(); umgebung.document.dispatchEvent(new umgebung.KeyboardEvent('keydown',{key:'Escape'}));
   assert.equal(await p, false); assert.equal(d.isConnected, false, 'Dialog entfernt');
@@ -128,4 +133,31 @@ test('Dialog: nach Scrim-Klick bleiben Escape und Fokusfalle wirksam', async () 
 });
 test('Dialog-Host liegt über HA-Dialogen (z-index 10000)', () => {
   const { UNRAID_CONFIRM_STYLE } = ladeKarte(['UNRAID_CONFIRM_STYLE']); assert.match(UNRAID_CONFIRM_STYLE, /:host\{[^}]*z-index:10000/);
+});
+
+for (const [language, label] of [['de', 'Schließen'], ['en', 'Close']]) test(`Dialog: localized close X cancels and restores shadow focus (${language})`, async () => {
+  const env = domMitHistory();
+  env.document.querySelector = sel => sel === 'home-assistant' ? { hass: { locale: { language } } } : null;
+  const { BuschUnraidConfirm } = ladeKarte(['BuschUnraidConfirm'], env);
+  const host = new Element('example-card'); host.attachShadow();
+  const opener = new Element('button'); host.shadowRoot.appendChild(opener); opener.focus(); env.document.activeElement = host;
+  const pending = BuschUnraidConfirm.frage({ titel: 'Example action', text: 'Example target', aktion: 'Confirm' });
+  const dialog = env.document.body.lastChild, close = dialog.shadowRoot.querySelector('.close');
+  assert.ok(close, 'visible close control');
+  assert.equal(close.getAttribute('aria-label'), label);
+  assert.equal(close.title, label);
+  assert.equal(close.getAttribute('type'), 'button');
+  assert.equal(close.querySelector('ha-icon').getAttribute('icon'), 'mdi:close');
+  assert.equal(close.querySelector('ha-icon').getAttribute('aria-hidden'), 'true');
+  const head = dialog.shadowRoot.querySelector('.dialog-head');
+  assert.equal(head.childNodes[0], close, 'close X precedes the title at the left');
+  assert.equal(head.childNodes[1], dialog.shadowRoot.querySelector('h2'));
+  assert.equal(dialog.shadowRoot.querySelector('.buttons').querySelectorAll('button').length, 2, 'two footer actions');
+  assert.equal(dialog.shadowRoot.activeElement, dialog._abbr, 'safe initial focus');
+  opener.focused = false; close.click(); close.click();
+  assert.equal(await pending, false);
+  assert.equal(opener.focused, true);
+  assert.equal(dialog.isConnected, false);
+  assert.equal(env.history.length, 1); assert.equal(env.history.backs, 1);
+  assert.equal(env.document.listeners.keydown.length, 0); assert.equal(env.window.listeners.popstate.length, 0);
 });

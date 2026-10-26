@@ -33,6 +33,41 @@ test('CPU core disclosure keeps focus and open state across streamed telemetry r
   assert.match(text(k), /0.*17 %/s);
 });
 
+for (const open of [true, false]) test(`CPU preserves ${open ? 'opened' : 'closed'} core details when telemetry precedes the native toggle event`, () => {
+  const core = dashboardFixture(), k = render('BuschUnraidCpuCard', core);
+  const old = k.shadowRoot.querySelector('summary'), details = k.shadowRoot.querySelector('details');
+  if (!open) { details.open = true; for (const toggle of details.listeners.toggle) toggle(); }
+  // Native details.open changes synchronously; its toggle event is a later task.
+  details.open = open; old.focus();
+  core.entities.get('sensor.demo_dashboard_cpu').attributes.cores[0].percent = 23;
+  k.hass = { locale: { language: 'de' } };
+  const current = k.shadowRoot.querySelector('summary');
+  assert.notEqual(current, old, 'changed telemetry rebuilt the shadow content');
+  assert.equal(k.shadowRoot.querySelector('details').open, open);
+  assert.equal(k.shadowRoot.activeElement, current);
+  assert.match(text(k), /0.*23 %/s);
+});
+
+test('CPU retains a just-opened disclosure through card collapse and collapsed telemetry updates', () => {
+  const core = dashboardFixture(), k = render('BuschUnraidCpuCard', core);
+  k.shadowRoot.querySelector('details').open = true; // no toggle event yet
+  k._umschalten();
+  assert.equal(k.shadowRoot.querySelector('details'), null);
+  core.entities.get('sensor.demo_dashboard_cpu').attributes.cores[0].percent = 29; k._render();
+  k._umschalten();
+  assert.equal(k.shadowRoot.querySelector('details').open, true);
+  assert.match(text(k), /0.*29 %/s);
+});
+
+test('CPU ignores delayed toggle events from details detached by a collapsed render', () => {
+  const k = render('BuschUnraidCpuCard'), old = k.shadowRoot.querySelector('details');
+  old.open = true; for (const toggle of old.listeners.toggle) toggle();
+  k._umschalten();
+  old.open = false; for (const toggle of old.listeners.toggle) toggle();
+  k._umschalten();
+  assert.equal(k.shadowRoot.querySelector('details').open, true);
+});
+
 test('Legacy render fixture omits the new parity phase and renders its upgrade fallback', () => {
   const core = dashboardFixture({ legacy: true });
   assert.equal(core.entities.get('binary_sensor.demo_parity_running').attributes.state, undefined);

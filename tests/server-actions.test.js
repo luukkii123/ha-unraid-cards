@@ -4,6 +4,28 @@ const { ladeKarte } = require('./laden.js'); const { dashboardFixture } = requir
 const actions = { BuschUnraidServerCard: ['server_reboot','server_shutdown','mover_start'], BuschUnraidArrayCard: ['array_start','array_stop','spindown_all'], BuschUnraidParityCard: ['parity_start','parity_pause','parity_resume','parity_cancel'] };
 function setup(name) { const env = domMitHistory(); const { [name]: Klass } = ladeKarte([name], env); const core = dashboardFixture({ second: true }), calls = [], k = new Klass(); k._core = core; k._hass = { locale: { language: 'de' }, callService: async (...args) => calls.push(args) }; k.setConfig({ device_id: 'demo', show_clock: false, confirm_stop: false, confirm_restart: false }); return { k, core, calls, env }; }
 const tick = () => new Promise(r => setImmediate(r));
+for (const [name, list] of Object.entries(actions)) for (const key of list) test(`${key}: close X cancels without dispatch and restores the current opener after telemetry`, async () => {
+  const { k, core, calls, env } = setup(name);
+  const old = k.shadowRoot.querySelector(`[data-focus-key="${key}"]`); old.focus(); env.document.activeElement = k;
+  const action = k._aktionen(k._modell(core, k._config), k._texte.de).find(a => a.key === key);
+  const pending = k._ausfuehren(action, k._texte.de), dialog = env.document.body.lastChild;
+  assert.equal(dialog.shadowRoot.activeElement, dialog._abbr);
+  old.blur(); core.entities.get('sensor.demo_cpu_percent').state = '34'; k._render();
+  const current = k.shadowRoot.querySelector(`[data-focus-key="${key}"]`);
+  assert.ok(current, 'telemetry preserves the action opener');
+  assert.notEqual(current, old);
+  const close = dialog.shadowRoot.querySelector('.close'); assert.ok(close, 'real close X'); close.click(); close.click();
+  await pending;
+  assert.equal(calls.length, 0); assert.equal(k._busy, false);
+  const restored = k.shadowRoot.querySelector(`[data-focus-key="${key}"]`);
+  assert.ok(restored, 'the completed cancellation leaves a focusable opener');
+  assert.notEqual(restored, old, 'focus returns to the rendered opener, not its detached original');
+  assert.equal(k.shadowRoot.activeElement, restored);
+  assert.equal(dialog.isConnected, false);
+  assert.equal(env.history.length, 1); assert.equal(env.history.backs, 1);
+  assert.equal(env.document.listeners.keydown.length, 0); assert.equal(env.window.listeners.popstate.length, 0);
+  assert.equal(k.shadowRoot.querySelector('[role="status"]'), null);
+});
 for (const [name, list] of Object.entries(actions)) for (const key of list) test(`${key}: always confirmed, cancel sends zero, double confirm sends exactly its own button`, async () => { const { k, calls, env } = setup(name); const t = k._texte.de; const model = k._modell(k._core, k._config); const a = k._aktionen(model, t).find(x => x.key === key); assert.ok(a, key); assert.match(a.bestaetigen, /Example server/); assert.ok(a.bestaetigen.length > 'Example server'.length + 10); const p = k._ausfuehren(a, t); const d = env.document.body.lastChild; assert.ok(d, 'real confirmation dialog opened'); d._scrim.click(); assert.ok(d.isConnected); d._abbr.click(); await p; assert.equal(calls.length, 0); const esc = k._ausfuehren(a, t); env.document.body.lastChild.dispatchEvent(new env.KeyboardEvent('keydown', { key: 'Escape' })); await esc; await new Promise(r => setTimeout(r)); assert.equal(calls.length, 0); const back = k._ausfuehren(a, t); env.history.back(); await back; assert.equal(calls.length, 0); const q = k._ausfuehren(a, t); const dialog = env.document.body.lastChild; dialog._ok.click(); dialog._ok.click(); await Promise.all([q, k._ausfuehren(a, t)]); assert.deepEqual(calls.map(x => JSON.parse(JSON.stringify(x))), [['button', 'press', { entity_id: 'button.demo_' + key }]]); assert.match(k.shadowRoot.textContent, /Anfrage gesendet.*prüfen/s); });
 test('Unavailable, disabled, wrong-domain and missing buttons are never dispatched or guessed', () => { const { k, core } = setup('BuschUnraidServerCard'); const e = core.entities.get('button.demo_server_reboot'); e.state = 'unavailable'; core.entities.get('button.demo_server_shutdown').registry.disabled_by = 'user'; core.entities.delete('button.demo_mover_start'); core.add('mover_start', 'ok'); const a = k._aktionen(k._modell(core, k._config), k._texte.de); assert.ok(a.every(x => x.deaktiviert)); });
 test('Server timeout sends once, shows uncertain result, never claims success or retries', async () => { const { k, calls } = setup('BuschUnraidServerCard'); k._hass.callService = async (...a) => { calls.push(a); throw new Error('Timeout after send'); }; k._bestaetigen = async () => true; const a = k._aktionen(k._modell(k._core, k._config), k._texte.de).find(x => x.key === 'server_shutdown'); await k._ausfuehren(a, k._texte.de); assert.equal(calls.length, 1); assert.match(k.shadowRoot.textContent, /nicht bestätigt.*Verbindung.*prüfen/s); assert.doesNotMatch(k.shadowRoot.querySelector('ha-card').textContent, /erfolgreich/); });

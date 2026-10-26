@@ -886,7 +886,7 @@ class BuschSmartQueries {
 
 
 /* === Version und Sprache === */
-const CARD_VERSION = "0.1.2";
+const CARD_VERSION = "0.2.0";
 
 console.info(
   `%c UNRAID-CARDS %c v${CARD_VERSION} `,
@@ -1899,6 +1899,7 @@ const UNRAID_TILE_TEXTE={de:{upgrade:'Zusatzdaten: Unraid SSH auf 0.9 oder neuer
   confirm_parity_resume:'Paritätsprüfung auf „{server}“ fortsetzen? Die Datenträger werden wieder gelesen.',
   confirm_parity_cancel:'Paritätsprüfung auf „{server}“ abbrechen? Die aktuelle Prüfung wird nicht abgeschlossen.',
   cancel:'Abbrechen',
+  close:'Schließen',
   collapse:'Einklappen',
   expand:'Ausklappen',
   loading:'Wird geladen …',
@@ -1994,6 +1995,7 @@ const UNRAID_TILE_TEXTE={de:{upgrade:'Zusatzdaten: Unraid SSH auf 0.9 oder neuer
   confirm_parity_resume:'Resume the parity check on “{server}”? Disks will be read again.',
   confirm_parity_cancel:'Cancel the parity check on “{server}”? The current check will remain incomplete.',
   cancel:'Cancel',
+  close:'Close',
   collapse:'Collapse',
   expand:'Expand',
   loading:'Loading …',
@@ -2174,6 +2176,7 @@ const UNRAID_CONFIRM_STYLE=`:host{position:fixed;inset:0;z-index:10000;display:g
 .scrim{position:absolute;inset:0;background:var(--mdc-dialog-scrim-color,rgba(0,0,0,.32))}
 .dialog{position:relative;width:min(320px,calc(100vw - 32px));background:var(--card-background-color,#fff);color:var(--primary-text-color);border-radius:var(--ha-card-border-radius,12px);padding:24px;box-shadow:var(--ha-card-box-shadow,0 8px 24px rgba(0,0,0,.3))}
 h2{margin:0 0 12px;font-size:var(--ha-font-size-l,18px);overflow-wrap:anywhere}p{margin:0 0 20px;overflow-wrap:anywhere}
+.dialog-head{display:flex;align-items:flex-start;gap:12px;margin-bottom:12px}.dialog-head h2{flex:1;min-width:0;align-self:center;margin:0}.close{display:flex;align-items:center;justify-content:center;flex:0 0 44px;width:44px;height:44px;padding:0;border:0}
 .buttons{display:flex;justify-content:flex-end;gap:8px}button{min-height:44px;min-width:44px;padding:0 16px;border-radius:8px;border:1px solid var(--divider-color);background:transparent;color:var(--primary-color);font:inherit}
 button.danger{background:var(--error-color);color:var(--text-primary-color,#fff);border-color:var(--error-color)}button:focus-visible{outline:2px solid var(--primary-color);outline-offset:2px}
 @media (max-width:449px),(max-height:499px){:host{place-items:end stretch}.dialog{width:auto;min-height:90vh;border-radius:16px 16px 0 0;display:flex;flex-direction:column}.buttons{margin-top:auto}}`;
@@ -2190,17 +2193,19 @@ class BuschUnraidConfirm extends HTMLElement {
   this._scrim=document.createElement('div');this._scrim.className='scrim';
   const box=document.createElement('div');box.className='dialog';box.setAttribute('role','alertdialog');box.setAttribute('aria-modal','true');
   const h=document.createElement('h2');h.id='t';h.textContent=titel;const p=document.createElement('p');p.id='d';p.textContent=text;box.setAttribute('aria-labelledby','t');box.setAttribute('aria-describedby','d');
-  const row=document.createElement('div');row.className='buttons';this._abbr=document.createElement('button');this._abbr.textContent=buschTexte(UNRAID_TILE_TEXTE,document.querySelector('home-assistant')?.hass).cancel;
-  this._ok=document.createElement('button');this._ok.textContent=aktion;if(gefahr)this._ok.className='danger';row.append(this._abbr,this._ok);box.append(h,p,row);root.append(style,this._scrim,box);
+  const t=buschTexte(UNRAID_TILE_TEXTE,document.querySelector('home-assistant')?.hass),head=document.createElement('div');head.className='dialog-head';
+  this._close=document.createElement('button');this._close.className='close';this._close.setAttribute('type','button');this._close.setAttribute('aria-label',t.close);this._close.title=t.close;const icon=BuschUI.ha.icon('mdi:close');icon.setAttribute('aria-hidden','true');this._close.appendChild(icon);head.append(this._close,h);
+  const row=document.createElement('div');row.className='buttons';this._abbr=document.createElement('button');this._abbr.textContent=t.cancel;
+  this._ok=document.createElement('button');this._ok.textContent=aktion;if(gefahr)this._ok.className='danger';row.append(this._abbr,this._ok);box.append(head,p,row);root.append(style,this._scrim,box);
   const id=Math.random().toString(36).slice(2);this._eintrag={buschUnraidConfirm:id};history.pushState(this._eintrag,'');
   const obenEigener=()=>{const s=history.state;return !!s&&s.buschUnraidConfirm===id;};
   return new Promise(resolve=>{
    this._fertig=(wert,ausHistory=false)=>{if(this._erledigt)return;this._erledigt=true;window.removeEventListener('popstate',this._pop);document.removeEventListener('keydown',this._taste,true);if(!ausHistory&&obenEigener())history.back();this.remove();this._vorher?.focus?.();resolve(wert);};
    // Jedes popstate, solange der Dialog offen ist, ist ein Zurück: der eigene back()-Aufruf läuft erst nach dem Abmelden.
    this._pop=()=>this._fertig(false,true);
-   this._taste=e=>{if(e.key==='Escape'){e.preventDefault();e.stopPropagation?.();this._fertig(false);}else if(e.key==='Tab'){const z=[this._abbr,this._ok],i=z.indexOf(root.activeElement);e.preventDefault();(i<0?z[e.shiftKey?z.length-1:0]:z[(i+(e.shiftKey?-1:1)+z.length)%z.length]).focus();}};
+   this._taste=e=>{if(e.key==='Escape'){e.preventDefault();e.stopPropagation?.();this._fertig(false);}else if(e.key==='Tab'){const z=[this._close,this._abbr,this._ok],i=z.indexOf(root.activeElement);e.preventDefault();(i<0?z[e.shiftKey?z.length-1:0]:z[(i+(e.shiftKey?-1:1)+z.length)%z.length]).focus();}};
    window.addEventListener('popstate',this._pop);document.addEventListener('keydown',this._taste,true);
-   this._abbr.addEventListener('click',()=>this._fertig(false));this._ok.addEventListener('click',()=>this._fertig(true));
+   this._close.addEventListener('click',()=>this._fertig(false));this._abbr.addEventListener('click',()=>this._fertig(false));this._ok.addEventListener('click',()=>this._fertig(true));
    // R04: Klick auf den Scrim schließt einen Bestätigungsdialog bewusst nicht; mousedown ohne Standardaktion hält den Fokus im Dialog.
    this._scrim.addEventListener('mousedown',e=>e.preventDefault());
    this._abbr.focus();
@@ -2296,6 +2301,8 @@ const TEXTE_BUSCH_UNRAID_CPU_CARD={de:{...UNRAID_TILE_TEXTE.de,name:'Unraid: Pro
 const UNRAID_VERLAUF_MINUTEN=[5,10,30,60];
 class BuschUnraidCpuCard extends BuschUnraidTile{
  static get kachel(){return 'cpu';}get _texte(){return TEXTE_BUSCH_UNRAID_CPU_CARD;}get _vorgaben(){return {device_id:'',title:'',history_minutes:'10',show_history:true};}
+ // `open` changes before the deferred native toggle event; capture the live DOM before replacing it.
+ _render(){const details=this.shadowRoot?.querySelector('.core-details');if(details)this._coreDetailsOpen=!!details.open;super._render();}
  _modell(core,config){const s=unraidServer(core,config);const z=unraidZustand(s);if(z)return z;const cpu=s.wert('cpu_percent');return {dashboard:unraidDashboard(s,'cpu'),hw:unraidDashboard(s,'hardware'),power:unraidNum(s.wert('cpu_power')),name:s.server.name_by_user||s.server.name,cpu:unraidNum(cpu),cpuId:cpu?.entity_id,temp:unraidNum(s.wert('cpu_temp')),load:unraidNum(s.wert('load_1'))};}
  _kopf(m,t){return {icon:'mdi:cpu-64-bit',titel:t.tile,untertitel:m.hw?.daten.hardware?.cpu_model||m.name};}
  _signaturZusatz(){return this._config.show_history?Math.floor(Date.now()/60000):null;}
@@ -2303,7 +2310,7 @@ class BuschUnraidCpuCard extends BuschUnraidTile{
   body.appendChild(buschUnraidNode('h3',t.load,'section'));body.appendChild(unraidBalken(m.cpu,unraidZahl(m.cpu,'%',lang)));
   body.appendChild(unraidRaster([{name:t.power,wert:unraidZahl(m.power,'W',lang)}]));
   for(const pkg of unraidListe(m.dashboard.daten,'packages'))body.appendChild(unraidRaster([{name:pkg.id,wert:`${unraidZahl(pkg.power_w,'W',lang)} · ${t.source}: ${pkg.source||'–'}`} ]));
-  const details=buschUnraidNode('details',undefined,'core-details'),summary=buschUnraidNode('summary',t.core_details);summary.dataset.focusKey='cpu-core-details';details.open=!!this._coreDetailsOpen;details.addEventListener('toggle',()=>{this._coreDetailsOpen=details.open;});details.appendChild(summary);details.appendChild(unraidRaster(unraidListe(m.dashboard.daten,'cores').map(c=>({name:t.core+' '+c.id,wert:unraidZahl(c.percent,'%',lang)}))));body.appendChild(details);unraidZusatzHinweis(body,[m.dashboard,m.hw],t);
+  const details=buschUnraidNode('details',undefined,'core-details'),summary=buschUnraidNode('summary',t.core_details);summary.dataset.focusKey='cpu-core-details';details.open=!!this._coreDetailsOpen;details.addEventListener('toggle',()=>{if(this.shadowRoot.querySelector('.core-details')===details)this._coreDetailsOpen=details.open;});details.appendChild(summary);details.appendChild(unraidRaster(unraidListe(m.dashboard.daten,'cores').map(c=>({name:t.core+' '+c.id,wert:unraidZahl(c.percent,'%',lang)}))));body.appendChild(details);unraidZusatzHinweis(body,[m.dashboard,m.hw],t);
   // Ohne callWS (Vorschau, Tests) entfällt der Verlauf. Die letzte Linie bleibt bis zur Antwort stehen, damit Renders nicht flackern.
   if(this._config.show_history&&m.cpuId&&typeof this._hass?.callWS==='function'){const platz=buschUnraidNode('div',undefined,'history');body.appendChild(platz);const min=UNRAID_VERLAUF_MINUTEN.includes(Number(this._config.history_minutes))?Number(this._config.history_minutes):10,key=m.cpuId+'|'+min;
    if(this._linie?.key===key)platz.appendChild(unraidLinie(this._linie.punkte,t.no_history,t.load));

@@ -25,6 +25,7 @@ CARDS = ["server", "system", "cpu", "gpu", "array", "parity", "shares", "vm-usag
 ACTIONS = {"server": ["server_reboot", "server_shutdown", "mover_start"],
            "array": ["array_start", "array_stop", "spindown_all"],
            "parity": ["parity_start", "parity_pause", "parity_resume", "parity_cancel"]}
+CLOSE = "[role=alertdialog] .close"
 FORM = """<style>busch-unraid-interface-card-editor{display:block;min-width:0;color:var(--primary-text-color);background:var(--card-background-color);padding:16px;box-sizing:border-box}</style><script>
 customElements.define('ha-form',class extends HTMLElement {
  set schema(v){this._schema=v;this.draw()} get schema(){return this._schema}
@@ -172,7 +173,7 @@ def main():
                     opener = tag + f' [data-focus-key="{key}"]'
                     # Shared JS helpers query each shadow root separately: the
                     # selector must name the inner sheet without crossing hosts.
-                    popup = messe_popup(page, lambda o=opener: page.locator(o).click(), base.DIALOG, schliessen_knopf_selektor=base.ABBRECHEN, dialog_typ="bestaetigung")
+                    popup = messe_popup(page, lambda o=opener: page.locator(o).click(), base.DIALOG, schliessen_knopf_selektor=CLOSE, dialog_typ="bestaetigung")
                     report["popup"][f"{key}-{width}"] = popup
                     for rule in ("escape", "zurueck", "schliessknopf", "obenauf", "scrim"):
                         verdict = popup.get(rule, {})
