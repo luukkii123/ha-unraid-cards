@@ -48,14 +48,10 @@ def fixtures():
     import playwright
     node = shutil.which("node") or str(pathlib.Path(playwright.__file__).parent / "driver" / "node")
     repo = pathlib.Path(__file__).resolve().parents[2]
-    js = "const f=require('./tests/familie-attrappe.js').dashboardFixture; const out={}; for(const [name,options] of [['voll',{}],['legacy',{legacy:true}]]){const x=f(options);out[name]={devices:[...x.devices.values()],entities:[...x.entities.values()]};} console.log(JSON.stringify(out))"
+    js = "const f=require('./tests/familie-attrappe.js').dashboardFixture; const out={}; for(const [name,options] of [['voll',{}],['legacy',{legacy:true}],['partial',{partial:true}]]){const x=f(options);out[name]={devices:[...x.devices.values()],entities:[...x.entities.values()]};} console.log(JSON.stringify(out))"
     data = json.loads(subprocess.check_output([node, "-e", js], cwd=repo, text=True))
-    for variant in ["partial", "offline", "empty", "folder", "unknown"]:
+    for variant in ["offline", "empty", "folder", "unknown"]:
         data[variant] = copy.deepcopy(data["voll"])
-    for e in data["partial"]["entities"]:
-        if "_dashboard_" in e["registry"]["unique_id"]:
-            e["state"] = "partial"
-            e["attributes"]["failed_sections"] = ["dash_example_optional_source"]
     for e in data["offline"]["entities"]:
         e["state"] = "unavailable"
     for e in data["empty"]["entities"]:

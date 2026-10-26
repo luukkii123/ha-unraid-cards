@@ -20,3 +20,51 @@ test('Docker image and unknown modes keep the source distinction explicit', () =
 
 test('SMART cached epoch time and structured field warnings are readable, not silently dropped', () => { const k = render('BuschUnraidArrayCard'); assert.match(text(k), /Example health counter: 4/); assert.match(text(k), /emhttp_cache/); assert.match(text(k), /2026/); assert.doesNotMatch(text(k), /1767351600/); });
 test('Pool names use natural numeric order without adding members to capacities', () => { const core = dashboardFixture(); const e = core.entities.get('sensor.demo_dashboard_storage'); e.attributes.pools = [{name:'pool10',filesystem:'zfs',state:'online',members:[],total_bytes:100,used_bytes:0,free_bytes:100},{name:'pool2',filesystem:'zfs',state:'online',members:[],total_bytes:100,used_bytes:0,free_bytes:100}]; const k = render('BuschUnraidArrayCard', core); const headings = k.shadowRoot.querySelectorAll('h3').map(x => x.textContent); assert.ok(headings.findIndex(x => x.startsWith('pool2')) < headings.findIndex(x => x.startsWith('pool10'))); });
+
+test('CPU core disclosure keeps focus and open state across streamed telemetry renders', () => {
+  const core = dashboardFixture(), k = render('BuschUnraidCpuCard', core);
+  const old = k.shadowRoot.querySelector('summary'), details = k.shadowRoot.querySelector('details');
+  details.open = true; for (const toggle of details.listeners.toggle) toggle(); old.focus();
+  core.entities.get('sensor.demo_dashboard_cpu').attributes.cores[0].percent = 17; k._render();
+  const current = k.shadowRoot.querySelector('summary');
+  assert.notEqual(current, old);
+  assert.equal(k.shadowRoot.activeElement, current);
+  assert.equal(k.shadowRoot.querySelector('details').open, true);
+  assert.match(text(k), /0.*17 %/s);
+});
+
+test('Legacy render fixture omits the new parity phase and renders its upgrade fallback', () => {
+  const core = dashboardFixture({ legacy: true });
+  assert.equal(core.entities.get('binary_sensor.demo_parity_running').attributes.state, undefined);
+  const k = render('BuschUnraidParityCard', core);
+  assert.match(text(k), /Unraid SSH.*aktualisieren/s);
+  assert.match(text(k), /Keine Prüfung aktiv/);
+  assert.doesNotMatch(text(k), /pausiert/);
+});
+
+test('Partial render fixture nulls failed sources and preserves valid independent telemetry', () => {
+  const core = dashboardFixture({ partial: true });
+  for (const [name, field, source, state] of [
+    ['cpu', 'cores', 'dash_cpu', 'partial'], ['hardware', 'hardware', 'dash_hardware', 'partial'],
+    ['storage', 'filesystems', 'dash_storage', 'partial'], ['memory', 'memory', 'dash_memory', 'unavailable'],
+    ['interfaces', 'interfaces', 'dash_interfaces', 'unavailable'], ['shares', 'shares', 'dash_shares', 'unavailable'],
+    ['vms', 'vms', 'vm_stats', 'unavailable'],
+  ]) {
+    const entity = core.entities.get('sensor.demo_dashboard_' + name);
+    assert.equal(entity.state, state, name);
+    assert.equal(entity.attributes[field], null, name);
+    assert.deepEqual(entity.attributes.failed_sections, [source], name);
+    assert.equal(entity.stateObject.state, state, name + ' HA state');
+  }
+  const cpu = render('BuschUnraidCpuCard', core), system = render('BuschUnraidSystemCard', core);
+  assert.match(text(cpu), /package-0.*18 W/s); assert.doesNotMatch(text(cpu), /Example processor|Kern 0/);
+  assert.deepEqual(system.shadowRoot.querySelectorAll('.ring-value').map(ring => ring.textContent), ['40 %', '–', '–', '–']);
+  assert.doesNotMatch(text(system), /Example board|5.*GiB/s);
+  assert.match(text(render('BuschUnraidServerCard', core)), /Example license/);
+  assert.match(text(render('BuschUnraidGpuCard', core)), /Example GPU/);
+  assert.match(text(render('BuschUnraidArrayCard', core)), /fast-storage-with-a-long-descriptive-name/);
+  const shareCells = render('BuschUnraidSharesCard', core).shadowRoot.querySelectorAll('td');
+  assert.deepEqual(shareCells.slice(3).map(cell => cell.textContent), ['Unbekannt', 'Unbekannt', '–']);
+  assert.doesNotMatch(text(render('BuschUnraidVmUsageCard', core)), /31,3 %|1,0 KiB\/s/);
+  assert.match(text(render('BuschUnraidInterfaceCard', core)), /nicht verfügbar/);
+});

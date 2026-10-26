@@ -9,7 +9,53 @@ test('Unavailable, disabled, wrong-domain and missing buttons are never dispatch
 test('Server timeout sends once, shows uncertain result, never claims success or retries', async () => { const { k, calls } = setup('BuschUnraidServerCard'); k._hass.callService = async (...a) => { calls.push(a); throw new Error('Timeout after send'); }; k._bestaetigen = async () => true; const a = k._aktionen(k._modell(k._core, k._config), k._texte.de).find(x => x.key === 'server_shutdown'); await k._ausfuehren(a, k._texte.de); assert.equal(calls.length, 1); assert.match(k.shadowRoot.textContent, /nicht bestätigt.*Verbindung.*prüfen/s); assert.doesNotMatch(k.shadowRoot.querySelector('ha-card').textContent, /erfolgreich/); });
 test('Paused parity has its own state and does not claim idle', () => { const { k } = setup('BuschUnraidParityCard'); assert.match(k.shadowRoot.querySelector('ha-card').textContent, /pausiert/); assert.doesNotMatch(k.shadowRoot.querySelector('ha-card').textContent, /Keine Prüfung aktiv/); });
 
-test('Changing selected server during confirmation cannot send an old or new server command', async () => { const { k, calls, env } = setup('BuschUnraidServerCard'); const a = k._aktionen(k._modell(k._core, k._config), k._texte.de).find(x => x.key === 'server_reboot'); const pending = k._ausfuehren(a, k._texte.de); k.setConfig({device_id:'other',show_clock:false}); env.document.body.lastChild._ok.click(); await pending; assert.equal(calls.length,0); assert.match(k.shadowRoot.querySelector('ha-card').textContent,/nicht bestätigt/); });
+test('Changing selected server during confirmation cannot send a command or show old feedback', async () => { const { k, calls, env } = setup('BuschUnraidServerCard'); const a = k._aktionen(k._modell(k._core, k._config), k._texte.de).find(x => x.key === 'server_reboot'); const pending = k._ausfuehren(a, k._texte.de); k.setConfig({device_id:'other',show_clock:false}); env.document.body.lastChild._ok.click(); await pending; assert.equal(calls.length,0); assert.doesNotMatch(k.shadowRoot.querySelector('ha-card').textContent,/nicht bestätigt|Anfrage gesendet/); });
 test('Switching server while a sent request is pending cannot show completion feedback on the new server', async () => { const { k, calls } = setup('BuschUnraidServerCard'); let done; k._hass.callService = async (...args) => { calls.push(args); await new Promise(r => { done = r; }); }; k._bestaetigen = async () => true; const a = k._aktionen(k._modell(k._core,k._config),k._texte.de).find(x => x.key === 'server_reboot'); const pending = k._ausfuehren(a,k._texte.de); await tick(); k.setConfig({device_id:'other',show_clock:false}); done(); await pending; assert.equal(calls.length,1); assert.doesNotMatch(k.shadowRoot.querySelector('ha-card').textContent,/Anfrage gesendet/); });
 test('Changing the selected server clears feedback from the previous target', async () => { const { k } = setup('BuschUnraidServerCard'); k._bestaetigen = async () => true; const a = k._aktionen(k._modell(k._core,k._config),k._texte.de).find(x => x.key === 'server_reboot'); await k._ausfuehren(a,k._texte.de); k.setConfig({device_id:'other',show_clock:false}); assert.doesNotMatch(k.shadowRoot.querySelector('ha-card').textContent,/Anfrage gesendet/); });
 test('Cancel restores the opener after telemetry rebuilt the card while the modal owned focus', async () => { const { k, core, calls, env } = setup('BuschUnraidServerCard'); const old = k.shadowRoot.querySelector('[data-focus-key="server_reboot"]'); old.focus(); const a = k._aktionen(k._modell(core,k._config),k._texte.de).find(x => x.key === 'server_reboot'); const pending = k._ausfuehren(a,k._texte.de); old.blur(); core.entities.get('sensor.demo_cpu_percent').state='26'; k._render(); assert.notEqual(k.shadowRoot.querySelector('[data-focus-key="server_reboot"]'),old); env.document.body.lastChild._abbr.click(); await pending; assert.equal(calls.length,0); assert.equal(k.shadowRoot.activeElement?.dataset.focusKey,'server_reboot'); });
+
+for (const state of ['unavailable', 'unknown']) for (const phase of ['idle', 'paused', 'running']) {
+  test(`Parity ${state} ignores retained ${phase} while main sensors remain available`, () => {
+    const { k, core } = setup('BuschUnraidParityCard');
+    const parity = core.entities.get('binary_sensor.demo_parity_running');
+    parity.state = state; parity.attributes.state = phase; k._render();
+    assert.match(k.shadowRoot.querySelector('.tile-sub').textContent, /Unbekannt/);
+    assert.match(k.shadowRoot.querySelector('.dot-text').textContent, /Unbekannt/);
+    assert.equal(k.shadowRoot.querySelector('.bar'), null, 'no stale progress');
+  });
+}
+
+for (const change of ['server', 'roundtrip', 'auto']) for (const result of ['resolve', 'reject']) {
+  test(`Pending server request ${result} has no stale feedback after ${change} context change`, async () => {
+    const { k, core, calls } = setup('BuschUnraidServerCard');
+    if (change === 'auto') { core.devices.delete('other'); k.setConfig({ device_id: '', show_clock: false }); }
+    let finish;
+    k._hass.callService = (...args) => { calls.push(args); return new Promise((resolve, reject) => { finish = result === 'reject' ? () => reject(new Error('Synthetic timeout')) : resolve; }); };
+    k._bestaetigen = async () => true;
+    const action = k._aktionen(k._modell(core, k._config), k._texte.de).find(a => a.key === 'server_reboot');
+    const pending = k._ausfuehren(action, k._texte.de); await tick();
+    if (change === 'auto') {
+      core.devices.set('other', { id: 'other', name: 'Other example', model: 'Unraid', config_entries: ['other-entry'] });
+      core.devices.delete('demo'); k._render();
+    } else {
+      k.setConfig({ device_id: 'other', show_clock: false });
+      if (change === 'roundtrip') k.setConfig({ device_id: 'demo', show_clock: false });
+    }
+    finish(); await pending;
+    assert.deepEqual(calls.map(args => JSON.parse(JSON.stringify(args))), [['button', 'press', { entity_id: 'button.demo_server_reboot' }]]);
+    assert.equal(k.shadowRoot.querySelector('[role="alert"]'), null);
+    assert.equal(k.shadowRoot.querySelector('[role="status"]'), null);
+    assert.equal(k._busy, false);
+  });
+}
+
+for (const state of [undefined, null, 'unavailable', 'unknown']) {
+  test(`Confirmation rechecks button state ${String(state)} before dispatch`, async () => {
+    const { k, core, calls, env } = setup('BuschUnraidServerCard');
+    const action = k._aktionen(k._modell(core, k._config), k._texte.de).find(a => a.key === 'server_reboot');
+    const pending = k._ausfuehren(action, k._texte.de);
+    core.entities.get('button.demo_server_reboot').state = state;
+    env.document.body.lastChild._ok.click(); await pending;
+    assert.equal(calls.length, state === 'unknown' ? 1 : 0);
+  });
+}

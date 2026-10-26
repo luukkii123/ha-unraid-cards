@@ -2074,8 +2074,9 @@ function unraidServerButtons(server,keys){return keys.map(key=>{const e=server.w
 function unraidServerAktionen(karte,modell,t){return (modell.buttons||[]).map(b=>({key:b.key,label:t[b.key],icon:UNRAID_SERVER_AKTIONEN[b.key],gefahr:true,deaktiviert:!b.verfuegbar,bestaetigen:t['confirm_'+b.key].replace('{server}',modell.name),fehler:t.action_unconfirmed,ausfuehren:async()=>{
  // Resolve again after confirmation. Changing the selected server while the dialog is open cannot send a request to a new target.
  const aktuell=unraidServer(karte._core,karte._config),ziel=aktuell.wert?.(b.key);
- if(!aktuell.server||aktuell.server.id!==modell.serverId||ziel?.entity_id!==b.id||ziel?.domain!=='button'||ziel.registry?.disabled_by||ziel.state==='unavailable')throw new Error('Unavailable action');
- await karte._hass.callService('button','press',{entity_id:b.id});if(unraidServer(karte._core,karte._config).server?.id===modell.serverId)karte._notice=t.sent;
+ if(!aktuell.server||aktuell.server.id!==modell.serverId||ziel?.entity_id!==b.id||ziel?.domain!=='button'||ziel.registry?.disabled_by||ziel.state==null||ziel.state==='unavailable')throw new Error('Unavailable action');
+ const generation=karte._actionGeneration;
+ await karte._hass.callService('button','press',{entity_id:b.id});if(generation===karte._actionGeneration&&unraidServer(karte._core,karte._config).server?.id===modell.serverId)karte._notice=t.sent;
 }}));}
 function unraidServerIds(core,config){try{const s=unraidServer(core,config);return s.server?s.ids:[];}catch{return [];}}
 // watchDevice wie BuschUnraidBaseCard: Rückruf rendert, die Render-Signatur verwirft Unverändertes. Leere Liste = abmelden.
@@ -2116,7 +2117,7 @@ ha-card:not(.tile)>.header.tile-head{display:grid;align-items:center}
 .header>.card-icon.tile-icon,.header>.card-icon.head-icon{background:none;color:var(--primary-text-color)}
 .header-main.tile-text{display:grid;gap:var(--ha-space-1,4px)}.header-main .tile-sub{margin:0}`;
 class BuschUnraidTile extends HTMLElement {
- constructor(){super();this.attachShadow({mode:'open'});this._config={};this._eingeklappt=false;this._busy=false;this._error=null;this._notice=null;}
+ constructor(){super();this.attachShadow({mode:'open'});this._config={};this._eingeklappt=false;this._busy=false;this._error=null;this._notice=null;this._actionGeneration=0;}
  static get kachel(){return 'tile';}
  get _texte(){return UNRAID_TILE_TEXTE;}
  get _vorgaben(){return {device_id:'',title:''};}
@@ -2138,6 +2139,9 @@ class BuschUnraidTile extends HTMLElement {
  _signaturZusatz(){return null;}
  _render(){
   if(!this.shadowRoot)return;const t=buschTexte(this._texte,this._hass),m=this._core&&this._hass?this._modell(this._core,this._config):{laedt:true};
+  // Track resolved auto-selection as well as explicit changes, including A → B → A.
+  const context=JSON.stringify([this._config.device_id||'',this._core?.devices?unraidServer(this._core,this._config).server?.id:null]);
+  if(context!==this._actionContext){this._actionContext=context;this._actionGeneration++;this._error=null;this._notice=null;}
   if(this.isConnected&&this._core&&this._hass)unraidBeobachten(this,unraidServerIds(this._core,this._config));
   // Render-Signatur wie BuschUnraidBaseCard: nur bei geänderter Ansicht neu aufbauen (set hass kommt bei jeder Zustandsänderung in HA).
   const signatur=JSON.stringify([this._config,m,this._eingeklappt,!!this._busy,this._error,this._notice,this._hass?.locale?.language,this._hass?.config?.time_zone,this._signaturZusatz()]);if(signatur===this._signatur)return;this._signatur=signatur;
@@ -2156,11 +2160,11 @@ class BuschUnraidTile extends HTMLElement {
  // Ruling R2: `_busy` wird synchron VOR dem ersten `await` gesetzt (Doppelklick-Schutz) und bei abgelehnter Bestätigung zurückgenommen.
  async _ausfuehren(a,t){
   if(this._busy||a.deaktiviert)return;this._busy=true;this._error=null;this._notice=null;
-  const fokus=this.shadowRoot.activeElement?.dataset?.focusKey,device=this._config.device_id;
+  const fokus=this.shadowRoot.activeElement?.dataset?.focusKey,device=this._config.device_id,generation=this._actionGeneration,serverId=this._core?.devices?unraidServer(this._core,this._config).server?.id:null;
   // The modal may outlive a telemetry render; return focus to the current copy of its opener.
   const zurueck=()=>{if(fokus&&device===this._config.device_id)this.shadowRoot.querySelector(`[data-focus-key="${fokus}"]`)?.focus({preventScroll:true});};
   if(a.bestaetigen){let ok=false;try{ok=await this._bestaetigen(a.bestaetigen,a.label,a.gefahr);}catch{ok=false;}if(!ok){this._busy=false;this._render();zurueck();return;}}
-  this._render();zurueck();try{await a.ausfuehren();}catch{this._error=a.fehler||t.failed;}finally{this._busy=false;this._render();}
+  this._render();zurueck();try{await a.ausfuehren();}catch{if(generation===this._actionGeneration&&(this._core?.devices?unraidServer(this._core,this._config).server?.id:null)===serverId)this._error=a.fehler||t.failed;}finally{this._busy=false;this._render();}
  }
  _bestaetigen(text,aktion,gefahr){return unraidBestaetigen(aktion,text,aktion,gefahr);}
 }
@@ -2297,7 +2301,7 @@ class BuschUnraidCpuCard extends BuschUnraidTile{
   body.appendChild(buschUnraidNode('h3',t.load,'section'));body.appendChild(unraidBalken(m.cpu,unraidZahl(m.cpu,'%',lang)));
   body.appendChild(unraidRaster([{name:t.power,wert:unraidZahl(m.power,'W',lang)}]));
   for(const pkg of unraidListe(m.dashboard.daten,'packages'))body.appendChild(unraidRaster([{name:pkg.id,wert:`${unraidZahl(pkg.power_w,'W',lang)} · ${t.source}: ${pkg.source||'–'}`} ]));
-  const details=buschUnraidNode('details',undefined,'core-details'),summary=buschUnraidNode('summary',t.core_details);details.open=!!this._coreDetailsOpen;details.addEventListener('toggle',()=>{this._coreDetailsOpen=details.open;});details.appendChild(summary);details.appendChild(unraidRaster(unraidListe(m.dashboard.daten,'cores').map(c=>({name:t.core+' '+c.id,wert:unraidZahl(c.percent,'%',lang)}))));body.appendChild(details);unraidZusatzHinweis(body,[m.dashboard,m.hw],t);
+  const details=buschUnraidNode('details',undefined,'core-details'),summary=buschUnraidNode('summary',t.core_details);summary.dataset.focusKey='cpu-core-details';details.open=!!this._coreDetailsOpen;details.addEventListener('toggle',()=>{this._coreDetailsOpen=details.open;});details.appendChild(summary);details.appendChild(unraidRaster(unraidListe(m.dashboard.daten,'cores').map(c=>({name:t.core+' '+c.id,wert:unraidZahl(c.percent,'%',lang)}))));body.appendChild(details);unraidZusatzHinweis(body,[m.dashboard,m.hw],t);
   // Ohne callWS (Vorschau, Tests) entfällt der Verlauf. Die letzte Linie bleibt bis zur Antwort stehen, damit Renders nicht flackern.
   if(this._config.show_history&&m.cpuId&&typeof this._hass?.callWS==='function'){const platz=buschUnraidNode('div',undefined,'history');body.appendChild(platz);const min=UNRAID_VERLAUF_MINUTEN.includes(Number(this._config.history_minutes))?Number(this._config.history_minutes):10,key=m.cpuId+'|'+min;
    if(this._linie?.key===key)platz.appendChild(unraidLinie(this._linie.punkte,t.no_history,t.load));
@@ -2387,7 +2391,7 @@ class BuschUnraidParityCard extends BuschUnraidTile{
  _modell(core,config){const s=unraidServer(core,config);const z=unraidZustand(s);if(z)return z;const lauf=s.wert('parity_running'),laeuft=lauf?.state==='on',fortschritt=unraidNum(s.wert('parity_progress'));
   // parity_running nicht verfügbar → Zustand unbekannt (nicht grün „Keine Prüfung aktiv“).
   const unbekannt=!lauf||!buschUnraidAvailable(lauf);
-  return {name:s.server.name_by_user||s.server.name,serverId:s.server.id,buttons:unraidServerButtons(s,['parity_start','parity_pause','parity_resume','parity_cancel']),phase:['idle','running','paused','other','unknown'].includes(lauf?.attributes?.state)?lauf.attributes.state:null,vorhanden:s.geraete('Parity disk').length>0||laeuft||fortschritt!==null||(!!lauf&&unbekannt),laeuft,unbekannt,fortschritt,fehler_anzahl:unraidNum(s.wert('parity_errors'))};}
+  return {name:s.server.name_by_user||s.server.name,serverId:s.server.id,buttons:unraidServerButtons(s,['parity_start','parity_pause','parity_resume','parity_cancel']),phase:unbekannt?'unknown':['idle','running','paused','other','unknown'].includes(lauf?.attributes?.state)?lauf.attributes.state:null,vorhanden:s.geraete('Parity disk').length>0||laeuft||fortschritt!==null||(!!lauf&&unbekannt),laeuft,unbekannt,fortschritt,fehler_anzahl:unraidNum(s.wert('parity_errors'))};}
  _kopf(m,t){return {icon:'mdi:shield-check-outline',titel:t.tile,untertitel:m.vorhanden===undefined?undefined:m.vorhanden?(m.phase?t[m.phase]:m.unbekannt?t.unknown:m.laeuft?t.running:t.idle):m.name};}
  _inhalt(body,m,t){const lang=this._hass?.locale?.language;if(!m.vorhanden){body.appendChild(buschUnraidNode('p',t.none,'message'));return;}
   if(!m.phase)body.appendChild(buschUnraidNode('p',t.upgrade,'message'));body.appendChild(unraidPunkt(m.phase==='paused'||m.phase==='other'||m.laeuft?'warning':m.unbekannt||m.phase==='unknown'?'unknown':'ok',m.phase?t[m.phase]:m.unbekannt?t.unknown:m.laeuft?t.running:t.idle));

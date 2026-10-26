@@ -104,7 +104,7 @@ function dockerKarte(config = {}, optionen = {}) {
 module.exports = { familienFixture, dockerFixture, BILD, ladeFamilie, speicherAttrappe, familienKarte, dockerKarte };
 
 /** Entirely synthetic Stage 2 registry/state fixture; no host inventory. */
-function dashboardFixture({ legacy = false, second = false } = {}) {
+function dashboardFixture({ legacy = false, second = false, partial = false } = {}) {
   const devices = new Map(), entities = new Map();
   const device = (id, name, model, entry) => devices.set(id, { id, name, name_by_user: null, model, manufacturer: 'Lime Technology', config_entries: [entry], via_device_id: model === 'Unraid' ? null : 'demo' });
   function add(suffix, state, attributes = {}, id = 'demo', entry = 'example-entry', domain = 'sensor') {
@@ -120,7 +120,7 @@ function dashboardFixture({ legacy = false, second = false } = {}) {
   device('vm', 'Example server VM Example guest', 'Virtual machine', 'example-entry');
   device('share', 'Example server Share documents', 'Unraid share', 'example-entry');
   add('cpu_percent', 25); add('ram_percent', 40); add('array_state', 'started'); add('mover_active', 'off', {}, 'demo', 'example-entry', 'binary_sensor');
-  add('parity_running', 'off', { state: 'paused' }, 'demo', 'example-entry', 'binary_sensor'); add('parity_progress', 25); add('parity_errors', 0);
+  add('parity_running', 'off', legacy ? {} : { state: 'paused' }, 'demo', 'example-entry', 'binary_sensor'); add('parity_progress', 25); add('parity_errors', 0);
   add('disk_status_disk1', 'ok', {}, 'disk'); add('disk_usage_disk1', 50, {}, 'disk'); add('disk_total_disk1', 1024, { unit_of_measurement: 'GiB' }, 'disk'); add('disk_used_disk1', 512, { unit_of_measurement: 'GiB' }, 'disk');
   add('disk_status_fast-storage', 'ok', {}, 'pool'); add('disk_status_member-extra', 'ok', {}, 'member');
   add('share_used_documents', 2, { unit_of_measurement: 'GiB' }, 'share'); add('share_free_documents', 6, { unit_of_measurement: 'GiB' }, 'share');
@@ -139,6 +139,24 @@ function dashboardFixture({ legacy = false, second = false } = {}) {
     for (const suffix of ['server_reboot', 'server_shutdown', 'array_start', 'array_stop', 'parity_start', 'parity_pause', 'parity_resume', 'parity_cancel', 'spindown_all', 'mover_start']) add(suffix, 'unknown', {}, 'demo', 'example-entry', 'button');
   }
   if (second) { device('other', 'Other example', 'Unraid', 'other-entry'); add('cpu_percent', 1, {}, 'other', 'other-entry'); add('dashboard_interfaces', 'ok', { schema_version: 1, interfaces: [{ name: 'foreign-interface', kind: 'physical' }] }, 'other', 'other-entry'); add('server_reboot', 'unknown', {}, 'other', 'other-entry', 'button'); }
+  if (partial && !legacy) {
+    // Failed sources expose null; independent successful sources keep their data.
+    for (const [suffix, field, source, state, validSources] of [
+      ['cpu', 'cores', 'dash_cpu', 'partial', ['dash_power']],
+      ['hardware', 'hardware', 'dash_hardware', 'partial', ['dash_gpu', 'var']],
+      ['storage', 'filesystems', 'dash_storage', 'partial', ['dash_pools', 'dash_docker']],
+      ['memory', 'memory', 'dash_memory', 'unavailable', []],
+      ['interfaces', 'interfaces', 'dash_interfaces', 'unavailable', []],
+      ['shares', 'shares', 'dash_shares', 'unavailable', []],
+      ['vms', 'vms', 'vm_stats', 'unavailable', []],
+    ]) {
+      const e = entities.get('sensor.demo_dashboard_' + suffix);
+      e.state = e.stateObject.state = state;
+      e.attributes[field] = null;
+      e.attributes.failed_sections = [source];
+      e.attributes.sampled_at = Object.fromEntries(validSources.map(key => [key, 12345.0]));
+    }
+  }
   return { devices, entities, add, getDevice: id => devices.get(id), getEntity: id => entities.get(id), getDeviceEntities: id => [...entities.values()].filter(e => e.device_id === id), attach() {}, retain() { return () => {}; }, watch() { return () => {}; } };
 }
 module.exports.dashboardFixture = dashboardFixture;
