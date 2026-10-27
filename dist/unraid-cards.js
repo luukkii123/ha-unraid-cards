@@ -1857,7 +1857,8 @@ class BuschUnraidDockerCard extends BuschUnraidBaseCard {
   const actions=buschUnraidNode('div',undefined,'actions tile-actions'),toggle=BuschUI.action({label:this._eingeklappt?kachel.expand:kachel.collapse,icon:this._eingeklappt?'mdi:chevron-down':'mdi:chevron-up',onClick:()=>this._umschalten(),variant:'secondary'});toggle.setAttribute('aria-expanded',String(!this._eingeklappt));toggle.title=this._eingeklappt?kachel.expand:kachel.collapse;toggle.dataset.key='card';toggle.dataset.focusKey='toggle';actions.appendChild(toggle);header.appendChild(actions);card.appendChild(header);
   const message=(parent,text)=>parent.appendChild(buschUnraidNode('p',text,'message'));
   const body=buschUnraidNode('div',undefined,'tile-body');
-  if(m.server&&!m.ambiguous){const server=m.server.name_by_user||m.server.name||'';main.appendChild(buschUnraidNode('p',[t.running_total.replace('{running}',m.running).replace('{total}',m.total),server].filter(Boolean).join(' · '),'detail tile-sub'));}
+  // #643/7 [A-14]: Untertitel nur „x von y gestartet“, ohne angehängten Servernamen.
+  if(m.server&&!m.ambiguous)main.appendChild(buschUnraidNode('p',t.running_total.replace('{running}',m.running).replace('{total}',m.total),'detail tile-sub'));
   if(this._eingeklappt){/* eingeklappt: nur der Kopf, kein .tile-body */}
   else if(!m.server)message(body,t.empty);
   else if(m.ambiguous)message(body,stackText.metadata);

@@ -238,7 +238,7 @@ test('Docker: Kopf nutzt Kachel-Klassen und Einklappen', () => {
   const head = r.querySelector('.tile-head');
   assert.ok(head); assert.match(head.className, /\bheader\b/);
   assert.equal(r.querySelector('.tile-title').tagName, 'H2');
-  assert.equal(r.querySelector('.tile-sub').textContent, '3 von 7 gestartet · Tower');
+  assert.equal(r.querySelector('.tile-sub').textContent, '3 von 7 gestartet'); // #643/7: ohne Servernamen
   assert.ok(r.querySelector('.tile-body')); assert.ok(r.querySelector('.tile-body').querySelector('.grid'));
   // Kopf-Icon ist KEIN .tile-icon: das Renderskript erwartet jedes .tile-icon in einer Rasterkachel.
   assert.equal(head.querySelector('.tile-icon'), null); assert.ok(head.querySelector('.card-icon'));
