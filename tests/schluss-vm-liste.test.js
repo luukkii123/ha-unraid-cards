@@ -56,3 +56,13 @@ test('Docker: Kopf-Icon ohne Kasten, eigene Klasse statt .tile-icon', () => {
   const icon = k.shadowRoot.querySelector('.header').childNodes[0]; assert.ok(String(icon.className).split(' ').includes('head-icon')); assert.ok(!String(icon.className).split(' ').includes('tile-icon'));
   assert.match(UNRAID_FAMILIE_STYLE, /\.header>\.card-icon\.head-icon\{[^}]*background:none/);
 });
+
+/* #640: gestoppte VM zeigt keine CPU-/RAM-Werte ("Nicht verfügbar" ist sinnlos) */
+test('VM-Einzelansicht: CPU/RAM nur bei laufender VM', () => {
+  const { BuschUnraidVmCard } = ladeKarte(['BuschUnraidVmCard']);
+  const an = rendere(BuschUnraidVmCard, unraidAttrappe(), { device_id: 'vm1' });
+  assert.ok(karte(an).querySelector('.metrics'), 'laufend: Metriken sichtbar');
+  const core = unraidAttrappe(); core.entities.get('switch.win').state = 'off'; core.entities.get('sensor.win_state').state = 'shut_off';
+  const aus = rendere(BuschUnraidVmCard, core, { device_id: 'vm1' });
+  assert.equal(karte(aus).querySelector('.metrics'), null, 'gestoppt: keine Metriken');
+});
