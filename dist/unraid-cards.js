@@ -2081,6 +2081,8 @@ const UNRAID_TILE_TEXTE={de:{upgrade:'Zusatzdaten: Unraid SSH auf 0.9 oder neuer
 // labels/helpers stehen wörtlich je Kachel (auch device_id/title), weil scripts/ui-regeln-pruefen.py nur Literale liest.
 const UNRAID_SCHWELLEN={warnung:70,kritisch:90};
 function unraidZahl(wert,einheit,locale,stellen=0){if(typeof wert!=='number'||!Number.isFinite(wert))return '–';const text=new Intl.NumberFormat(String(locale||'en').startsWith('de')?'de-DE':'en-US',{maximumFractionDigits:stellen,minimumFractionDigits:stellen}).format(wert);return einheit?text+' '+einheit:text;}
+// Eintrag der Kompaktzeile: nicht verfügbare Werte (null, '–') werden null und fallen dort weg.
+function unraidKw(wert,semantik,label){return wert===null||wert===undefined||wert===''||wert==='–'?null:{wert:String(wert),...(semantik?{semantik}:{}),...(label!==undefined?{label}:{})};}
 function unraidStufe(p,s=UNRAID_SCHWELLEN){return typeof p!=='number'||!Number.isFinite(p)?'':p>=s.kritisch?'crit':p>=s.warnung?'warn':'';}
 function unraidBalken(prozent,text,{warnung=70,kritisch=90}={}){const bar=buschUnraidNode('div',undefined,('bar '+unraidStufe(prozent,{warnung,kritisch})).trim());bar.setAttribute('role','meter');bar.setAttribute('aria-valuemin','0');bar.setAttribute('aria-valuemax','100');const bekannt=typeof prozent==='number'&&Number.isFinite(prozent);if(bekannt)bar.setAttribute('aria-valuenow',String(Math.round(prozent)));const anzeige=bekannt?text:'–';bar.setAttribute('aria-valuetext',anzeige);const spur=buschUnraidNode('span',undefined,'bar-track'),fill=buschUnraidNode('span',undefined,'bar-fill');fill.style.width=(bekannt?Math.max(0,Math.min(100,prozent)):0)+'%';spur.appendChild(fill);bar.appendChild(spur);bar.appendChild(buschUnraidNode('span',anzeige,'bar-text'));return bar;}
 function unraidRing(prozent,label){const bekannt=typeof prozent==='number'&&Number.isFinite(prozent);const box=buschUnraidNode('figure',undefined,('ring '+unraidStufe(prozent)).trim());const ns='http://www.w3.org/2000/svg',svg=document.createElementNS(ns,'svg');svg.setAttribute('viewBox','0 0 36 36');svg.setAttribute('aria-hidden','true');for(const [cls,len] of [['ring-bg',100],['ring-fg',bekannt?Math.max(0,Math.min(100,prozent)):0]]){const c=document.createElementNS(ns,'circle');c.setAttribute('class',cls);c.setAttribute('cx','18');c.setAttribute('cy','18');c.setAttribute('r','15.915');c.setAttribute('pathLength','100');c.setAttribute('stroke-dasharray',len+' 100');svg.appendChild(c);}box.appendChild(svg);box.appendChild(buschUnraidNode('span',bekannt?Math.round(prozent)+' %':'–','ring-value'));box.appendChild(buschUnraidNode('figcaption',label,'ring-label'));return box;}
@@ -2217,6 +2219,8 @@ class BuschUnraidTile extends HTMLElement {
  _kopf(){return {icon:'mdi:server',titel:''};}
  _aktionen(){return [];}
  _inhalt(){}
+ // #642: Werte der Kompaktzeile {id:{wert,semantik?,label?}} – nur aus dem fertigen Modell, keine Abos/Abfragen.
+ _kompakt(){return {};}
  // Zusätzlicher Signaturteil (z. B. die Minute der Uhr); null = keiner.
  _signaturZusatz(){return null;}
  _render(){
@@ -2328,6 +2332,8 @@ class BuschUnraidServerCard extends BuschUnraidTile{
   const st=UNRAID_ARRAY_STATUS[lang.startsWith('de')?'de':'en'],arr=m.array&&!['unavailable','unknown'].includes(m.array)?m.array:null;
   const zeilen=[['uptime',()=>({k:t.uptime,v:unraidDauer(m.uptime,t)})],['array',()=>({k:t.array,v:unraidPunkt(arr==='started'?'ok':arr?'warning':'unknown',arr?(st[arr]||arr):t.unavailable)})],['mover',()=>({k:t.mover,v:m.mover==='on'?t.mover_on:m.mover==='off'?t.mover_off:t.unavailable})],['model',()=>({k:t.model,v:m.hw.daten.hardware?.product_name||'–'})],['registration',()=>({k:t.registration,v:m.hw.daten.registration||'–'})]].filter(([id])=>this._zeigt(id)).map(([,z])=>z());
   if(zeilen.length)body.appendChild(unraidTabelle([{key:'k',label:''},{key:'v',label:''}],zeilen,{leer:''}));unraidZusatzHinweis(body,[m.hw],t);}
+ _kompakt(m,t){if(m.laedt||m.fehler)return {};const lang=String(this._hass?.locale?.language||'en'),st=UNRAID_ARRAY_STATUS[lang.startsWith('de')?'de':'en'],arr=m.array&&!['unavailable','unknown'].includes(m.array)?m.array:null;
+  return {uptime:unraidKw(unraidDauer(m.uptime,t)),array:arr?unraidKw(st[arr]||arr,arr==='started'?'ok':'warning'):null,mover:unraidKw(m.mover==='on'?t.mover_on:m.mover==='off'?t.mover_off:null)};}
  _aktionen(m,t){return unraidServerAktionen(this,m,t);}
  _signaturZusatz(){return this._zeigt('clock')?Math.floor(Date.now()/60000):null;}
  // Uhr: alle 30 s prüfen, gebaut wird nur bei neuer Minute (Signatur); bei verstecktem Tab nichts tun.
@@ -2353,6 +2359,7 @@ class BuschUnraidSystemCard extends BuschUnraidTile{
   const temps=unraidEindeutig(s.alle('temp_').map(({entity,suffix})=>{const a=entity.attributes||{};return {name:unraidOhneGeraet(geraet,a.friendly_name)||a.label||a.channel||suffix||entity.entity_id,chip:a.chip||suffix,wert:unraidNum(entity)};}));
   return {hw:unraidDashboard(s,'hardware'),memory:unraidDashboard(s,'memory'),storage:unraidDashboard(s,'storage'),name:geraet,ram:unraidNum(s.wert('ram_percent')),cpu:unraidNum(s.wert('cpu_temp')),board:unraidNum(s.wert('board_temp')),temps};}
  _kopf(m,t){return {icon:'mdi:memory',titel:t.tile,untertitel:m.name};}
+ _kompakt(m){if(m.laedt||m.fehler)return {};const lang=this._hass?.locale?.language;return {ram:unraidKw(unraidZahl(m.ram,'%',lang)),temperatures:unraidKw(unraidZahl(m.cpu,'°C',lang))};}
  _inhalt(body,m,t){if(!this._inhaltSichtbar())return;const lang=this._hass?.locale?.language,dateien=this._zeigt('filesystems');const rings=buschUnraidNode('div',undefined,'rings');if(this._zeigt('ram'))rings.appendChild(unraidRing(m.ram,t.ram));
   const mode=m.storage.daten.docker_mode,fs=dateien?unraidListe(m.storage.daten,'filesystems').filter(x=>x.kind!=='docker_vdisk'||mode==='image'):[];if(dateien)for(const kind of ['boot','log','docker_vdisk']){if(kind==='docker_vdisk'&&mode!=='image')continue;const x=fs.find(x=>x.kind===kind);if(m.storage.zustand!=='legacy')rings.appendChild(unraidRing(x?.percent??null,t[kind]));}if(rings.childNodes.length)body.appendChild(rings);
   if(dateien&&m.storage.zustand!=='legacy')body.appendChild(buschUnraidNode('p',mode==='folder'?t.docker_folder:mode==='image'?'':t.docker_unknown,'detail'));
@@ -2390,6 +2397,7 @@ class BuschUnraidCpuCard extends BuschUnraidTile{
  _render(){const details=this.shadowRoot?.querySelector('.core-details');if(details)this._coreDetailsOpen=!!details.open;super._render();}
  _modell(core,config){const s=unraidServer(core,config);const z=unraidZustand(s);if(z)return z;const cpu=s.wert('cpu_percent');return {dashboard:unraidDashboard(s,'cpu'),hw:unraidDashboard(s,'hardware'),power:unraidNum(s.wert('cpu_power')),name:s.server.name_by_user||s.server.name,cpu:unraidNum(cpu),cpuId:cpu?.entity_id,temp:unraidNum(s.wert('cpu_temp')),load:unraidNum(s.wert('load_1'))};}
  _kopf(m,t){return {icon:'mdi:cpu-64-bit',titel:t.tile,untertitel:m.hw?.daten.hardware?.cpu_model||m.name};}
+ _kompakt(m){if(m.laedt||m.fehler)return {};const lang=this._hass?.locale?.language;return {temperature:unraidKw(unraidZahl(m.temp,'°C',lang)),load_average:unraidKw(unraidZahl(m.load,'',lang,1)),load:unraidKw(unraidZahl(m.cpu,'%',lang)),power:unraidKw(unraidZahl(m.power,'W',lang))};}
  _signaturZusatz(){return this._zeigt('history')?Math.floor(Date.now()/60000):null;}
  _inhalt(body,m,t){if(!this._inhaltSichtbar())return;const lang=this._hass?.locale?.language,zeilen=[];if(this._zeigt('temperature'))zeilen.push({k:t.temp,v:unraidZahl(m.temp,'°C',lang)});if(this._zeigt('load_average'))zeilen.push({k:t.load1,v:unraidZahl(m.load,'',lang,1)});if(zeilen.length)body.appendChild(unraidTabelle([{key:'k',label:''},{key:'v',label:''}],zeilen,{leer:''}));
   if(this._zeigt('load')){body.appendChild(buschUnraidNode('h3',t.load,'section'));body.appendChild(unraidBalken(m.cpu,unraidZahl(m.cpu,'%',lang)));}
@@ -2415,8 +2423,11 @@ class BuschUnraidGpuCard extends BuschUnraidTile{
  _modell(core,config){const s=unraidServer(core,config);const z=unraidZustand(s);if(z)return z;
   const hw=unraidDashboard(s,'hardware'),info=unraidListe(hw.daten,'gpus');
   const idx=[...new Set([...s.alle('gpu_').map(x=>UNRAID_GPU_SUFFIX.exec(x.suffix)?.[1]).filter(i=>i!==undefined),...info.map(g=>String(g.index))])].sort((a,b)=>Number(a)-Number(b));
-  return {hw,name:s.server.name_by_user||s.server.name,gpus:idx.map(i=>{const fan=s.wert('gpu_fan_'+i),meta=info.find(g=>String(g.index)===i);return {name:meta?.model||'GPU '+i,driver:meta?.driver_version||null,util:unraidNum(s.wert('gpu_util_'+i)),vram:unraidNum(s.wert('gpu_vram_'+i)),temp:unraidNum(s.wert('gpu_temp_'+i)),power:unraidNum(s.wert('gpu_power_'+i)),fan:fan?unraidNum(fan):undefined};})};}
+  return {hw,name:s.server.name_by_user||s.server.name,gpus:idx.map(i=>{const fan=s.wert('gpu_fan_'+i),meta=info.find(g=>String(g.index)===i);return {index:i,name:meta?.model||'GPU '+i,driver:meta?.driver_version||null,util:unraidNum(s.wert('gpu_util_'+i)),vram:unraidNum(s.wert('gpu_vram_'+i)),temp:unraidNum(s.wert('gpu_temp_'+i)),power:unraidNum(s.wert('gpu_power_'+i)),fan:fan?unraidNum(fan):undefined};})};}
  _kopf(m,t){const g=m.gpus?.[0],lang=this._hass?.locale?.language;return {icon:'mdi:expansion-card',titel:t.tile,untertitel:g?`${g.name} · ${t.driver}: ${g.driver||'–'} · ${t.util}: ${unraidZahl(g.util,'%',lang)} · ${t.temp}: ${unraidZahl(g.temp,'°C',lang)}`:m.name};}
+ _kompakt(m,t){if(m.laedt||m.fehler||!m.gpus?.length)return m.gpus&&!m.gpus.length?{util:null,vram:null,temperature:null,power:null,fan:null}:{};const lang=this._hass?.locale?.language,mehrere=m.gpus.length>1;
+  const je=(id,f)=>{const liste=m.gpus.map(g=>{const w=unraidKw(f(g));return w&&mehrere?{...w,label:`${t.kurz[id]} ${g.index}`}:w;});return mehrere?liste.filter(Boolean):liste[0];};
+  return {util:je('util',g=>unraidZahl(g.util,'%',lang)),vram:je('vram',g=>unraidZahl(g.vram,'%',lang)),temperature:je('temperature',g=>unraidZahl(g.temp,'°C',lang)),power:je('power',g=>unraidZahl(g.power,'W',lang)),fan:je('fan',g=>g.fan===undefined?null:unraidZahl(g.fan,'%',lang))};}
  _inhalt(body,m,t){if(!this._inhaltSichtbar())return;const lang=this._hass?.locale?.language;unraidZusatzHinweis(body,[m.hw],t);if(!m.gpus.length){body.appendChild(buschUnraidNode('p',t.none,'message'));return;}
   for(const g of m.gpus){const zeilen=[['util',()=>({k:t.util,v:unraidBalken(g.util,unraidZahl(g.util,'%',lang))})],['vram',()=>({k:t.vram,v:unraidBalken(g.vram,unraidZahl(g.vram,'%',lang))})],['temperature',()=>({k:t.temp,v:unraidZahl(g.temp,'°C',lang)})],['power',()=>({k:t.power,v:unraidZahl(g.power,'W',lang)})],...(g.fan===undefined?[]:[['fan',()=>({k:t.fan,v:unraidZahl(g.fan,'%',lang)})]])].filter(([id])=>this._zeigt(id)).map(([,z])=>z());if(!zeilen.length)continue;
    if(m.gpus.length>1)body.appendChild(buschUnraidNode('h3',g.driver?`${g.name} · ${t.driver}: ${g.driver}`:g.name,'section'));body.appendChild(unraidTabelle([{key:'k',label:''},{key:'v',label:''}],zeilen,{leer:''}));}}
@@ -2466,6 +2477,8 @@ class BuschUnraidArrayCard extends BuschUnraidTile{
  static get kachel(){return 'array';}get _texte(){return TEXTE_BUSCH_UNRAID_ARRAY_CARD;}get _vorgaben(){return {device_id:'',title:''};}
  _modell(core,config){const s=unraidServer(core,config);const z=unraidZustand(s);if(z)return z;const t=buschTexte(this._texte,this._hass),storage=unraidDashboard(s,'storage');return {storage,name:s.server.name_by_user||s.server.name,serverId:s.server.id,buttons:unraidServerButtons(s,['array_start','array_stop','spindown_all']),gruppen:unraidGruppen(s,t,storage.zustand==='legacy'?null:unraidListe(storage.daten,'pools'))};}
  _kopf(m,t){return {icon:'mdi:harddisk',titel:t.tile,untertitel:m.name};}
+ _kompakt(m){if(m.laedt||m.fehler)return {};const lang=this._hass?.locale?.language,prozent=g=>g?.kapazitaet&&g.kapazitaet.total>0?unraidZahl(g.kapazitaet.used/g.kapazitaet.total*100,'%',lang):null;
+  return {array:unraidKw(prozent(m.gruppen.find(g=>g.art===0))),pools:m.gruppen.filter(g=>g.art===1).map(g=>unraidKw(prozent(g),undefined,g.titel)).filter(Boolean),boot:unraidKw(prozent(m.gruppen.find(g=>g.art===2)))};}
  _inhalt(body,m,t){if(!this._inhaltSichtbar())return;const lang=String(this._hass?.locale?.language||'en'),st=UNRAID_DISK_STATUS[lang.startsWith('de')?'de':'en'];if(!m.gruppen.length){body.appendChild(buschUnraidNode('p',t.none,'message'));return;}
   unraidZusatzHinweis(body,[m.storage],t);
   const spalten=[{key:'n',label:t.col_device},{key:'s',label:t.col_status},{key:'t',label:t.col_temp},{key:'u',label:t.col_usage},...(this._zeigt('smart')?[{key:'smart',label:t.smart}]:[])];
@@ -2487,6 +2500,8 @@ class BuschUnraidParityCard extends BuschUnraidTile{
   // parity_running nicht verfügbar → Zustand unbekannt (nicht grün „Keine Prüfung aktiv“).
   const unbekannt=!lauf||!buschUnraidAvailable(lauf);
   return {name:s.server.name_by_user||s.server.name,serverId:s.server.id,buttons:unraidServerButtons(s,['parity_start','parity_pause','parity_resume','parity_cancel']),phase:unbekannt?'unknown':['idle','running','paused','other','unknown'].includes(lauf?.attributes?.state)?lauf.attributes.state:null,vorhanden:s.geraete('Parity disk').length>0||laeuft||fortschritt!==null||(!!lauf&&unbekannt),laeuft,unbekannt,fortschritt,fehler_anzahl:unraidNum(s.wert('parity_errors'))};}
+ _kompakt(m,t){if(m.laedt||m.fehler)return {};const lang=this._hass?.locale?.language;if(!m.vorhanden)return {state:null,progress:null,errors:null};
+  return {state:unraidKw(m.phase?t[m.phase]:m.unbekannt?t.unknown:m.laeuft?t.running:t.idle,m.phase==='paused'||m.phase==='other'||m.laeuft?'warning':m.unbekannt||m.phase==='unknown'?'unknown':'ok'),progress:m.laeuft||m.phase==='paused'?unraidKw(unraidZahl(m.fortschritt,'%',lang,1)):null,errors:unraidKw(unraidZahl(m.fehler_anzahl,'',lang))};}
  _kopf(m,t){return {icon:'mdi:shield-check-outline',titel:t.tile,untertitel:m.vorhanden===undefined?undefined:m.vorhanden?(m.phase?t[m.phase]:m.unbekannt?t.unknown:m.laeuft?t.running:t.idle):m.name};}
  _inhalt(body,m,t){if(!this._inhaltSichtbar())return;const lang=this._hass?.locale?.language;if(!m.vorhanden){body.appendChild(buschUnraidNode('p',t.none,'message'));return;}
   if(!m.phase)body.appendChild(buschUnraidNode('p',t.upgrade,'message'));if(this._zeigt('state'))body.appendChild(unraidPunkt(m.phase==='paused'||m.phase==='other'||m.laeuft?'warning':m.unbekannt||m.phase==='unknown'?'unknown':'ok',m.phase?t[m.phase]:m.unbekannt?t.unknown:m.laeuft?t.running:t.idle));
@@ -2509,6 +2524,7 @@ class BuschUnraidAirflowCard extends BuschUnraidTile{
  _modell(core,config){const s=unraidServer(core,config);const z=unraidZustand(s);if(z)return z;const geraet=s.server.name_by_user||s.server.name||'';
   const fans=unraidEindeutig(s.alle('fan_').filter(x=>x.suffix.endsWith('_rpm')).map(({suffix,entity})=>{const basis=suffix.slice(0,-4),a=entity.attributes||{};return {name:unraidOhneGeraet(geraet,a.friendly_name)||a.channel||basis,chip:a.chip,rpm:unraidNum(entity),prozent:unraidNum(s.wert(basis+'_percent'))};}));
   return {name:geraet,fans:fans.filter(f=>!config.hide_idle||f.rpm!==0)};}
+ _kompakt(m){if(m.laedt||m.fehler)return {};return {summary:unraidKw(m.fans?unraidZahl(m.fans.length,'',this._hass?.locale?.language):null)};}
  _kopf(m,t){return {icon:'mdi:fan',titel:t.tile,untertitel:m.fans&&this._zeigt('summary')?(m.fans.length===1?t.count_one:t.count_many).replace('{count}',m.fans.length):m.name};}
  _inhalt(body,m,t){if(!this._inhaltSichtbar())return;const lang=this._hass?.locale?.language;if(!m.fans.length){body.appendChild(buschUnraidNode('p',t.none,'message'));return;}
   if(this._zeigt('fans'))body.appendChild(unraidRaster(m.fans.map(f=>({name:f.name,wert:unraidZahl(f.rpm,t.rpm,lang)+(f.prozent===null?'':` · ${unraidZahl(f.prozent,'%',lang)}`)}))));}
@@ -2529,6 +2545,7 @@ class BuschUnraidSharesCard extends BuschUnraidTile{
  static get kachel(){return 'shares';}get _texte(){return TEXTE_BUSCH_UNRAID_SHARES_CARD;}
  _modell(core,config){const s=unraidServer(core,config);const z=unraidZustand(s);if(z)return z;
   return {dashboard:unraidDashboard(s,'shares'),name:s.server.name_by_user||s.server.name,shares:s.geraete('Unraid share').map(d=>{const u=s.von(d,'share_used_'+d.roh),f=s.von(d,'share_free_'+d.roh);return {name:d.roh,used:unraidNum(u),usedUnit:u?.attributes?.unit_of_measurement||'',free:unraidNum(f),freeUnit:f?.attributes?.unit_of_measurement||''};})};}
+ _kompakt(m){if(m.laedt||m.fehler)return {};return {summary:unraidKw(m.shares?unraidZahl(m.shares.length,'',this._hass?.locale?.language):null)};}
  _kopf(m,t){const n=m.shares?.length;return {icon:'mdi:folder-network-outline',titel:t.tile,untertitel:m.shares&&this._zeigt('summary')?(n===1?t.count_one:t.count_many).replace('{count}',n):m.name};}
  _inhalt(body,m,t){if(!this._inhaltSichtbar())return;const lang=this._hass?.locale?.language,meta=unraidListe(m.dashboard.daten,'shares'),details=this._zeigt('share_details');unraidZusatzHinweis(body,[m.dashboard],t);if(!this._zeigt('shares'))return;body.appendChild(unraidTabelle([{key:'n',label:t.col_name},{key:'u',label:t.col_used},{key:'f',label:t.col_free},...(m.dashboard.zustand==='legacy'||!details?[]:[{key:'security',label:t.security},{key:'exported',label:t.exported},{key:'streams',label:t.streams}])],m.shares.map(x=>{const q=meta.find(q=>q.name===x.name);return {n:x.name,u:unraidZahl(x.used,x.usedUnit,lang,1),f:unraidZahl(x.free,x.freeUnit,lang,1),security:t[q?.security]||t.unknown,exported:q?.exported===true?t.yes:q?.exported===false?t.no:t.unknown,streams:unraidZahl(q?.streams,'',lang)};}),{leer:t.none}));if(details)body.appendChild(buschUnraidNode('p',t.streams_help,'detail'));}
  static getConfigElement(){return document.createElement('busch-unraid-shares-card-editor');}
@@ -2546,6 +2563,7 @@ class BuschUnraidVmUsageCard extends BuschUnraidTile{
   const alle=s.geraete('Virtual machine').map(d=>{const n=d.roh;return {name:n,state:s.von(d,'vm_state_'+n)?.state,cpu:unraidNum(s.von(d,'vm_cpu_'+n)),used:unraidInBytes(s.von(d,'vm_ram_used_'+n)),alloc:unraidInBytes(s.von(d,'vm_ram_allocated_'+n))};});
   // VM-Zustand nicht verfügbar → eigener Hinweis statt „Keine laufenden VMs“.
   return {dashboard:unraidDashboard(s,'vms'),name:s.server.name_by_user||s.server.name,vms:alle.filter(v=>v.state==='running'),unbekannt:alle.filter(v=>!v.state||['unavailable','unknown'].includes(v.state)).map(v=>v.name)};}
+ _kompakt(m){if(m.laedt||m.fehler)return {};return {summary:unraidKw(m.vms?unraidZahl(m.vms.length,'',this._hass?.locale?.language):null)};}
  _kopf(m,t){const n=m.vms?.length;return {icon:'mdi:monitor-dashboard',titel:t.tile,untertitel:n&&this._zeigt('summary')?(n===1?t.running_one:t.running_many).replace('{count}',n):m.name};}
  _inhalt(body,m,t){if(!this._inhaltSichtbar())return;const lang=this._hass?.locale?.language,unbekannt=m.unbekannt||[];unraidZusatzHinweis(body,[m.dashboard],t);if(!m.vms.length){body.appendChild(buschUnraidNode('p',unbekannt.length?t.unavailable:t.none,'message'));return;}
   if(unbekannt.length)body.appendChild(buschUnraidNode('p',`${t.unavailable}: ${unbekannt.join(', ')}`,'message'));
@@ -2600,6 +2618,7 @@ const TEXTE_BUSCH_UNRAID_USERS_CARD={de:{...UNRAID_TILE_TEXTE.de,...UNRAID_INVEN
 class BuschUnraidUsersCard extends BuschUnraidTile{
  static get kachel(){return 'users';}get _texte(){return TEXTE_BUSCH_UNRAID_USERS_CARD;}
  _modell(core,config){return unraidInventarModell(core,config,'users');}
+ _kompakt(m,t){if(m.laedt||m.fehler)return {};const q=m.inventory,lang=this._hass?.locale?.language,ohne=unraidZahl(q?.daten?.unprotected_count,'',lang);return {summary:unraidKw(q?.liste!==null&&q?.count!=null?(ohne==='–'?unraidZahl(q.count,'',lang):`${unraidZahl(q.count,'',lang)} (${ohne} ${t.unprotected})`):null)};}
  _kopf(m,t){const q=m.inventory;return {icon:'mdi:account-group',titel:t.tile,untertitel:[m.name,this._zeigt('summary')&&q?.liste!==null&&q?.count!=null?`${q.count} ${t.count} · ${unraidZahl(q.daten.unprotected_count,'',this._hass?.locale?.language)} ${t.unprotected}`:null].filter(Boolean).join(' · ')};}
  _inhalt(body,m,t){if(!this._inhaltSichtbar()||!unraidInventarHinweis(body,m,t))return;const q=m.inventory,lang=this._hass?.locale?.language;
   if(q.daten.smb_enabled!==true)body.appendChild(buschUnraidNode('p',q.daten.smb_enabled===false?t.smb_disabled:t.smb_unknown,'message'));
@@ -2614,6 +2633,7 @@ const TEXTE_BUSCH_UNRAID_USB_CARD={de:{...UNRAID_TILE_TEXTE.de,...UNRAID_INVENTA
 class BuschUnraidUsbCard extends BuschUnraidTile{
  static get kachel(){return 'usb';}get _texte(){return TEXTE_BUSCH_UNRAID_USB_CARD;}get _vorgaben(){return {device_id:'',title:'',show_hubs:true};}
  _modell(core,config){return unraidInventarModell(core,config,'usb');}
+ _kompakt(m){if(m.laedt||m.fehler)return {};const q=m.inventory;return {summary:unraidKw(q?.liste!==null&&q?.count!=null?unraidZahl(q.count,'',this._hass?.locale?.language):null)};}
  _kopf(m,t){return {icon:'mdi:usb',titel:t.tile,untertitel:[m.name,this._zeigt('summary')&&m.inventory?.count!=null?`${m.inventory.count} ${t.count}`:null].filter(Boolean).join(' · ')};}
  _inhalt(body,m,t){if(!this._inhaltSichtbar()||!unraidInventarHinweis(body,m,t))return;const q=m.inventory,lang=this._hass?.locale?.language;if(this._zeigt('limits'))body.appendChild(buschUnraidNode('p',t.limits,'message'));if(q.daten.mapping_status!=='ok')body.appendChild(buschUnraidNode('p',t.mapping_missing,'message'));if(!this._zeigt('devices'))return;
   const rows=q.liste.filter(x=>this._config.show_hubs||!x.is_hub).sort((a,b)=>String(a.port).localeCompare(String(b.port),undefined,{numeric:true})).map(x=>{const name=buschUnraidNode('div');name.appendChild(buschUnraidNode('span',x.name));if(typeof x.speed_mbps==='number'&&Number.isFinite(x.speed_mbps))name.appendChild(buschUnraidNode('p',unraidZahl(x.speed_mbps,t.speed_unit,lang),'message'));return {port:x.port,name,state:['host','vm','remote','usbip_bound','unauthorized'].includes(x.state)?t[x.state]:t.unknown,assignment:x.state==='vm'?x.assigned_vm||t.vm_unknown:x.state==='remote'?x.remote_host||t.remote_unknown:'–'};});
@@ -2626,6 +2646,7 @@ const TEXTE_BUSCH_UNRAID_CORAL_CARD={de:{...UNRAID_TILE_TEXTE.de,...UNRAID_INVEN
 class BuschUnraidCoralCard extends BuschUnraidTile{
  static get kachel(){return 'coral';}get _texte(){return TEXTE_BUSCH_UNRAID_CORAL_CARD;}
  _modell(core,config){return unraidInventarModell(core,config,'coral');}
+ _kompakt(m){if(m.laedt||m.fehler)return {};const q=m.inventory;return {summary:unraidKw(q?.liste!==null&&q?.count!=null?unraidZahl(q.count,'',this._hass?.locale?.language):null)};}
  _kopf(m,t){return {icon:'mdi:chip',titel:t.tile,untertitel:[m.name,this._zeigt('summary')&&m.inventory?.count!=null?`${m.inventory.count} ${t.count}`:null].filter(Boolean).join(' · ')};}
  _inhalt(body,m,t){if(!this._inhaltSichtbar()||!unraidInventarHinweis(body,m,t))return;if(!this._zeigt('tpus'))return;const lang=this._hass?.locale?.language,rows=[...m.inventory.liste].sort((a,b)=>String(a.name).localeCompare(String(b.name),undefined,{numeric:true})).map(x=>{const usb=x.transport==='usb',temp=x.temperature_c;return {name:x.name,state:usb?t.usb_notice:['ready','error'].includes(x.state)?t[x.state]:t.unknown,temp:!usb&&typeof temp==='number'&&Number.isFinite(temp)&&temp>-50&&temp<=150?unraidZahl(temp,'°C',lang,1):t.temperature_missing};});unraidInventarTabelle(body,'coral',[{key:'name',label:t.col_name},{key:'state',label:t.col_state},{key:'temp',label:t.col_temp}],rows,{leer:m.inventory.zustand==='partial'?t.inventory_empty_partial:t.none});}
  static getConfigElement(){return document.createElement('busch-unraid-coral-card-editor');}static getStubConfig(){return {type:'custom:busch-unraid-coral-card'};}

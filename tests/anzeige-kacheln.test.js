@@ -75,3 +75,51 @@ test('Kacheln: _anzeige entsteht nur in setConfig', () => {
   k._render(); k.hass = k._hass; assert.equal(k._anzeige, vorher);
   k.setConfig({ visible_items: ['mover'] }); assert.notEqual(k._anzeige, vorher); assert.deepEqual([...k._anzeige.sichtbar], ['mover']);
 });
+
+// ── Schritt 6: _kompakt je Kachel (nur Datenfunktion aus dem fertigen Modell) ──
+const { dashboardFixture } = require('./familie-attrappe.js');
+function kompakt(art, fixture, config = {}) {
+  const k = new l[KARTEN[art][0]](); k._core = fixture; k._hass = { locale: { language: 'de' } }; k.setConfig(config);
+  const m = k._modell(k._core, k._config); return k._kompakt(m, k._texte.de);
+}
+const werte = o => Object.fromEntries(Object.entries(o).map(([id, w]) => [id, Array.isArray(w) ? w.map(x => [x.label, x.wert]) : w === null ? null : w.semantik ? [w.wert, w.semantik] : w.wert]));
+test('_kompakt: Werte aus dem Fixture, Schlüssel = kompakte Katalog-IDs', () => {
+  const kompakteIds = art => l.UNRAID_ANZEIGE[art].filter(e => e.kompakt).map(e => e.id).sort();
+  const faelle = {
+    server: [unraidAttrappe(), { uptime: '6 Tage, 17 Stunden, 55 Minuten', array: ['Gestartet', 'ok'], mover: 'ruht' }],
+    system: [unraidAttrappe(), { ram: '67 %' }],
+    cpu: [unraidAttrappe(), { load_average: '3,2', load: '24 %', power: null }],
+    gpu: [unraidAttrappe(), { util: '19 %', vram: '9 %', temperature: '52 °C', power: '78 W', fan: '31 %' }],
+    array: [dashboardFixture(), { array: '50 %', pools: [['fast-storage-with-a-long-descriptive-name', '25 %']], boot: null }],
+    parity: [dashboardFixture(), { state: ['Prüfung pausiert', 'warning'], progress: '25,0 %', errors: '0' }],
+    airflow: [unraidAttrappe(), { summary: '2' }],
+    shares: [dashboardFixture(), { summary: '1' }],
+    'vm-usage': [dashboardFixture(), { summary: '1' }],
+    interface: [dashboardFixture(), {}],
+    users: [inventoryFixture(), { summary: '3 (1 ohne gesetztes Kennwort)' }],
+    usb: [inventoryFixture(), { summary: String(inventoryFixture().entities.get('sensor.demo_dashboard_usb').state) }],
+    coral: [inventoryFixture(), { summary: '3' }],
+  };
+  for (const [art, [fixture, erwartet]] of Object.entries(faelle)) {
+    const k = kompakt(art, fixture), w = werte(k);
+    assert.deepEqual(Object.keys(k).sort(), kompakteIds(art), art);
+    for (const [id, wert] of Object.entries(erwartet)) assert.deepEqual(w[id], wert, `${art}.${id}`);
+  }
+  // Temperaturen: Zahl samt Einheit (Warnstufe folgt mit #643/5)
+  assert.match([].concat(werte(kompakt('cpu', unraidAttrappe())).temperature).join(' '), /^89 °C/);
+  assert.match([].concat(werte(kompakt('system', unraidAttrappe())).temperatures).join(' '), /^89 °C/);
+});
+test('_kompakt: nicht verfügbare Werte sind null; Laden/Fehler liefern nichts', () => {
+  const core = unraidAttrappe(); for (const id of ['sensor.tower_cpu_temp', 'sensor.gpu_fan', 'binary_sensor.tower_mover']) { const e = core.entities.get(id); e.state = 'unavailable'; if (e.stateObject) e.stateObject.state = 'unavailable'; }
+  assert.equal(kompakt('cpu', core).temperature, null); assert.equal(kompakt('system', core).temperatures, null);
+  assert.equal(kompakt('gpu', core).fan, null); assert.equal(kompakt('server', core).mover, null);
+  const zwei = unraidAttrappe({ zweiterServer: true });
+  for (const art of Object.keys(KARTEN)) assert.deepEqual(kompakt(art, zwei), {}, art);
+  // Parität ohne Lauf: kein Fortschritt
+  assert.equal(kompakt('parity', unraidAttrappe()).progress, null);
+});
+test('_kompakt: mehrere GPUs bekommen den Index ins Label [A-4]', () => {
+  const core = dashboardFixture(); core.add('gpu_util_1', 70);
+  const k = kompakt('gpu', core); assert.deepEqual(k.util.map(x => [x.label, x.wert]), [['GPU 0', '10 %'], ['GPU 1', '70 %']]);
+  assert.deepEqual(k.temperature.map(x => [x.label, x.wert]), [['Temp. 0', '40 °C']], 'fehlender Wert der zweiten GPU fällt weg');
+});
