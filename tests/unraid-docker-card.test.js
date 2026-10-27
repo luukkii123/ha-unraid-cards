@@ -179,7 +179,7 @@ test('Menüeintrag „Ausklappen“ klappt den Stack auf', async () => {
 test('Editor-Schema: Server-Auswahl, alle Felder mit Label und Helper in DE/EN, keine VM-/Alle-Apps-Option', () => {
   const l = load(), core = fixture();
   const schema = l.buschUnraidSchema(core, {}, 'docker');
-  same(schema.map((f) => f.name), ['device_id', 'title', 'hide_stopped', 'sort', 'start_expanded', 'columns', 'confirm_stop', 'confirm_restart']);
+  same(schema.map((f) => f.name), ['device_id', 'title', 'visible_items', 'collapsed_items', 'hide_stopped', 'sort', 'start_expanded', 'columns', 'confirm_stop', 'confirm_restart']);
   same(schema[0].selector.select.options.map((o) => o.value), ['server']);
   for (const lang of ['de', 'en']) for (const f of schema) {
     assert.ok(l.TEXTE_BUSCH_UNRAID_DOCKER_CARD[lang].labels[f.name], `${lang} label ${f.name}`);
