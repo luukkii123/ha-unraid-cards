@@ -1919,6 +1919,7 @@ const UNRAID_TILE_TEXTE={de:{upgrade:'Zusatzdaten: Unraid SSH auf 0.9 oder neuer
   sent:'Anfrage gesendet; Verbindung/Serverzustand prüfen.',
   action_unconfirmed:'Anfrage nicht bestätigt; Verbindung/Serverzustand prüfen. Keine automatische Wiederholung.',
   actions:'Serveraktionen',
+  more_actions:'Weitere Serveraktionen',
   model:'Modell',
   registration:'Registrierung',
   board_vendor:'Mainboard-Hersteller',
@@ -2018,6 +2019,7 @@ const UNRAID_TILE_TEXTE={de:{upgrade:'Zusatzdaten: Unraid SSH auf 0.9 oder neuer
   sent:'Request sent; check connection/server state.',
   action_unconfirmed:'Request not confirmed; check connection/server state. No automatic retry.',
   actions:'Server actions',
+  more_actions:'More server actions',
   model:'Model',
   registration:'Registration',
   board_vendor:'Board vendor',
@@ -2213,6 +2215,7 @@ const UNRAID_TILE_STYLE=BUSCH_UNRAID_STYLE+`
 .tile-sub{margin:2px 0 0;color:var(--secondary-text-color);font-size:var(--ha-font-size-s,13px);overflow-wrap:anywhere}
 .tile-text{flex:1 1 auto;min-width:0}
 .tile-actions{display:flex;flex-wrap:wrap;justify-content:flex-start;gap:4px;min-width:0}.tile-actions button{flex:0 1 auto}
+.tile-actions button.with-text{display:inline-flex;align-items:center;gap:var(--ha-space-2,8px)}.action-text{overflow-wrap:anywhere;min-width:0}
 .tile-actions button{min-width:44px;min-height:44px}.tile-actions button[aria-disabled=true]{cursor:default;opacity:.5}
 /* Wert neben der Spur statt auf der Füllung (Kontrast: Text auf Kartenhintergrund, nicht auf Grau/Orange/Rot). */
 .bar{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:var(--ha-space-2,8px);min-width:0}
@@ -2260,7 +2263,7 @@ class BuschUnraidTile extends HTMLElement {
  set hass(hass){const vorher=this._hass;this._hass=hass;if(this.isConnected)this._verbinden();this._core?.attach(hass);unraidHassRender(this,vorher,hass);}
  get hass(){return this._hass;}
  connectedCallback(){this._verbinden();this._render();}
- disconnectedCallback(){this._release?.();this._unwatch?.();this._release=this._unwatch=null;unraidBeobachten(this,[]);}
+ disconnectedCallback(){this._release?.();this._unwatch?.();this._release=this._unwatch=null;unraidBeobachten(this,[]);this._menu?._finish();}
  _verbinden(){if(!this._hass||this._release)return;this._core=ensureBuschCore(1);this._release=this._core.retain(this._hass);this._unwatch=this._core.watch(()=>this._render());}
  // Eingeklappt: Kopf, mit Kompaktzeile eine Zeile mehr; vor setConfig (Kartenwähler) ohne _anzeige sicher.
  getCardSize(){return this._eingeklappt?1+(this._anzeige?.kompakt?.length?1:0):3;}
@@ -2280,13 +2283,14 @@ class BuschUnraidTile extends HTMLElement {
   if(context!==this._actionContext){this._actionContext=context;this._actionGeneration++;this._error=null;this._notice=null;}
   if(this.isConnected&&this._core&&this._hass)unraidBeobachten(this,unraidServerIds(this._core,this._config));
   // Render-Signatur wie BuschUnraidBaseCard: nur bei geänderter Ansicht neu aufbauen (set hass kommt bei jeder Zustandsänderung in HA).
-  const signatur=JSON.stringify([this._config,m,this._eingeklappt,!!this._busy,this._error,this._notice,this._hass?.locale?.language,this._hass?.config?.time_zone,this._signaturZusatz()]);if(signatur===this._signatur)return;this._signatur=signatur;
+  const signatur=JSON.stringify([this._config,m,this._eingeklappt,this._menuOffen||null,!!this._busy,this._error,this._notice,this._hass?.locale?.language,this._hass?.config?.time_zone,this._signaturZusatz()]);if(signatur===this._signatur)return;this._signatur=signatur;
   const style=document.createElement('style');style.textContent=UNRAID_TILE_STYLE;const card=document.createElement('ha-card');card.className='tile';
   const k=this._kopf(m,t)||{},head=buschUnraidNode('div',undefined,'tile-head'),icon=BuschUI.ha.icon(k.icon||'mdi:server'),text=buschUnraidNode('div',undefined,'tile-text');icon.className='tile-icon';icon.setAttribute('aria-hidden','true');
   const titel=buschUnraidNode('h2',this._config.title||k.titel||'','tile-title');titel.title=titel.textContent;text.appendChild(titel);if(k.untertitel)text.appendChild(buschUnraidNode('p',k.untertitel,'tile-sub'));head.appendChild(icon);head.appendChild(text);
   // Während `_busy` sperrt `aria-disabled` statt `disabled`: der fokussierte Knopf bleibt fokussierbar, der Fokus überlebt die Renders; Klicks verwirft `_ausfuehren`.
   const actions=buschUnraidNode('div',undefined,'tile-actions');
-  for(const a of (m.laedt||m.fehler?[]:this._aktionen(m,t)||[])){const b=BuschUI.action({label:a.label,icon:a.icon,onClick:()=>this._ausfuehren(a,t),disabled:!!a.deaktiviert,variant:a.gefahr?'danger':'secondary'});if(this._busy&&!a.deaktiviert)b.setAttribute('aria-disabled','true');b.dataset.focusKey=a.key;actions.appendChild(b);}
+  // a.text: sichtbare Beschriftung neben dem Icon; a.menu: Knopf öffnet das flüchtige Menü (BuschUnraidDockerMenu, R08).
+  for(const a of (m.laedt||m.fehler?[]:this._aktionen(m,t)||[])){const b=BuschUI.action({label:a.label,icon:a.icon,onClick:()=>a.menu?this._menuOeffnen(a,t):this._ausfuehren(a,t),disabled:!!a.deaktiviert,variant:a.gefahr?'danger':'secondary'});if(a.text){b.appendChild(buschUnraidNode('span',a.text,'action-text'));b.className+=' with-text';}if(a.menu){b.setAttribute('aria-haspopup','menu');b.setAttribute('aria-expanded',String(this._menuOffen===a.key));}if(this._busy&&!a.deaktiviert)b.setAttribute('aria-disabled','true');b.dataset.focusKey=a.key;actions.appendChild(b);}
   head.appendChild(unraidEinklappKnopf({eingeklappt:this._eingeklappt,t,onClick:()=>this._umschalten()}));if(actions.childNodes.length)head.appendChild(actions);card.appendChild(head);
   // #642: eingeklappt nur Kopf und (gewählt, nicht beim Laden/Fehler) die Kompaktzeile aus demselben Modell.
   if(this._eingeklappt){const zeile=m.laedt||m.fehler?null:unraidKompaktZeile(this._anzeige?.kompakt,this._kompakt(m,t),t);if(zeile)card.appendChild(zeile);}
@@ -2308,6 +2312,11 @@ class BuschUnraidTile extends HTMLElement {
   try{await a.ausfuehren(anfrage);}catch{if(anfrage.generation===this._actionGeneration&&(this._core?.devices?unraidServer(this._core,this._config).server?.id:null)===anfrage.serverId)this._error=a.fehler||t.failed;}finally{this._busy=false;this._render();}
  }
  _bestaetigen(text,aktion,gefahr){return unraidBestaetigen(aktion,text,aktion,gefahr);}
+ // ⋮-Menü (#643/3): offen-Zustand rendert sofort (aria-expanded, Signatur); jeder Eintrag läuft über _ausfuehren, also mit
+ // Bestätigung. R11: bei _busy oder nicht verfügbarem Knopf gesperrt. Schließen gibt den Fokus an ⋮ zurück.
+ _menuOeffnen(a,t){this._menu?._finish();this._menuOffen=a.key;this._render();const anker=this.shadowRoot.querySelector(`[data-focus-key="${a.key}"]`);
+  this._menu=BuschUnraidDockerMenu.open({anchor:anker,title:a.titel||this._config.title||a.label,label:t.actions,closeLabel:t.close,items:a.menu.map(x=>({key:x.key,label:x.label,icon:x.icon,danger:!!x.gefahr,disabled:!!this._busy||!!x.deaktiviert,run:()=>this._ausfuehren(x,t)})),
+   onClose:()=>{this._menu=null;this._menuOffen=null;if(!this.shadowRoot)return;this._render();this.shadowRoot.querySelector(`[data-focus-key="${a.key}"]`)?.focus({preventScroll:true});}});}
 }
 const UNRAID_CONFIRM_STYLE=`:host{position:fixed;inset:0;z-index:10000;display:grid;place-items:center}
 .scrim{position:absolute;inset:0;background:var(--mdc-dialog-scrim-color,rgba(0,0,0,.32))}
@@ -2386,7 +2395,10 @@ class BuschUnraidServerCard extends BuschUnraidTile{
   if(zeilen.length)body.appendChild(unraidTabelle([{key:'k',label:''},{key:'v',label:''}],zeilen,{leer:''}));unraidZusatzHinweis(body,[m.hw],t);}
  _kompakt(m,t){if(m.laedt||m.fehler)return {};const lang=String(this._hass?.locale?.language||'en'),st=UNRAID_ARRAY_STATUS[lang.startsWith('de')?'de':'en'],arr=m.array&&!['unavailable','unknown'].includes(m.array)?m.array:null;
   return {uptime:unraidKw(unraidDauer(m.uptime,t)),array:arr?unraidKw(st[arr]||arr,arr==='started'?'ok':'warning'):null,mover:unraidKw(m.mover==='on'?t.mover_on:m.mover==='off'?t.mover_off:null)};}
- _aktionen(m,t){return unraidServerAktionen(this,m,t);}
+ // #643/3 (O-2: nur hier): Mover als beschrifteter Knopf; Neustart/Ausschalten im ⋮-Menü. Die Einträge bleiben die
+ // Aktionen aus unraidServerAktionen (Bestätigung, Zielprüfung nach dem Dialog), nur anders angeordnet.
+ _aktionen(m,t){const alle=unraidServerAktionen(this,m,t),mover=alle.filter(a=>a.key==='mover_start').map(a=>({...a,text:a.label,gefahr:false})),menu=alle.filter(a=>a.key!=='mover_start');
+  return [...mover,...(menu.length?[{key:'more',label:t.more_actions,icon:'mdi:dots-vertical',titel:m.name,menu}]:[])];}
  // [A-3]/R20: eingeklappt kein Minutentakt (die Uhr ist nicht kompakt).
  _signaturZusatz(){return this._zeigt('clock')&&!this._eingeklappt?Math.floor(Date.now()/60000):null;}
  // Uhr: alle 30 s prüfen, gebaut wird nur bei neuer Minute (Signatur); bei verstecktem Tab nichts tun.
