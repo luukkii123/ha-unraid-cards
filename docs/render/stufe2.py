@@ -26,6 +26,18 @@ ACTIONS = {"server": ["server_reboot", "server_shutdown", "mover_start"],
            "array": ["array_start", "array_stop", "spindown_all"],
            "parity": ["parity_start", "parity_pause", "parity_resume", "parity_cancel"]}
 CLOSE = "[role=alertdialog] .close"
+# Seit #643/3 (0.4.0) liegen Neustart/Ausschalten der Serverkarte im ⋮-Menü (busch-unraid-docker-menu);
+# der Mover bleibt ein Kopfknopf. Bestätigungsdialog und Dienstaufruf sind unverändert.
+SERVER_MENU = {"server_reboot", "server_shutdown"}
+
+
+def open_action(page, tag, key):
+    if key in SERVER_MENU:
+        page.locator(tag + ' [data-focus-key="more"]').click()
+        page.wait_for_selector("busch-unraid-docker-menu")
+        page.locator(f"busch-unraid-docker-menu .item[data-action='{key}']").click()
+    else:
+        page.locator(tag + f' [data-focus-key="{key}"]').click()
 FORM = """<style>busch-unraid-interface-card-editor{display:block;min-width:0;color:var(--primary-text-color);background:var(--card-background-color);padding:16px;box-sizing:border-box}</style><script>
 customElements.define('ha-form',class extends HTMLElement {
  set schema(v){this._schema=v;this.draw()} get schema(){return this._schema}
@@ -77,7 +89,9 @@ def details_gegenprobe(page, tag, geschlossen, offen, check):
     expected = page.evaluate("tag=>document.querySelector(tag).shadowRoot.querySelectorAll('.core-details .cell-name,.core-details .cell-value').length", tag)
     closed_paths, open_paths = kernpfade(geschlossen), kernpfade(offen)
     complete = all(len(m.get("geprueft_liste", [])) == m.get("geprueft") for m in (geschlossen, offen))
-    summary_counted = any(p.endswith("details.core-details > summary") for p in geschlossen.get("geprueft_liste", []))
+    # Since #643/5 (0.4.0) the summary text sits in span.summary-text next to a chevron icon.
+    summary_counted = any(p.endswith("details.core-details > summary") or p.endswith("details.core-details > summary > span.summary-text")
+                          for p in geschlossen.get("geprueft_liste", []))
     check(complete and expected > 0, "Core visibility probe has incomplete/empty measurement evidence")
     check(summary_counted and not closed_paths, "Closed details content counted or summary missing")
     check(len(open_paths) == expected and offen.get("geprueft", 0) - geschlossen.get("geprueft", 0) == expected,
@@ -194,15 +208,14 @@ def main():
                 for key in keys:
                     tag = place(kind)
                     pg.evaluate("window.calls=[]")
-                    opener = tag + f' [data-focus-key="{key}"]'
-                    pg.locator(opener).click()
+                    open_action(pg, tag, key)
                     pg.wait_for_selector(base.DIALOG)
                     check("Example server" in pg.locator(base.DIALOG).inner_text(), "Missing confirmation target: " + key)
                     check(pg.evaluate("document.querySelector('busch-unraid-confirm').shadowRoot.activeElement.textContent") == "Abbrechen", "Confirmation did not focus cancel: " + key)
                     results[key + "-dialog"] = capture(key + "-dialog", base.DIALOG)
                     pg.locator(base.ABBRECHEN).click()
                     check(pg.evaluate("window.calls.length") == 0, "Cancel sent service: " + key)
-                    pg.locator(opener).click()
+                    open_action(pg, tag, key)
                     pg.locator("[role=alertdialog] .buttons button:last-child").click()
                     pg.wait_for_function("window.calls.length===1")
                     calls = pg.evaluate("window.calls")
@@ -216,10 +229,9 @@ def main():
             for kind, keys in ACTIONS.items():
                 for key in keys:
                     tag = place(kind)
-                    opener = tag + f' [data-focus-key="{key}"]'
                     # Shared JS helpers query each shadow root separately: the
                     # selector must name the inner sheet without crossing hosts.
-                    popup = messe_popup(page, lambda o=opener: page.locator(o).click(), base.DIALOG, schliessen_knopf_selektor=CLOSE, dialog_typ="bestaetigung")
+                    popup = messe_popup(page, lambda t=tag, k=key: open_action(page, t, k), base.DIALOG, schliessen_knopf_selektor=CLOSE, dialog_typ="bestaetigung")
                     report["popup"][f"{key}-{width}"] = popup
                     for rule in ("escape", "zurueck", "schliessknopf", "obenauf", "scrim"):
                         verdict = popup.get(rule, {})

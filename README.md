@@ -28,7 +28,10 @@ Integration [**Unraid SSH**](https://github.com/luukkii123/ha-unraid-ssh-integra
 | [`busch-unraid-stack-card`](#busch-unraid-stack-card) | ein Compose-Stack mit Containersteuerung und Updates |
 | [`busch-unraid-container-card`](#busch-unraid-container-card) | ein einzelner Container |
 
-Jede Karte ist einzeln nutzbar und hat einen eigenen Editor.
+Jede Karte ist einzeln nutzbar und hat einen eigenen Editor. Bei allen 17
+Karten lässt sich wählen, welche Abschnitte angezeigt werden und welche
+Kennzahlen eingeklappt in einer Zeile unter dem Kopf stehen (siehe
+[Anzeige und Einklappen](#anzeige-und-einklappen)).
 
 ## Voraussetzungen
 
@@ -89,6 +92,8 @@ Shares-, Interface-, Benutzer-, USB-, Coral- und VM-Nutzungs-Karte.
 | --- | --- | --- | --- |
 | `device_id` | Gerät | leer | Unraid-Server (Gerätemodell *Unraid*), dessen Daten die Karte zeigt. Leer: der einzige Server; gibt es mehrere, fordert die Karte zur Auswahl auf. |
 | `title` | Text | leer | Überschrift der Karte. Leer: Name der Kachel (siehe unten). |
+| `visible_items` | Liste | alle Abschnitte | Abschnitte, die ausgeklappt angezeigt werden (IDs siehe [Anzeige und Einklappen](#anzeige-und-einklappen)) |
+| `collapsed_items` | Liste | leer | Kennzahlen, die eingeklappt in einer Zeile unter dem Kopf stehen |
 
 Fehlt ein einzelner Wert, entfällt die Zeile oder zeigt „–“; ist der Server
 nicht erreichbar, bleibt der Kopf stehen und der Inhalt zeigt „Nicht
@@ -97,12 +102,17 @@ verfügbar“.
 ## busch-unraid-server-card
 
 Vorgabetitel: der Servername (ersatzweise „Server“), darunter die
-Unraid-Version. Zeigt Laufzeit, Array-Zustand, Mover, Servermodell und
-Registrierungstyp. Bestätigte Aktionen: Neustarten, Ausschalten, Mover starten.
+Unraid-Version. Zeigt Uhrzeit und Datum (Zeitzone von Home Assistant),
+Laufzeit, Array-Zustand, Mover, Servermodell und Registrierungstyp.
+Aktionen im Kopf: der beschriftete Knopf *Mover starten* und das Menü ⋮
+(*Weitere Serveraktionen*) mit *Server neu starten* und *Server ausschalten*.
+Jede Aktion fragt vorher nach. Das Menü schließt mit Escape, Zurück, dem
+Kreuz oder einem Klick daneben; am Handy erscheint es als Blatt am unteren
+Rand.
 
 | Schlüssel | Typ | Vorgabe | Bedeutung |
 | --- | --- | --- | --- |
-| `show_clock` | Wahrheitswert | `true` | Zeigt Uhrzeit und Datum in der Zeitzone von Home Assistant |
+| `show_clock` | Wahrheitswert | `true` | Älterer Schalter, weiter gültig: wie die ID `clock` in `visible_items` |
 
 ```yaml
 type: custom:busch-unraid-server-card
@@ -118,7 +128,7 @@ Image-Ring. Temperaturen folgen darunter.
 
 | Schlüssel | Typ | Vorgabe | Bedeutung |
 | --- | --- | --- | --- |
-| `show_temperatures` | Wahrheitswert | `true` | Listet CPU-, Mainboard- und weitere aktive Temperaturfühler |
+| `show_temperatures` | Wahrheitswert | `true` | Älterer Schalter, weiter gültig: wie die ID `temperatures` in `visible_items` (CPU-, Mainboard- und weitere aktive Temperaturfühler) |
 
 ```yaml
 type: custom:busch-unraid-system-card
@@ -128,14 +138,20 @@ type: custom:busch-unraid-system-card
 
 Vorgabetitel: „Prozessor“. Gesamtlast als Balken, Load (1 min),
 CPU-Temperatur, CPU-Modell, Package-Leistung und die Gesamtlast als
-Verlaufslinie. Der sichtbare Details-Knopf öffnet ein Raster der CPU-Kerne
-mit ihren numerischen Linux-IDs. Der Verlauf wird nur
-geladen, solange die Karte sichtbar ist, und höchstens einmal je Minute.
+Verlaufslinie mit Zeitraum sowie Minimum und Maximum. Der Aufklapper
+*CPU-Kerne* (mit Pfeil) öffnet ein Raster der Kerne mit ihren numerischen
+Linux-IDs. Leistungszeilen ohne Messwert entfallen. Der Verlauf wird nur
+geladen, solange die Karte sichtbar und ausgeklappt ist, und höchstens
+einmal je Minute.
+
+**CPU-Temperatur:** ab 80 °C steht hinter dem Wert „hoch“ mit Warnpunkt, ab
+90 °C „kritisch“ mit Fehlerpunkt (auch in der System-Karte). Die Integration
+liefert keine Grenzwerte des Prozessors, deshalb sind die Schwellen fest.
 
 | Schlüssel | Typ | Vorgabe | Bedeutung |
 | --- | --- | --- | --- |
 | `history_minutes` | Auswahl `5` · `10` · `30` · `60` | `10` | Minuten, die die Verlaufslinie zeigt; andere Werte fallen auf 10 zurück |
-| `show_history` | Wahrheitswert | `true` | Zeigt die Gesamtlast als Linie aus dem Verlauf von Home Assistant |
+| `show_history` | Wahrheitswert | `true` | Älterer Schalter, weiter gültig: wie die ID `history` in `visible_items` |
 
 ```yaml
 type: custom:busch-unraid-cpu-card
@@ -145,7 +161,9 @@ history_minutes: "30"
 ## busch-unraid-gpu-card
 
 Vorgabetitel: „GPU“. Last, Speicher, Temperatur, Leistung und Lüfter der
-Grafikkarte, ergänzt um Modell und Treiberversion; ohne GPU „Keine GPU gefunden.“ Keine weiteren Parameter.
+Grafikkarte; alle Werte stehen bündig in einer rechten Spalte, Last und
+Speicher zusätzlich als Balken. Der Untertitel nennt Modell und
+Treiberversion; ohne GPU „Keine GPU gefunden.“ Keine weiteren Parameter.
 
 ```yaml
 type: custom:busch-unraid-gpu-card
@@ -172,11 +190,11 @@ die in Home Assistant gewählte Einheit und formatiert binär (KiB bis PiB).
 
 | Schlüssel | Typ | Vorgabe | Bedeutung |
 | --- | --- | --- | --- |
-| `show_boot` | Wahrheitswert | `true` | Zeigt den USB-Stick bzw. das Bootgerät als eigene Gruppe |
+| `show_boot` | Wahrheitswert | `true` | Älterer Schalter, weiter gültig: wie die ID `boot` in `visible_items` (USB-Stick bzw. Bootgerät als eigene Gruppe) |
 
 ```yaml
 type: custom:busch-unraid-array-card
-show_boot: false
+visible_items: [array, pools, smart]
 ```
 
 ## busch-unraid-parity-card
@@ -307,7 +325,9 @@ Zwei Ansichten, je nach `device_id`:
   mit Symbol, Name und Zustand. Der Knopf *Alle VMs* blendet gestoppte VMs ein
   oder aus; das ändert nur die Anzeige, nicht die gespeicherte Konfiguration.
 - **Einzelne VM** (Gerätemodell *Virtual machine*, so wie in Busch Cards
-  ≤ 0.21 konfiguriert) → die bisherige Einzelansicht mit CPU und RAM.
+  ≤ 0.21 konfiguriert) → Einzelansicht: Zustand neben dem Namen, darunter die
+  Aktionen in einer Zeile (Umbruch nur, wenn der Platz nicht reicht), CPU und
+  RAM nur, solange die VM läuft.
 
 Aktionen je VM: Starten, Herunterfahren (fordert den Gast zum geordneten
 Ausschalten auf), Neu starten und Sofort ausschalten (fragt immer mit
@@ -320,13 +340,15 @@ für die VM anbietet.
 | `title` | Text | leer | Eigener Titel; leer verwendet den VM-Namen bzw. „Virtuelle Maschinen“ |
 | `show_all` | Wahrheitswert | `false` | Zeigt auch gestoppte VMs |
 | `layout` | `compact` \| `detailed` | `detailed` | Kompakt oder ausführlich |
-| `show_status` | Wahrheitswert | `true` | Zeigt den belegten Betriebszustand |
+| `visible_items` | Liste | alle Abschnitte | Angezeigte Abschnitte, siehe [Anzeige und Einklappen](#anzeige-und-einklappen) |
+| `collapsed_items` | Liste | leer | Kennzahlen in der Zeile unter dem Kopf, wenn die Karte eingeklappt ist |
+| `show_status` | Wahrheitswert | `true` | Älterer Schalter, weiter gültig: wie die ID `status` |
 | `show_controls` | Wahrheitswert | `true` | Zeigt unterstützte Aktionen |
 | `show_restart` | Wahrheitswert | `true` | Neustart anzeigen; nur mit nativem Neustart-Button der Integration verfügbar |
 | `confirm_stop` | Wahrheitswert | `true` | Fragt vor dem Stoppen nach |
 | `confirm_restart` | Wahrheitswert | `true` | Fragt vor dem Neustart nach |
-| `show_cpu` | Wahrheitswert | `true` | Zeigt CPU in Prozent je Kern; über 100 % ist möglich, fehlende Werte sind nicht verfügbar |
-| `show_ram` | Wahrheitswert | `true` | Zeigt Gastverbrauch, sonst ausdrücklich zugewiesenen RAM (Host-RSS ist kein Gastverbrauch) |
+| `show_cpu` | Wahrheitswert | `true` | Älterer Schalter, weiter gültig: wie die ID `cpu` (CPU in Prozent je Kern; über 100 % ist möglich) |
+| `show_ram` | Wahrheitswert | `true` | Älterer Schalter, weiter gültig: wie die ID `ram` (Gastverbrauch, sonst ausdrücklich zugewiesener RAM) |
 | `display_mode` | `auto` \| `image` \| `icon` | `auto` | Automatisch bevorzugt verfügbare Bilder; *Bild* bevorzugt das eigene Bild, *Icon* zeigt nur das Icon |
 | `image` | Text | leer | Optionale Bild-URL; leer verwendet vorhandenes Bild oder Icon |
 | `icon` | Icon | leer | Optionales `mdi:`-Icon für Anzeige und Bildfehler; leer verwendet das VM-Icon |
@@ -345,7 +367,8 @@ Docker-Übersicht eines Unraid-Servers, angelehnt an das Docker-Widget des
 Unraid-Dashboards: je Compose-Stack eine Kachel, je eigenständigen Container
 eine Kachel, mit Containerbild (ersatzweise Symbol), Name und Zustand
 („4/4 gestartet“, „Gestoppt · 0/2“, *Gestartet*, *Gestoppt*, *Pausiert*,
-*Nicht verfügbar*, *Update läuft*). Vorgabetitel: „Docker-Container“.
+*Nicht verfügbar*, *Update läuft*). Vorgabetitel: „Docker-Container“, der
+Untertitel nennt gestartete und alle Container.
 
 - **Ausklappen:** der Pfeil an einer Stack-Kachel blendet dessen Container
   direkt dahinter ein. **Umschalt + Plus** klappt alle Stacks auf,
@@ -365,6 +388,8 @@ eine Kachel, mit Containerbild (ersatzweise Symbol), Name und Zustand
 | `sort` | `name` \| `state` | `name` | Sortiert die Kacheln nach Name oder Zustand |
 | `start_expanded` | Wahrheitswert | `false` | Zeigt die Container jedes Stacks schon beim Laden |
 | `columns` | `auto` \| `1` … `4` | `auto` | Legt die Spaltenzahl fest; automatisch passt sie an die Kartenbreite an |
+| `visible_items` | Liste | alle Abschnitte | Angezeigte Abschnitte: `summary`, `stacks`, `containers` |
+| `collapsed_items` | Liste | leer | Eingeklappt: `summary` („Gestartet 3/7“) |
 | `confirm_stop` | Wahrheitswert | `true` | Fragt vor dem Stoppen nach |
 | `confirm_restart` | Wahrheitswert | `true` | Fragt vor dem Neustart nach |
 
@@ -391,7 +416,9 @@ Gemeinsame Schlüssel (S = Stack, C = Container):
 | `device_id` | Auswahl | erstes passendes Gerät | ja | ja | Unraid-Gerät; im Kartenvorschlag ist das erste passende vorbelegt |
 | `switch_entity` | Entität | automatisch | ja | ja | Ordnet bei älterem Backend einen Schalter ausdrücklich zu |
 | `layout` | `compact` \| `detailed` | `detailed` | ja | ja | Bestimmt den Umfang der Angaben |
-| `show_status` | Wahrheitswert | `true` | ja | ja | Zeigt Zustand und laufende Container |
+| `visible_items` | Liste | alle Abschnitte | ja | ja | Angezeigte Abschnitte, siehe [Anzeige und Einklappen](#anzeige-und-einklappen) |
+| `collapsed_items` | Liste | leer | ja | ja | Kennzahlen in der Zeile unter dem Kopf, wenn die Karte eingeklappt ist |
+| `show_status` | Wahrheitswert | `true` | ja | ja | Älterer Schalter, weiter gültig: wie die ID `status` |
 | `show_controls` | Wahrheitswert | `true` | ja | ja | Zeigt verfügbare Start- und Stoppaktionen |
 | `show_updates` | Wahrheitswert | `true` | ja | ja | Zeigt zugeordnete verfügbare Updates |
 | `show_restart` | Wahrheitswert | `true` | ja | ja | Zeigt ausschließlich native Neustartaktionen; ohne Unterstützung der Integration nicht verfügbar |
@@ -400,8 +427,8 @@ Gemeinsame Schlüssel (S = Stack, C = Container):
 | `display_mode` | `auto` \| `image` \| `icon` | `auto` | ja | ja | Automatisch bevorzugt vorhandene Bilder, dann eigenes Bild und Icon |
 | `image` | Text | leer | ja | ja | Optionale Bild-URL, kein Docker-Image-Tag |
 | `icon` | Icon | leer | ja | ja | Optionales `mdi:`-Icon; Ersatz bei fehlendem oder fehlerhaftem Bild |
-| `show_cpu` | Wahrheitswert | `true` | ja | ja | Zeigt die CPU, wenn sie zuverlässig zugeordnet ist; fehlende Daten werden nicht erfunden |
-| `show_ram` | Wahrheitswert | `true` | ja | ja | Zeigt den RAM, wenn er zuverlässig zugeordnet ist |
+| `show_cpu` | Wahrheitswert | `true` | ja | ja | Älterer Schalter, weiter gültig: wie die ID `cpu` (nur zuverlässig zugeordnete Werte) |
+| `show_ram` | Wahrheitswert | `true` | ja | ja | Älterer Schalter, weiter gültig: wie die ID `ram` |
 | `debug` | Wahrheitswert | `false` | ja | ja | Zeigt die zugeordneten Entity-IDs zur lokalen Diagnose |
 
 ### busch-unraid-stack-card
@@ -411,7 +438,7 @@ Updates.
 
 | Schlüssel | Typ | Vorgabe | Bedeutung |
 | --- | --- | --- | --- |
-| `show_containers` | Wahrheitswert | `true` | Zeigt die Containerliste des Stacks |
+| `show_containers` | Wahrheitswert | `true` | Älterer Schalter, weiter gültig: wie die ID `containers` (Containerliste des Stacks) |
 | `state_filter` | `all` \| `running` \| `stopped` | `all` | Zeigt alle, laufende oder gestoppte Container |
 | `sort` | `name` \| `state` | `name` | Sortiert Container nach Name oder Zustand |
 | `start_expanded` | Wahrheitswert | `true` | Öffnet die Containerliste beim Laden |
@@ -436,13 +463,65 @@ device_id: YOUR_DEVICE_ID
 container_key: YOUR_CONTAINER_KEY
 ```
 
+## Anzeige und Einklappen
+
+Jede Karte hat im Editor zwei Häkchenlisten:
+
+- **Angezeigt** (`visible_items`): Abschnitte, die bei ausgeklappter Karte zu
+  sehen sind. Fehlt der Schlüssel, zeigt die Karte alles wie bisher. Die
+  Reihenfolge auf der Karte ist fest, nicht die Reihenfolge der Liste. Sind
+  alle Abschnitte abgewählt, bleiben Kopf und Aktionen stehen.
+- **Eingeklappt anzeigen** (`collapsed_items`): Kennzahlen, die bei
+  eingeklappter Karte in einer Zeile unter dem Kopf stehen, z. B.
+  `CPU 12 % · RAM 8 GiB`. Vorgabe: keine, also nur der Kopf. Nicht verfügbare
+  Werte entfallen; eine gestoppte VM oder ein gestoppter Container zeigt kein
+  CPU/RAM.
+
+Unbekannte IDs werden ignoriert. Die älteren Einzelschalter (`show_clock`,
+`show_temperatures`, `show_history`, `show_boot`, `show_status`, `show_cpu`,
+`show_ram`, `show_containers`) bleiben gültig, solange `visible_items` fehlt;
+steht `visible_items` in der Konfiguration, gilt es. Beim nächsten Speichern
+im Editor ersetzt `visible_items` die älteren Schalter. Filter wie
+`show_virtual`, `show_hubs`, `hide_idle` oder `show_all` sowie die
+Aktionsschalter (`show_controls`, `show_updates`, `show_restart`) bleiben
+eigene Optionen.
+
+| Karte | IDs für `visible_items` | davon für `collapsed_items` |
+| --- | --- | --- |
+| Server | `clock`, `uptime`, `array`, `mover`, `model`, `registration` | `uptime`, `array`, `mover` |
+| System | `ram`, `filesystems`, `hardware`, `memory`, `temperatures` | `ram`, `temperatures` (CPU-Temperatur) |
+| Prozessor | `temperature`, `load_average`, `load`, `power`, `cores`, `history` | `temperature`, `load_average`, `load`, `power` |
+| GPU | `util`, `vram`, `temperature`, `power`, `fan` | alle; bei mehreren GPUs mit Nummer |
+| Array und Pools | `array`, `pools`, `boot`, `smart` | `array`, `pools`, `boot` |
+| Parität | `state`, `progress`, `errors` | alle |
+| Airflow | `summary`, `fans` | `summary` (Anzahl Lüfter) |
+| Shares | `summary`, `shares`, `share_details` | `summary` |
+| VM-Nutzung | `summary`, `cpu`, `ram`, `host_cpu`, `io` | `summary` (laufende VMs) |
+| Interfaces | `state`, `kind`, `rx`, `tx`, `speed`, `mtu` (der Name bleibt immer) | keine |
+| Benutzer | `summary`, `permission_help`, `users`, `description` | `summary` |
+| USB-Geräte | `summary`, `limits`, `devices` | `summary` |
+| Coral TPU | `summary`, `tpus` | `summary` |
+| VM (Liste und einzeln) | `status`, `cpu`, `ram`, `vms` | `status`, `cpu`, `ram` (einzeln), `vms` (Liste) |
+| Docker-Übersicht | `summary`, `stacks`, `containers` | `summary` |
+| Stack | `status`, `update_queue`, `cpu`, `ram`, `containers` | `status`, `cpu`, `ram`, `containers` |
+| Container | `status`, `image`, `cpu`, `ram` | `status`, `cpu`, `ram` |
+
+```yaml
+type: custom:busch-unraid-cpu-card
+visible_items: [temperature, load, cores]
+collapsed_items: [load, temperature]
+```
+
 ## Bedienung und Darstellung
 
 ![Prozessor- und Array-Karte bei 320 px Breite im dunklen Thema, untereinander](docs/preview-mobil-dunkel.png)
 
-- **Einklappen:** Der Pfeil im Kopf der Kacheln, der VM-Liste und der
-  Docker-Karte klappt die Karte bis auf den Kopf ein. Der Zustand wird je Karte im Browser
-  gemerkt (je Kartentyp, Server und Titel) und gilt nur für dieses Gerät.
+- **Einklappen:** Der Pfeil oben rechts im Kopf jeder Karte (auch Stack,
+  Container und einzelne VM) klappt sie bis auf den Kopf und die gewählte
+  Kompaktzeile ein. Der Zustand wird je Karte im Browser gemerkt (je
+  Kartentyp, Gerät und Titel, beim Container zusätzlich je Container) und
+  gilt nur für dieses Gerät. Eingeklappte Server- und Prozessorkarten
+  aktualisieren Uhr und Verlauf nicht im Minutentakt.
 - **Bestätigungsdialog:** Stoppen, Herunterfahren, Neu starten und Sofort
   ausschalten fragen vorher nach (Sofort ausschalten immer). Der Dialog nennt
   das betroffene Objekt, z. B. „„Nextcloud“ stoppen?“. Er schließt mit

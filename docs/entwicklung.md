@@ -43,15 +43,28 @@ Feste Verträge:
   die Minute) und beobachten Server und Kindgeräte per `watchDevice`
   (`unraidBeobachten`), damit Stream-Updates ankommen.
 
-### Ausnahme R24: Stack- und Container-Einzelkarte
+### Anzeige und Einklappen (0.4.0, #642/#643)
 
-Die Kacheln und die VM-Liste klappen über den Pfeil im Kopf bis auf den Kopf
-ein (R21, gemerkt im Browser). Die Stack- und die Container-Karte sind
-bewusst **kompakte Einzelkarten** ohne dieses Kopf-Einklappen: Ihr Kopf trägt
-Status und Steueraktionen, die eingeklappt nicht verschwinden dürfen, und die
-Stack-Karte hat stattdessen ein eigenes Auf-/Zuklappen der Containerliste
-(`start_expanded`, Knopf „Container (n)“). Ein zweiter Einklapp-Pfeil daneben
-würde zwei Bedeutungen für dasselbe Symbol schaffen.
+Seit 0.4.0 haben alle 17 Karten denselben Einklapp-Knopf oben rechts im Kopf
+(`unraidEinklappKnopf`, auch Stack, Container und Einzel-VM; die frühere
+Ausnahme R24 für Stack/Container entfällt). Welche Abschnitte ausgeklappt
+erscheinen und welche Kennzahlen eingeklappt in der Kompaktzeile stehen,
+legen `visible_items`/`collapsed_items` fest; der Katalog `UNRAID_ANZEIGE`
+(je Kartenart, IDs sind YAML-Vertrag) und die Leselogik `unraidAnzeige`
+werden nur in `setConfig` ausgewertet, die Kompaktwerte (`_kompakt`) nur aus
+dem fertigen Modell, ohne zusätzliche Abos oder Abfragen.
+
+### Ausnahme UI-Regel 3.3 / R24: Altschlüssel ohne Editorfeld
+
+Die älteren Schalter `show_clock`, `show_temperatures`, `show_history`,
+`show_boot`, `show_status`, `show_cpu`, `show_ram` und `show_containers`
+haben kein Editorfeld mehr, bleiben aber gültig, solange `visible_items`
+fehlt. Gelesen werden sie **ausschließlich** in `unraidAnzeige` per
+Klammerzugriff `config[e.alt]` (Migration, altes Truthy-Verhalten). Der
+Editor (`unraidAnzeigeEditor.normalisiere`) entfernt sie beim nächsten
+Speichern und schreibt stattdessen `visible_items`; entspricht die Auswahl
+genau der Vorgabe, schreibt er gar nichts. Die Ausnahme ist bewusst nicht
+durch einen Eintrag im Prüfskript verdeckt.
 
 ## Tests
 
@@ -110,11 +123,48 @@ docker run --rm --network none \
 | `unraid-updated-family.py` | Stack/Container/VM im Kachelstil |
 | `unraid-docker.py` | Docker-Übersicht, Menü, Bestätigung |
 | `kacheln.py` | neun Kacheln und VM-Liste bei 320/480/960 px hell/dunkel, Leerzustände, Bestätigungsdialog (Regel 2, R04), Kontrast |
+| `stufe2.py`, `stufe3.py` | Telemetrie-, Interface- und Inventarkarten samt Editoren und bestätigten Serveraktionen (Neustart/Ausschalten über das ⋮-Menü) |
+| `anzeige.py` | alle 17 Karten aus- und eingeklappt (Einklappschlüssel vorbelegt, `collapsed_items`), Kopf und Einklapp-Knopf, Kompaktzeile, GPU-Spalte, CPU-Temperaturstufen, VM-Kopf, ⋮-Servermenü (Regel 2, Bottom-Sheet, Bestätigung), alle Editoren mit Häkchenlisten |
 | `live-ha-unraid-family.py` | echte `ha-form`-Editoren in einem laufenden Home Assistant; braucht eine Zugangsdatei (`base_url`, `token`) außerhalb des Repos, die nie hineingehört |
 
 Ergebnisse landen in `docs/render/ergebnis/` (nicht im Repo).
 
 ## Geprüft
+
+**27.10.2026 – 0.4.0, Abnahme vor dem Tag (#640–#643):** Anzeige und
+Einklappen konfigurierbar (`visible_items`/`collapsed_items`, alle 17 Karten),
+Design-Feinschliff, gestoppte VM/Container ohne CPU/RAM, Leistung bei
+Stream-Updates. `node --check dist/unraid-cards.js` grün;
+`ui-regeln-pruefen.py` 0 Verstöße; Kern byte-gleich zu Busch Cards
+(`kern-gleich-pruefen.py`). Zentraler Runner `karten-alle.sh --repo
+ha-unraid-cards` (Lauf `karten-20261027-133043-cfdf19`): Node 378/378,
+8/9 Schritte grün, 1312 Bilder. Rot war nur `stufe2`: die
+Details-Gegenprobe suchte den Text der Kern-Zusammenfassung direkt in
+`summary`, seit #643/5 steht er in `span.summary-text` (Prüfskriptfehler);
+Skript angepasst, nur dieser Schritt wiederholt und grün
+(`karten-20261027-134436-2496d1`, 312 Bilder, 4468 Textprüfungen,
+Popup-Prüfungen der zehn Bestätigungen inkl. Neustart/Ausschalten über das
+⋮-Menü bestanden). Neues Skript `anzeige.py`: 17 Kartenarten (19 Fälle inkl.
+gestoppter VM und VM-Liste) aus- und eingeklappt (Einklappschlüssel
+vorbelegt, `collapsed_items` gesetzt) bei 320/480/960 px hell/dunkel,
+354 Bilder, 7538 Textprüfungen ohne Überlauf/außerhalb/Überlappung; Titel
+ohne Großschreibung, Einklapp-Knopf im Kopf oben rechts mit passendem
+`aria-expanded`, Kompaktzeile genau mit den gewählten verfügbaren Werten,
+GPU-Werte bündig (±1 px), CPU-Temperatur 52/89/93 °C ohne Punkt/„hoch“/
+„kritisch“, VM-Aktionen umbrechen nur bei Platzmangel, kein Leerraum unter
+dem Inhalt; ⋮-Servermenü mit genau Neustart/Ausschalten, unter 450 px
+Bottom-Sheet, Regel 2 bei 320/480/960 px 15/15 bestanden, Abbrechen ohne
+Aufruf, Bestätigen genau ein `button.press`, Fokus zurück auf ⋮, kein
+Verlaufsrest; alle 17 Editoren mit beiden Häkchenlisten, Abwählen schreibt
+`visible_items` ohne `show_*`. `kacheln.py` wieder grün (Knopfliste des
+Dialogs nur noch `.buttons`, das Schließen-X seit 0.2.0 ist kein Fehler).
+Gefundener Sichtfehler, behoben mit Test (`feinschliff.test.js`): das
+Warn-Badge („Teilweise gestartet“) hatte im HA-Standardthema 1,96:1 Kontrast;
+Text jetzt zur Primärtextfarbe gemischt, Punkt in Warnfarbe. Screenshots
+gesichtet (Kopf, Kompaktzeile, GPU, CPU-Temperatur, VM 320/480/960,
+Servermenü 320/960, Editoren). Grenzen: Icon- und `ha-form`-Attrappen,
+keine Sections-Rasterhöhe von HA; die README-Vorschaubilder stammen noch aus
+0.3.0.
 
 **23.10.2026 – 0.1.0, Abnahme vor dem ersten Tag (`main` 5510abb, Todo #564):**
 `node --check dist/unraid-cards.js` grün; `ui-regeln-pruefen.py` alle Repos

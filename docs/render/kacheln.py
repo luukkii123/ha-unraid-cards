@@ -330,7 +330,7 @@ def main():
                 page.screenshot(path=str(OUT / f"dialog-{breite}-{t}.png"))
                 report["dialog_text"][f"{breite}-{t}"] = {
                     "regel1": messe_text(page, DIALOG),
-                    "inhalt": page.evaluate("()=>{const d=document.querySelector('busch-unraid-confirm').shadowRoot;const b=d.querySelector('.dialog').getBoundingClientRect();return {titel:d.querySelector('h2').textContent,text:d.querySelector('p').textContent,knoepfe:[...d.querySelectorAll('button')].map(x=>x.textContent),fokus:d.activeElement?.textContent||null,rect:{x:Math.round(b.x),y:Math.round(b.y),w:Math.round(b.width),h:Math.round(b.height)},inhalt_breite:Math.round(d.querySelector('.dialog').clientWidth-parseFloat(getComputedStyle(d.querySelector('.dialog')).paddingLeft)-parseFloat(getComputedStyle(d.querySelector('.dialog')).paddingRight)),vh:innerHeight}}"),
+                    "inhalt": page.evaluate("()=>{const d=document.querySelector('busch-unraid-confirm').shadowRoot;const b=d.querySelector('.dialog').getBoundingClientRect();return {titel:d.querySelector('h2').textContent,text:d.querySelector('p').textContent,knoepfe:[...d.querySelectorAll('.buttons button')].map(x=>x.textContent),fokus:d.activeElement?.textContent||null,rect:{x:Math.round(b.x),y:Math.round(b.y),w:Math.round(b.width),h:Math.round(b.height)},inhalt_breite:Math.round(d.querySelector('.dialog').clientWidth-parseFloat(getComputedStyle(d.querySelector('.dialog')).paddingLeft)-parseFloat(getComputedStyle(d.querySelector('.dialog')).paddingRight)),vh:innerHeight}}"),
                 }
                 page.keyboard.press("Escape")
                 page.wait_for_timeout(300)

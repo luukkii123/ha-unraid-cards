@@ -94,3 +94,15 @@ test('#643/5 CPU-Verlauf: Zeitraum als Überschrift, Min/Max aus genau einem cal
   k._signatur = null; k._render(); assert.equal(k.shadowRoot.querySelector('.history-range').textContent, 'Min 3 % · Max 47 %', 'nach erneutem Render sofort aus der letzten Linie');
   await new Promise(r => setImmediate(r)); assert.equal(n, 1, 'kein zusätzlicher Abruf');
 });
+
+// ── Abnahme 0.4.0: Warn-Badge lesbar im HA-Standardthema ────────────────────
+// Phase-C-Render: „Teilweise gestartet“ in --warning-color (#ffa600) auf 12 % Orange ergab 1,96:1.
+// Der Text wird zur Primärtextfarbe hin abgedunkelt (hell ≈ 4,8:1), der Punkt bleibt reine Warnfarbe.
+test('Abnahme 0.4.0: Warn-Badge-Text mit Primärtext gemischt, Punkt bleibt Warnfarbe', () => {
+  const { BUSCH_UNRAID_STYLE } = ladeKarte(['BUSCH_UNRAID_STYLE']);
+  const regel = BUSCH_UNRAID_STYLE.match(/\.status-warning\{[^}]*\}/)[0];
+  assert.match(regel, /(^|[{;])color:color-mix\(in srgb,var\(--warning-color,#a76900\) 50%,var\(--primary-text-color,#212121\)\)/);
+  assert.match(regel, /background:color-mix\(in srgb,var\(--warning-color,#a76900\) 12%,var\(--card-background-color\)\)/);
+  const punkt = BUSCH_UNRAID_STYLE.indexOf('.status-warning::before{background:var(--warning-color,#a76900)}');
+  assert.ok(punkt > BUSCH_UNRAID_STYLE.indexOf('.status-badge::before{'), 'Punktregel nach .status-badge::before');
+});
