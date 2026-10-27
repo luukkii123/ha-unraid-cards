@@ -51,7 +51,7 @@ function umgebung({ stream = true } = {}) {
 }
 
 function lade() {
-  return ladeKarte(['ensureBuschCore', 'BuschUnraidArrayCard', 'BuschUnraidVmCard', 'BuschUnraidServerCard', 'unraidServer'], { setTimeout, clearTimeout, performance });
+  return ladeKarte(['ensureBuschCore', 'BuschUnraidArrayCard', 'BuschUnraidVmCard', 'BuschUnraidServerCard', 'BuschUnraidCpuCard', 'unraidServer'], { setTimeout, clearTimeout, performance });
 }
 const ruhe = () => new Promise(r => setImmediate(r));
 
@@ -134,4 +134,27 @@ test('U2/U3: kinder aus dem Index liefert dieselben Kachelgeräte wie vorher, oh
   unraidServer(core, { device_id: 'srv' });
   assert.ok(!ids.has('fremd') && !ids.has('ct1') && !ids.has('stk1') && !ids.has('d2'), [...ids].join(','));
   core.dispose();
+});
+
+// #642 Phase B: Einklappen muss trotz #641 sofort rendern; die Kompaktzeile liest nichts zusätzlich.
+test('Schritt 11: Einklappen rendert sofort, unveränderter hass danach nicht', async () => {
+  const { BuschUnraidCpuCard } = lade(), u = umgebung();
+  const k = await karte(BuschUnraidCpuCard, { device_id: 'srv', collapsed_items: ['load'] }, u);
+  k._umschalten();
+  assert.ok(k.shadowRoot.querySelector('.compact-line'), 'Kompaktzeile sofort da');
+  const n = k.renders; k.hass = u.hass; assert.equal(k.renders, n, 'gleicher hass: kein Render');
+  k.hass = u.aendern('sensor.tower_cpu', 55);
+  assert.match(k.shadowRoot.querySelector('.compact-line').textContent, /55 %/, 'eigener Wert aktualisiert die Kompaktzeile');
+  k._umschalten(); assert.ok(k.shadowRoot.querySelector('.tile-body'), 'Ausklappen sofort');
+});
+test('Schritt 11: Kompaktzeile verfolgt keine zusätzlichen Geräte', async () => {
+  const { BuschUnraidCpuCard, BuschUnraidServerCard } = lade();
+  for (const [Klasse, ids] of [[BuschUnraidCpuCard, ['temperature', 'load_average', 'load', 'power']], [BuschUnraidServerCard, ['uptime', 'array', 'mover']]]) {
+    const u = umgebung(), offen = await karte(Klasse, { device_id: 'srv' }, u);
+    const zu = await karte(Klasse, { device_id: 'srv', title: 'x', collapsed_items: ids }, u);
+    zu._umschalten(); zu.hass = u.aendern('sensor.tower_cpu', 12);
+    const schluessel = k => k._deps.versions.map(([key]) => key).sort();
+    assert.deepEqual(schluessel(zu), schluessel(offen));
+    assert.ok(zu.shadowRoot.querySelector('.compact-line'));
+  }
 });

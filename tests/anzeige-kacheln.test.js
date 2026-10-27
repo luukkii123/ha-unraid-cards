@@ -123,3 +123,73 @@ test('_kompakt: mehrere GPUs bekommen den Index ins Label [A-4]', () => {
   const k = kompakt('gpu', core); assert.deepEqual(k.util.map(x => [x.label, x.wert]), [['GPU 0', '10 %'], ['GPU 1', '70 %']]);
   assert.deepEqual(k.temperature.map(x => [x.label, x.wert]), [['Temp. 0', '40 °C']], 'fehlender Wert der zweiten GPU fällt weg');
 });
+
+// ── Phase B, Schritt 11: Kachel-_render mit Einklapp-Knopf, Kompaktzeile, getCardSize, Takt ──
+const eingeklappt = (art, config = {}, fixture) => {
+  const [name, standard] = KARTEN[art], k = new l[name]();
+  k._core = (fixture || standard)(); k._hass = { locale: { language: 'de' }, callService: async () => {}, callWS: () => new Promise(() => {}) };
+  k.setConfig(config); k._eingeklappt = true; k._signatur = null; k._render(); return k;
+};
+const zeile = k => k.shadowRoot.querySelector('.compact-line');
+test('Schritt 11: Einklapp-Knopf liegt im Kopf, nicht in den Aktionen (alle 13 Kacheln)', () => {
+  for (const art of Object.keys(KARTEN)) {
+    const k = rendere(art), head = k.shadowRoot.querySelector('.tile-head');
+    const knopf = head.childNodes.find(n => n.dataset?.focusKey === 'toggle');
+    assert.ok(knopf, art + ': Knopf ist direktes Kind von .tile-head');
+    assert.match(knopf.className, /\bcollapse-toggle\b/, art);
+    assert.equal(knopf.getAttribute('aria-expanded'), 'true', art); assert.equal(knopf.getAttribute('aria-label'), 'Einklappen', art);
+    for (const a of k.shadowRoot.querySelectorAll('.tile-actions')) assert.equal(a.querySelector('[data-focus-key="toggle"]'), null, art + ': nicht in .tile-actions');
+  }
+  // Kachel ohne Aktionen: keine leere Aktionsleiste
+  assert.equal(rendere('cpu').shadowRoot.querySelector('.tile-actions'), null);
+});
+test('Schritt 11: eingeklappt zeigt die Kompaktzeile genau die gewählten, verfügbaren Werte', () => {
+  let k = eingeklappt('server', { collapsed_items: ['mover', 'uptime'] }, unraidAttrappe);
+  assert.equal(k.shadowRoot.querySelector('.tile-body'), null);
+  assert.deepEqual(zeile(k).querySelectorAll('.compact-label').map(n => n.textContent), ['Laufzeit', 'Mover'], 'Katalogreihenfolge');
+  assert.deepEqual(zeile(k).querySelectorAll('.compact-value').map(n => n.textContent), ['6 Tage, 17 Stunden, 55 Minuten', 'ruht']);
+  // nicht verfügbarer Wert fällt weg
+  const core = unraidAttrappe(); const mover = core.entities.get('binary_sensor.tower_mover'); mover.state = 'unavailable';
+  k = eingeklappt('server', { collapsed_items: ['mover', 'uptime'] }, () => core);
+  assert.deepEqual(zeile(k).querySelectorAll('.compact-label').map(n => n.textContent), ['Laufzeit']);
+  // leere Auswahl → keine Zeile; nur Nicht-Verfügbares → keine Zeile
+  assert.equal(zeile(eingeklappt('server', {}, unraidAttrappe)), null);
+  assert.equal(zeile(eingeklappt('server', { collapsed_items: ['mover'] }, () => core)), null);
+  // ausgeklappt: keine Kompaktzeile
+  assert.equal(zeile(rendere('server', { collapsed_items: ['uptime'] })), null);
+  // Punkt nur mit Semantik
+  k = eingeklappt('server', { collapsed_items: ['array'] }, unraidAttrappe); assert.match(zeile(k).querySelector('.dot').className, /sem-ok/);
+});
+test('Schritt 11: keine Kompaktzeile bei Laden oder Fehler', () => {
+  const k = new l.BuschUnraidServerCard(); k._hass = { locale: { language: 'de' } }; k.setConfig({ collapsed_items: ['uptime'] }); k._eingeklappt = true; k._render();
+  assert.equal(zeile(k), null, 'laedt (kein Kern)');
+  const f = eingeklappt('server', { collapsed_items: ['uptime'] }, () => unraidAttrappe({ zweiterServer: true }));
+  assert.equal(zeile(f), null, 'fehler (mehrere Server)');
+});
+test('Schritt 11: getCardSize eingeklappt 1, mit Kompaktzeile 2, ausgeklappt wie bisher; ohne setConfig sicher', () => {
+  for (const art of Object.keys(KARTEN)) assert.equal(new l[KARTEN[art][0]]().getCardSize(), 3, art);
+  assert.equal(eingeklappt('server', {}, unraidAttrappe).getCardSize(), 1);
+  assert.equal(eingeklappt('server', { collapsed_items: ['uptime'] }, unraidAttrappe).getCardSize(), 2);
+  assert.equal(rendere('server', { collapsed_items: ['uptime'] }).getCardSize(), 3);
+});
+test('Schritt 11: Klick auf den Knopf klappt sofort ein, Fokus bleibt auf dem Knopf', () => {
+  const k = rendere('cpu', { collapsed_items: ['load'] }); const knopf = k.shadowRoot.querySelector('[data-focus-key="toggle"]');
+  knopf.focus(); knopf.click();
+  const neu = k.shadowRoot.querySelector('[data-focus-key="toggle"]');
+  assert.equal(neu.getAttribute('aria-expanded'), 'false'); assert.equal(neu.getAttribute('aria-label'), 'Ausklappen');
+  assert.equal(k.shadowRoot.activeElement, neu); assert.ok(zeile(k)); assert.equal(k.shadowRoot.querySelector('.tile-body'), null);
+});
+test('Schritt 11: Server- und CPU-Takt ruhen im eingeklappten Zustand', () => {
+  for (const art of ['server', 'cpu']) {
+    assert.notEqual(rendere(art)._signaturZusatz(), null, art + ' ausgeklappt: Minutentakt');
+    assert.equal(eingeklappt(art)._signaturZusatz(), null, art + ' eingeklappt: kein Minutentakt');
+  }
+});
+test('Schritt 11: CSS – Kopfraster mit Knopfspalte, flacher 44-px-Knopf, keine 50-%-Aktionsleiste', () => {
+  const { UNRAID_TILE_STYLE: s } = ladeKarte(['UNRAID_TILE_STYLE']);
+  assert.match(s, /\.tile-head\{[^}]*display:grid[^}]*grid-template-columns:auto minmax\(0,1fr\) auto/);
+  assert.match(s, /grid-template-areas:"icon text toggle" "actions actions actions"/);
+  assert.match(s, /\.collapse-toggle\{[^}]*width:44px[^}]*height:44px[^}]*border:0[^}]*background:transparent[^}]*color:var\(--secondary-text-color\)[^}]*--mdc-icon-size:20px/);
+  assert.match(s, /\.collapse-toggle:focus-visible\{[^}]*outline/);
+  assert.doesNotMatch(s, /max-width:50%/); assert.doesNotMatch(s, /\.tile-head:has\(/);
+});

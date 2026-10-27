@@ -1469,6 +1469,10 @@ function unraidKompaktZeile(ids,werte,t){
   item.appendChild(buschUnraidNode('span',String(w.label??t?.kurz?.[id]??id),'compact-label'));item.appendChild(buschUnraidNode('span',String(w.wert),'compact-value'));zeile.appendChild(item);}
  return zeile.childNodes.length?zeile:null;
 }
+/* #643/2: der eine Einklapp-Knopf aller 17 Karten (R01, R08): flach, oben rechts im Kopf (Rasterbereich toggle),
+ * nie Teil der Aktionsreihe. `t` liefert collapse/expand (UNRAID_TILE_TEXTE); data-focus-key=toggle hält den Fokus über Renders. */
+function unraidEinklappKnopf({eingeklappt,t,onClick}){const label=eingeklappt?t.expand:t.collapse,knopf=BuschUI.action({label,icon:eingeklappt?'mdi:chevron-down':'mdi:chevron-up',onClick,variant:'secondary'});
+ knopf.className+=' collapse-toggle';knopf.dataset.focusKey='toggle';knopf.setAttribute('aria-expanded',String(!eingeklappt));knopf.title=label;return knopf;}
 /* Ein Editor-Helfer für beide Editorklassen (R08): Häkchenlisten `visible_items`/`collapsed_items` aus dem Katalog.
  * formDaten: abgeleitete Listen in form.data, damit die Häkchen auch den Altzustand (show_*) korrekt zeigen.
  * normalisiere: überführte Altschalter löschen; Listen in Katalogreihenfolge, unbekannte IDs der alten Liste anhängen
@@ -2200,13 +2204,15 @@ function unraidServerIds(core,config){try{const s=unraidServer(core,config);retu
 function unraidBeobachten(karte,ids){const key=ids.join('\n');if(karte._beobachtKey===key)return;for(const ab of karte._beobachtAb||[])ab?.();karte._beobachtAb=[];karte._beobachtKey=key;const core=karte._core;if(!ids.length||typeof core?.watchDevice!=='function')return;for(const id of ids)karte._beobachtAb.push(core.watchDevice(id,()=>karte._render()));}
 function unraidSpeicher(){try{return window.localStorage||null;}catch{return null;}}
 const UNRAID_TILE_STYLE=BUSCH_UNRAID_STYLE+`
-.tile-head{display:flex;align-items:flex-start;gap:var(--ha-space-3,12px);min-width:0}
+.tile-head{display:grid;grid-template-columns:auto minmax(0,1fr) auto;grid-template-areas:"icon text toggle" "actions actions actions";align-items:start;gap:var(--ha-space-2,8px) var(--ha-space-3,12px);min-width:0}
+.tile-head>.tile-icon,.tile-head>.card-icon{grid-area:icon}.tile-head>.tile-text{grid-area:text;align-self:center}.tile-head>.collapse-toggle{grid-area:toggle}.tile-head>.tile-actions,.tile-head>.actions{grid-area:actions;justify-content:flex-start}
+.collapse-toggle{display:inline-grid;place-items:center;width:44px;height:44px;min-width:44px;min-height:44px;padding:0;border:0;border-radius:50%;background:transparent;color:var(--secondary-text-color);--mdc-icon-size:20px;cursor:pointer}
+.collapse-toggle:hover{background:color-mix(in srgb,var(--secondary-text-color) 12%,transparent)}.collapse-toggle:focus-visible{outline:2px solid var(--primary-color);outline-offset:2px}
 .tile-icon{--mdc-icon-size:40px;color:var(--primary-text-color);flex:0 0 auto}
 .tile-title{margin:0;font-size:var(--ha-font-size-l,16px);font-weight:var(--ha-font-weight-bold,600);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
 .tile-sub{margin:2px 0 0;color:var(--secondary-text-color);font-size:var(--ha-font-size-s,13px);overflow-wrap:anywhere}
 .tile-text{flex:1 1 auto;min-width:0}
-.tile-actions{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:4px;flex:0 1 auto;max-width:50%}
-.tile-head:has(.tile-actions button:nth-child(2)){flex-wrap:wrap}.tile-head:has(.tile-actions button:nth-child(2)) .tile-actions{flex:1 1 100%;max-width:100%;justify-content:flex-start}
+.tile-actions{display:flex;flex-wrap:wrap;justify-content:flex-start;gap:4px;min-width:0}.tile-actions button{flex:0 1 auto}
 .tile-actions button{min-width:44px;min-height:44px}.tile-actions button[aria-disabled=true]{cursor:default;opacity:.5}
 /* Wert neben der Spur statt auf der Füllung (Kontrast: Text auf Kartenhintergrund, nicht auf Grau/Orange/Rot). */
 .bar{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:var(--ha-space-2,8px);min-width:0}
@@ -2256,7 +2262,8 @@ class BuschUnraidTile extends HTMLElement {
  connectedCallback(){this._verbinden();this._render();}
  disconnectedCallback(){this._release?.();this._unwatch?.();this._release=this._unwatch=null;unraidBeobachten(this,[]);}
  _verbinden(){if(!this._hass||this._release)return;this._core=ensureBuschCore(1);this._release=this._core.retain(this._hass);this._unwatch=this._core.watch(()=>this._render());}
- getCardSize(){return this._eingeklappt?1:3;}
+ // Eingeklappt: Kopf, mit Kompaktzeile eine Zeile mehr; vor setConfig (Kartenwähler) ohne _anzeige sicher.
+ getCardSize(){return this._eingeklappt?1+(this._anzeige?.kompakt?.length?1:0):3;}
  getGridOptions(){return {columns:12,min_columns:6};}
  _modell(){return {};}
  _kopf(){return {icon:'mdi:server',titel:''};}
@@ -2280,8 +2287,10 @@ class BuschUnraidTile extends HTMLElement {
   // Während `_busy` sperrt `aria-disabled` statt `disabled`: der fokussierte Knopf bleibt fokussierbar, der Fokus überlebt die Renders; Klicks verwirft `_ausfuehren`.
   const actions=buschUnraidNode('div',undefined,'tile-actions');
   for(const a of (m.laedt||m.fehler?[]:this._aktionen(m,t)||[])){const b=BuschUI.action({label:a.label,icon:a.icon,onClick:()=>this._ausfuehren(a,t),disabled:!!a.deaktiviert,variant:a.gefahr?'danger':'secondary'});if(this._busy&&!a.deaktiviert)b.setAttribute('aria-disabled','true');b.dataset.focusKey=a.key;actions.appendChild(b);}
-  const toggle=BuschUI.action({label:this._eingeklappt?t.expand:t.collapse,icon:this._eingeklappt?'mdi:chevron-down':'mdi:chevron-up',onClick:()=>this._umschalten(),variant:'secondary'});toggle.setAttribute('aria-expanded',String(!this._eingeklappt));toggle.dataset.focusKey='toggle';actions.appendChild(toggle);head.appendChild(actions);card.appendChild(head);
-  if(!this._eingeklappt){const body=buschUnraidNode('div',undefined,'tile-body');if(m.laedt)body.appendChild(buschUnraidNode('p',t.loading,'message'));else if(m.fehler)body.appendChild(buschUnraidNode('p',t[m.fehler]||m.fehler,'message'));else this._inhalt(body,m,t);card.appendChild(body);}
+  head.appendChild(unraidEinklappKnopf({eingeklappt:this._eingeklappt,t,onClick:()=>this._umschalten()}));if(actions.childNodes.length)head.appendChild(actions);card.appendChild(head);
+  // #642: eingeklappt nur Kopf und (gewählt, nicht beim Laden/Fehler) die Kompaktzeile aus demselben Modell.
+  if(this._eingeklappt){const zeile=m.laedt||m.fehler?null:unraidKompaktZeile(this._anzeige?.kompakt,this._kompakt(m,t),t);if(zeile)card.appendChild(zeile);}
+  else{const body=buschUnraidNode('div',undefined,'tile-body');if(m.laedt)body.appendChild(buschUnraidNode('p',t.loading,'message'));else if(m.fehler)body.appendChild(buschUnraidNode('p',t[m.fehler]||m.fehler,'message'));else this._inhalt(body,m,t);card.appendChild(body);}
   if(this._notice){const n=buschUnraidNode('p',this._notice,'message');n.setAttribute('role','status');card.appendChild(n);}
   if(this._error){const e=buschUnraidNode('p',this._error,'message error');e.setAttribute('role','alert');card.appendChild(e);}
   const fokus=this.shadowRoot.activeElement?.dataset?.focusKey;this.shadowRoot.replaceChildren(style,card);if(fokus)this.shadowRoot.querySelector(`[data-focus-key="${fokus}"]`)?.focus({preventScroll:true});
@@ -2378,7 +2387,8 @@ class BuschUnraidServerCard extends BuschUnraidTile{
  _kompakt(m,t){if(m.laedt||m.fehler)return {};const lang=String(this._hass?.locale?.language||'en'),st=UNRAID_ARRAY_STATUS[lang.startsWith('de')?'de':'en'],arr=m.array&&!['unavailable','unknown'].includes(m.array)?m.array:null;
   return {uptime:unraidKw(unraidDauer(m.uptime,t)),array:arr?unraidKw(st[arr]||arr,arr==='started'?'ok':'warning'):null,mover:unraidKw(m.mover==='on'?t.mover_on:m.mover==='off'?t.mover_off:null)};}
  _aktionen(m,t){return unraidServerAktionen(this,m,t);}
- _signaturZusatz(){return this._zeigt('clock')?Math.floor(Date.now()/60000):null;}
+ // [A-3]/R20: eingeklappt kein Minutentakt (die Uhr ist nicht kompakt).
+ _signaturZusatz(){return this._zeigt('clock')&&!this._eingeklappt?Math.floor(Date.now()/60000):null;}
  // Uhr: alle 30 s prüfen, gebaut wird nur bei neuer Minute (Signatur); bei verstecktem Tab nichts tun.
  connectedCallback(){super.connectedCallback();clearInterval(this._uhr);this._uhr=setInterval(()=>{if(typeof document!=='undefined'&&document.hidden)return;if(this._zeigt('clock')&&!this._eingeklappt)this._render();},30000);}
  disconnectedCallback(){super.disconnectedCallback();clearInterval(this._uhr);this._uhr=null;}
@@ -2441,7 +2451,7 @@ class BuschUnraidCpuCard extends BuschUnraidTile{
  _modell(core,config){const s=unraidServer(core,config);const z=unraidZustand(s);if(z)return z;const cpu=s.wert('cpu_percent');return {dashboard:unraidDashboard(s,'cpu'),hw:unraidDashboard(s,'hardware'),power:unraidNum(s.wert('cpu_power')),name:s.server.name_by_user||s.server.name,cpu:unraidNum(cpu),cpuId:cpu?.entity_id,temp:unraidNum(s.wert('cpu_temp')),load:unraidNum(s.wert('load_1'))};}
  _kopf(m,t){return {icon:'mdi:cpu-64-bit',titel:t.tile,untertitel:m.hw?.daten.hardware?.cpu_model||m.name};}
  _kompakt(m,t){if(m.laedt||m.fehler)return {};const lang=this._hass?.locale?.language;return {temperature:unraidKw(unraidCpuTempText(m.temp,lang,t),unraidCpuTempStufe(m.temp)),load_average:unraidKw(unraidZahl(m.load,'',lang,1)),load:unraidKw(unraidZahl(m.cpu,'%',lang)),power:unraidKw(unraidZahl(m.power,'W',lang))};}
- _signaturZusatz(){return this._zeigt('history')?Math.floor(Date.now()/60000):null;}
+ _signaturZusatz(){return this._zeigt('history')&&!this._eingeklappt?Math.floor(Date.now()/60000):null;}
  _inhalt(body,m,t){if(!this._inhaltSichtbar())return;const lang=this._hass?.locale?.language,zeilen=[];if(this._zeigt('temperature'))zeilen.push({k:t.temp,v:unraidCpuTemp(m.temp,lang,t)});if(this._zeigt('load_average'))zeilen.push({k:t.load1,v:unraidZahl(m.load,'',lang,1)});if(zeilen.length)body.appendChild(unraidTabelle([{key:'k',label:''},{key:'v',label:''}],zeilen,{leer:''}));
   if(this._zeigt('load')){body.appendChild(buschUnraidNode('h3',t.load,'section'));body.appendChild(unraidBalken(m.cpu,unraidZahl(m.cpu,'%',lang)));}
   // #643/5: leere Technikzeilen (Leistung „–“, Package ohne Wert) entfallen.
