@@ -238,6 +238,8 @@ class BuschEntityIndex {
     this.entities = new Map(); this.devices = new Map(); this.areas = new Map(); this.floors = new Map(); this.labels = new Map(); this.registry = new Map(); this.states = new Map(); this.order = new Map(); this.nextOrder = 0;
     this.indices = Object.fromEntries(["domain", "state", "integration", "config_entry", "device", "area", "floor", "label", "manufacturer", "model", "entity_category"].map(key => [key, new Map()]));
     this.deviceIndices = { via_device_id: new Map(), config_entry_id: new Map() };
+    // #641: Versionen je Gerät ("#"+entity_id ohne Gerät) und Epoche je rebuild() für track()/unchanged().
+    this.devVersion = new Map(); this.epoch = 0;
   }
   keys(info) {
     return { domain: [info.domain], state: [info.state], integration: [info.platform], config_entry: [info.config_entry_id], device: [info.device_id], area: [info.area_id], floor: [info.floor_id], label: info.labels, manufacturer: [info.manufacturer], model: [info.model], entity_category: [info.entity_category] };
@@ -245,6 +247,8 @@ class BuschEntityIndex {
   update(id, state) {
     if (state) { if (!this.order.has(id)) this.order.set(id, this.nextOrder++); this.states.set(id, state); } else { this.states.delete(id); this.order.delete(id); }
     const old = this.entities.get(id);
+    const bump = key => this.devVersion.set(key, (this.devVersion.get(key) || 0) + 1), deviceId = this.registry.get(id)?.device_id;
+    bump("#" + id); if (old?.device_id) bump(old.device_id); if (deviceId && deviceId !== old?.device_id) bump(deviceId);
     if (old) for (const [field, keys] of Object.entries(this.keys(old))) for (const key of keys) buschCoreSet(this.indices[field], key, id, false);
     const entry = this.registry.get(id);
     if (!entry && !state) { this.entities.delete(id); return { id, old, next: undefined }; }
@@ -259,6 +263,7 @@ class BuschEntityIndex {
     return { id, old, next };
   }
   rebuild() {
+    this.epoch++;
     this.order = new Map([...this.states.keys()].map((id, i) => [id, i])); this.nextOrder = this.order.size;
     this.entities.clear(); for (const map of Object.values(this.indices)) map.clear();
     for (const map of Object.values(this.deviceIndices)) map.clear();
@@ -412,7 +417,9 @@ class BuschCardsCore {
     this.apiVersion = "1.0"; this.version = "1.0.0"; this.index = new BuschEntityIndex(); this.metrics = { stateUpdates: 0, queriesSkipped: 0, queriesRecalculated: 0, resultChanges: 0, domRenders: null, structuralBuilds: 0 };
     this.registry = new BuschRegistryCache(null, (name, map) => {
       this.index[name === "entity" ? "registry" : name === "device" ? "devices" : name === "area" ? "areas" : name === "floor" ? "floors" : "labels"] = map;
-      this.index.rebuild(); this.engine?.refresh(); this.lastErrors.delete(name);
+      this.lastErrors.delete(name);
+      // #641: Mehrere Registerladungen bauen den Index höchstens einmal je Mikrotask neu.
+      if (!this._rebuildQueued) { this._rebuildQueued = true; Promise.resolve().then(() => { this._rebuildQueued = false; this.index.rebuild(); this.engine?.refresh(); }); }
       if (!this._notifyQueued) { this._notifyQueued = true; Promise.resolve().then(() => {
         this._notifyQueued = false;
         for (const listener of this._listeners) { try { listener(); } catch (error) { console.warn("Busch Core registry listener failed", error?.name); } }
@@ -426,9 +433,16 @@ class BuschCardsCore {
   get areas() { return this.index.areas; }
   get floors() { return this.index.floors; }
   get labels() { return this.index.labels; }
-  getEntity(id) { return this.entities.get(id); }
+  getEntity(id) { const entity = this.entities.get(id); if (this._track) this._track.add(entity?.device_id || "#" + id); return entity; }
   getDevice(id) { return this.devices.get(id); }
-  getDeviceEntities(id) { return [...(this.index.indices.device.get(id) || [])].map(entity => this.entities.get(entity)); }
+  getDeviceEntities(id) { if (this._track) this._track.add(id); return [...(this.index.indices.device.get(id) || [])].map(entity => this.entities.get(entity)); }
+  // #641: Merkt sich, welche Geräte/Entitäten fn() über getEntity/getDeviceEntities liest; unchanged() prüft deren Versionen.
+  track(fn) {
+    const outer = this._track, read = new Set(); this._track = read;
+    try { fn(); } finally { this._track = outer; if (outer) for (const key of read) outer.add(key); }
+    return { epoch: this.index.epoch, versions: [...read].map(key => [key, this.index.devVersion.get(key) || 0]) };
+  }
+  unchanged(deps) { return !!deps && deps.versions.length > 0 && deps.epoch === this.index.epoch && deps.versions.every(([key, version]) => (this.index.devVersion.get(key) || 0) === version); }
   seed(hass) {
     this.index.registry = buschCoreMap(hass.entities, "entity_id"); this.index.devices = buschCoreMap(hass.devices, "id");
     this.index.areas = buschCoreMap(hass.areas, "area_id"); this.index.floors = buschCoreMap(hass.floors, "floor_id");
@@ -563,13 +577,20 @@ class BuschCardsCore {
   loadFloorRegistry() { return this.registry.load("floor"); }
   loadLabelRegistry() { return this.registry.load("label"); }
   watch(callback) { this._listeners.add(callback); return () => this._listeners.delete(callback); }
-  retain(hass) { this.attach(hass); this.users++; let released = false; return () => { if (released) return; released = true; if (--this.users <= 0) this.dispose(); }; }
+  // #641: Freigabe erst nach 30 s Schonfrist; ein neues retain() bricht sie ab (erneutes Öffnen des Kartenwählers holt sonst wieder alles).
+  retain(hass) {
+    if (this._releaseTimer) { clearTimeout(this._releaseTimer); this._releaseTimer = null; } this.attach(hass); this.users++; let released = false;
+    return () => {
+      if (released) return; released = true;
+      if (--this.users <= 0) { if (this._releaseTimer) clearTimeout(this._releaseTimer); this._releaseTimer = setTimeout(() => { this._releaseTimer = null; if (this.users <= 0) this.dispose(); }, 30000); }
+    };
+  }
   query(spec) { return this.engine.query(spec); }
   smartQuery(spec, scopeDeviceId) { this.smart ||= new BuschSmartQueries(this); return this.smart.query(spec, scopeDeviceId); }
   subscribe(query, callback) { return this.engine.subscribe(query, callback); }
   debugSnapshot() { return { ...this.metrics, entities: this.entities.size, devices: this.devices.size, registryRequests: { ...this.registry.requests }, errors: [...this.lastErrors.keys()] }; }
   dispose() {
-    this.generation++; for (const unsubscribe of this.unsubscribers.splice(0)) Promise.resolve(unsubscribe()).catch(() => {});
+    if (this._releaseTimer) { clearTimeout(this._releaseTimer); this._releaseTimer = null; } this.generation++; for (const unsubscribe of this.unsubscribers.splice(0)) Promise.resolve(unsubscribe()).catch(() => {});
     this.streaming = false; this.connection = null; this.registry.clear(); this._refreshing = new Map(); this._queuedRefresh = new Set(); this._snapshotPromise = null; this._stateBuffer = null;
     if (this._registryTimer) clearTimeout(this._registryTimer); this._registryTimer = null; this._dirtyRegistries?.clear(); this._dirtyDevices.clear(); this.engine?.stop();
   }
@@ -1468,10 +1489,15 @@ const unraidAnzeigeEditor={
 };
 // Listenmodus der VM-Karte: leer, Server-ID oder (noch) unbekanntes Gerät; sonst Einzel-VM.
 function buschUnraidVmListe(core,config){if(!config?.device_id)return true;const d=core?.devices?.get?.(config.device_id);return !d||d.model==='Unraid';}
+// #641: Mit aktivem Stream baut `set hass` nur neu, wenn Sprache/Zeitzone oder die Konfiguration wechseln oder die beim letzten
+// Render gelesenen Geräte (Kern-`track`) neue Versionen haben; ohne Stream oder ohne `track` (älterer Kern) wie bisher immer.
+function unraidHassRender(karte,vorher,hass){const core=karte._core;
+ if(karte._deps&&core?.streaming&&vorher&&karte._depsConfig===karte._config&&vorher.locale===hass?.locale&&vorher.language===hass?.language&&vorher.config?.time_zone===hass?.config?.time_zone&&core.unchanged(karte._deps))return;
+ karte._deps=null;karte._depsConfig=karte._config;if(typeof core?.track==='function')karte._deps=core.track(()=>karte._render());else karte._render();}
 class BuschUnraidBaseCard extends HTMLElement {
  constructor(){super();this.attachShadow({mode:'open'});this._config={...BUSCH_UNRAID_DEFAULTS};this._expanded=true;this._generation=0;}
  setConfig(config){const next={...BUSCH_UNRAID_DEFAULTS,...buschUnraidConfig(config)},same=buschCoreKey(this._config)===buschCoreKey(next),context=value=>buschCoreKey([value.device_id,value.container_key,value.vm_id]);if(same)return;if(context(this._config)!==context(next)||!this._config.device_id)this._expanded=next.start_expanded;this._config=next;this._error=null;this._generation++;this._render();}
- set hass(hass){this._hass=hass;if(this.isConnected)this._connect();this._core?.attach(hass);this._render();}
+ set hass(hass){const vorher=this._hass;this._hass=hass;if(this.isConnected)this._connect();this._core?.attach(hass);unraidHassRender(this,vorher,hass);}
  get hass(){return this._hass;}
  connectedCallback(){this._connect();this._render();}
  disconnectedCallback(){this._release?.();this._unwatch?.();this._unwatchDevice?.();this._unwatchDevice=null;this._watchDeviceId=null;this._release=this._unwatch=null;this._generation++;}
@@ -2122,7 +2148,9 @@ function unraidServer(core,config){
  if(!gewaehlt)return {server:null,fehler:server.length>1&&!config.device_id?'choose_server':'no_server'};
  const eigene=core.getDeviceEntities(gewaehlt.id).filter(e=>e&&e.platform==='unraid_ssh'),entry=eigene.find(e=>e.config_entry_id)?.config_entry_id;
  const index=liste=>entry?new Map(liste.filter(e=>e&&e.platform==='unraid_ssh'&&e.config_entry_id===entry&&!e.registry?.disabled_by).map(e=>[unraidSuffix(e),e]).filter(([s])=>s)):new Map();
- const kinder=entry?[...core.devices.values()].filter(d=>d.id!==gewaehlt.id&&core.getDeviceEntities(d.id).some(e=>e?.platform==='unraid_ssh'&&e.config_entry_id===entry)):[];
+ // #641: Kindgeräte über den config_entry_id-Index statt über alle Geräte; Container/Stacks fragen die Kacheln nie ab (nur Platten, VMs, Shares).
+ const kinderIds=entry?core.index?.deviceIndices?.config_entry_id?.get(entry):null;
+ const kinder=entry?(kinderIds?[...kinderIds].map(id=>core.devices.get(id)).filter(Boolean):[...core.devices.values()]).filter(d=>d.id!==gewaehlt.id&&d.model!=='Docker container'&&d.model!=='Compose stack'&&core.getDeviceEntities(d.id).some(e=>e?.platform==='unraid_ssh'&&e.config_entry_id===entry)):[];
  const haupt=index(eigene);
  // R18: Hauptsensoren alle nicht verfügbar → Server nicht verfügbar (Kopf bleibt, Inhalt „Nicht verfügbar“).
  const hauptwerte=['cpu_percent','array_state'].map(x=>haupt.get(x)).filter(Boolean),verfuegbar=!hauptwerte.length||hauptwerte.some(buschUnraidAvailable);
@@ -2223,7 +2251,7 @@ class BuschUnraidTile extends HTMLElement {
  _inhaltSichtbar(){return !!this._anzeige?.sichtbar?.size;}
  _schluessel(){return 'unraid-cards:'+this.constructor.kachel+':'+(this._config.device_id||'')+':'+(this._config.title||'');}
  _umschalten(){this._eingeklappt=!this._eingeklappt;try{unraidSpeicher()?.setItem(this._schluessel(),this._eingeklappt?'1':'0');}catch{}this._render();}
- set hass(hass){this._hass=hass;if(this.isConnected)this._verbinden();this._core?.attach(hass);this._render();}
+ set hass(hass){const vorher=this._hass;this._hass=hass;if(this.isConnected)this._verbinden();this._core?.attach(hass);unraidHassRender(this,vorher,hass);}
  get hass(){return this._hass;}
  connectedCallback(){this._verbinden();this._render();}
  disconnectedCallback(){this._release?.();this._unwatch?.();this._release=this._unwatch=null;unraidBeobachten(this,[]);}
