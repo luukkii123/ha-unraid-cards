@@ -44,3 +44,53 @@ test('#643/4 GPU: CSS bündige rechte Spalte', () => {
   assert.match(UNRAID_TILE_STYLE, /\.gpu-values\{[^}]*display:grid[^}]*grid-template-columns:auto minmax\(0,1fr\) auto/);
   assert.match(UNRAID_TILE_STYLE, /\.gpu-value\{[^}]*text-align:end[^}]*tabular-nums/);
 });
+
+// ── Schritt 9: #643/5 CPU ────────────────────────────────────────────────────
+const { dashboardFixture } = require('./familie-attrappe.js');
+function karte(name, core, hass = {}, config = {}) {
+  const l = ladeKarte([name]), k = new l[name]();
+  k._core = core; k._hass = { locale: { language: 'de' }, ...hass }; k.setConfig(config); k._render(); return k;
+}
+function cpuTemp(wert) { const core = unraidAttrappe(), e = core.entities.get('sensor.tower_cpu_temp'); e.state = String(wert); e.stateObject.state = String(wert); return core; }
+test('#643/5 CPU-Temperatur: 79 ohne Punkt, ab 80 Warnung, ab 90 kritisch – immer mit Text [A-11]', () => {
+  const zelle = k => k.shadowRoot.querySelectorAll('td').find(td => td.attributes['data-label'] === '' && /°C/.test(td.textContent));
+  let z = zelle(karte('BuschUnraidCpuCard', cpuTemp(79))); assert.equal(z.textContent, '79 °C'); assert.equal(z.querySelector('.dot'), null);
+  z = zelle(karte('BuschUnraidCpuCard', cpuTemp(80))); assert.match(z.querySelector('.dot').className, /\bsem-warning\b/); assert.equal(z.textContent, '80 °C · hoch');
+  z = zelle(karte('BuschUnraidCpuCard', cpuTemp(90))); assert.match(z.querySelector('.dot').className, /\bsem-error\b/); assert.equal(z.textContent, '90 °C · kritisch');
+  const { UNRAID_CPU_TEMP_SCHWELLEN } = ladeKarte(['UNRAID_CPU_TEMP_SCHWELLEN']); assert.deepEqual({ ...UNRAID_CPU_TEMP_SCHWELLEN }, { warnung: 80, kritisch: 90 });
+});
+test('#643/5 Systemkarte: gleiche Temperaturstufe für die CPU-Zeile [A-12]; Kompaktwerte mit Punkt', () => {
+  const k = karte('BuschUnraidSystemCard', cpuTemp(91)), zelle = k.shadowRoot.querySelectorAll('.cell').find(c => c.querySelector('.cell-name').textContent === 'CPU');
+  assert.match(zelle.querySelector('.dot').className, /\bsem-error\b/); assert.equal(zelle.querySelector('.cell-value').textContent, '91 °C · kritisch');
+  const kalt = karte('BuschUnraidSystemCard', cpuTemp(40)).shadowRoot.querySelectorAll('.cell').find(c => c.querySelector('.cell-name').textContent === 'CPU');
+  assert.equal(kalt.querySelector('.dot'), null); assert.equal(kalt.querySelector('.cell-value').textContent, '40 °C');
+  const s = karte('BuschUnraidSystemCard', cpuTemp(85)), c = karte('BuschUnraidCpuCard', cpuTemp(85));
+  assert.deepEqual({ ...s._kompakt(s._modell(s._core, s._config), s._texte.de).temperatures }, { wert: '85 °C · hoch', semantik: 'warning' });
+  assert.deepEqual({ ...c._kompakt(c._modell(c._core, c._config), c._texte.de).temperature }, { wert: '85 °C · hoch', semantik: 'warning' });
+  assert.deepEqual({ ...c._kompakt(c._modell(cpuTemp(50), c._config), c._texte.de) }.temperature, { wert: '50 °C' });
+});
+test('#643/5 CPU: ohne Leistungswert keine Leistungszeile; rapl-Package ohne Wert ausgeblendet', () => {
+  assert.doesNotMatch(karte('BuschUnraidCpuCard', unraidAttrappe()).shadowRoot.textContent, /CPU-Leistung/);
+  const core = dashboardFixture(); core.entities.get('sensor.demo_dashboard_cpu').attributes.packages.push({ id: 'package-1', power_w: null, source: 'rapl' }, { id: 'package-2', power_w: 'x', source: 'rapl' });
+  const txt = karte('BuschUnraidCpuCard', core).shadowRoot.textContent;
+  assert.match(txt, /CPU-Leistung/); assert.match(txt, /package-0/); assert.doesNotMatch(txt, /package-1|package-2/);
+});
+test('#643/5 CPU: Kerne als echter Aufklapper mit Chevron; ohne Kerne kein details', () => {
+  const k = karte('BuschUnraidCpuCard', dashboardFixture()), summary = k.shadowRoot.querySelector('summary');
+  const pfeil = summary.querySelector('.chevron'); assert.ok(pfeil); assert.equal(pfeil.tagName, 'HA-ICON'); assert.equal(pfeil.getAttribute('icon'), 'mdi:chevron-down'); assert.equal(pfeil.getAttribute('aria-hidden'), 'true');
+  assert.match(summary.textContent, /Kerne/);
+  const { UNRAID_TILE_STYLE } = ladeKarte(['UNRAID_TILE_STYLE']);
+  assert.match(UNRAID_TILE_STYLE, /\.core-details summary\{[^}]*list-style:none/); assert.match(UNRAID_TILE_STYLE, /\.core-details summary::-webkit-details-marker\{display:none\}/);
+  assert.match(UNRAID_TILE_STYLE, /\.core-details\[open\] \.chevron\{transform:rotate\(180deg\)\}/);
+  const leer = dashboardFixture(); leer.entities.get('sensor.demo_dashboard_cpu').attributes.cores = [];
+  assert.equal(karte('BuschUnraidCpuCard', leer).shadowRoot.querySelector('details'), null);
+});
+test('#643/5 CPU-Verlauf: Zeitraum als Überschrift, Min/Max aus genau einem callWS-Abruf', async () => {
+  let n = 0; const callWS = async () => { n++; return { 'sensor.tower_cpu': [{ s: '20', lu: 1 }, { s: '3', lu: 31 }, { s: '47', lu: 61 }] }; };
+  const k = karte('BuschUnraidCpuCard', unraidAttrappe(), { callWS }, { history_minutes: '30' });
+  assert.ok(k.shadowRoot.querySelectorAll('h3').some(h => h.textContent === 'Verlauf · 30 min'));
+  await new Promise(r => setImmediate(r));
+  assert.equal(k.shadowRoot.querySelector('.history-range').textContent, 'Min 3 % · Max 47 %');
+  k._signatur = null; k._render(); assert.equal(k.shadowRoot.querySelector('.history-range').textContent, 'Min 3 % · Max 47 %', 'nach erneutem Render sofort aus der letzten Linie');
+  await new Promise(r => setImmediate(r)); assert.equal(n, 1, 'kein zusätzlicher Abruf');
+});
