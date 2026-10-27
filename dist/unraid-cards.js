@@ -985,7 +985,7 @@ function buschFuellen(text, werte) {
 
 /* === Unraid-Familie === */
 /* Unraid cards: joins are exclusively backend metadata + registry scope. */
-const BUSCH_UNRAID_DEFAULTS = { display_mode:'auto', image:'', icon:'', show_cpu:true, show_ram:true, show_all:false, debug:false, title: '', device_id: '', container_key: '', switch_entity: '', update_entity: '', layout: 'detailed', show_status: true, show_controls: true, show_containers: true, show_updates: true, state_filter: 'all', sort: 'name', show_restart: true, confirm_stop: true, confirm_restart: true, start_expanded: true };
+const BUSCH_UNRAID_DEFAULTS = { display_mode:'auto', image:'', icon:'', show_all:false, debug:false, title: '', device_id: '', container_key: '', switch_entity: '', update_entity: '', layout: 'detailed', show_controls: true, show_updates: true, state_filter: 'all', sort: 'name', show_restart: true, confirm_stop: true, confirm_restart: true, start_expanded: true };
 function buschUnraidConfig(config){const next={...config};delete next.config_entry_id;return next;}
 const TEXTE_BUSCH_UNRAID_STACK_CARD = {
  de: {
@@ -1123,11 +1123,12 @@ function buschUnraidResources(entities,kind,running){
  const limit=kind==='vm'?(used!==null?allocated:read('ram_max')):read('ram_limit');
  return {cpu,ram,ram_label,ram_total:limit>0?limit:null};
 }
-function buschUnraidMetrics(row,config,t,locale){
+// sicht = {cpu,ram} aus der Anzeige der Karte (#642, _metrikSicht).
+function buschUnraidMetrics(row,sicht,t,locale){
  const root=buschUnraidNode('div',undefined,'metrics'),format=n=>BuschUI.formatNumber(n,locale,{maximumFractionDigits:1}),bytes=n=>{const units=['B','KiB','MiB','GiB','TiB'];let unit=0;while(n>=1024&&unit<units.length-1){n/=1024;unit++;}return format(n)+' '+units[unit];};
  const add=(label,value,ratio)=>root.appendChild(BuschUI.metric(label,value,ratio));
- if(config.show_cpu)add('CPU',row.cpu===null||row.cpu===undefined?t.unavailable:format(row.cpu)+' %');
- if(config.show_ram)add(t[row.ram_label]||'RAM',row.ram===null||row.ram===undefined?t.unavailable:bytes(row.ram)+(row.ram_total?' / '+bytes(row.ram_total):''),row.ram!==null&&row.ram!==undefined&&row.ram_total?row.ram/row.ram_total:undefined);
+ if(sicht?.cpu)add('CPU',row.cpu===null||row.cpu===undefined?t.unavailable:format(row.cpu)+' %');
+ if(sicht?.ram)add(t[row.ram_label]||'RAM',row.ram===null||row.ram===undefined?t.unavailable:bytes(row.ram)+(row.ram_total?' / '+bytes(row.ram_total):''),row.ram!==null&&row.ram!==undefined&&row.ram_total?row.ram/row.ram_total:undefined);
  return root;
 }
 
@@ -1217,13 +1218,13 @@ function buschUnraidModel(core,config,kind) {
 }
 const SCHEMA_BUSCH_UNRAID_STACK_CARD = [
  {name: "title", "selector": {"text": {}}},
+ {name: "visible_items", "selector": {"select": {"multiple": true, "mode": "list", "options": []}}},
+ {name: "collapsed_items", "selector": {"select": {"multiple": true, "mode": "list", "options": []}}},
  {name: "device_id", "selector": {"select": {"options": []}}},
  {name: "switch_entity", "selector": {"entity": {"filter": {"integration": "unraid_ssh", "domain": "switch"}}}},
  {name: "layout", "selector": {"select": {"options": [{"value": "compact"}, {"value": "detailed"}]}}},
- {name: "show_status", "selector": {"boolean": {}}},
  {name: "show_controls", "selector": {"boolean": {}}},
  {name: "show_updates", "selector": {"boolean": {}}},
- {name: "show_containers", "selector": {"boolean": {}}},
  {name: "state_filter", "selector": {"select": {"options": [{"value": "all"}, {"value": "running"}, {"value": "stopped"}]}}},
  {name: "sort", "selector": {"select": {"options": [{"value": "name"}, {"value": "state"}]}}},
  {name: "start_expanded", "selector": {"boolean": {}}},
@@ -1233,12 +1234,13 @@ const SCHEMA_BUSCH_UNRAID_STACK_CARD = [
 ];
 const SCHEMA_BUSCH_UNRAID_CONTAINER_CARD = [
  {name: "title", "selector": {"text": {}}},
+ {name: "visible_items", "selector": {"select": {"multiple": true, "mode": "list", "options": []}}},
+ {name: "collapsed_items", "selector": {"select": {"multiple": true, "mode": "list", "options": []}}},
  {name: "device_id", "selector": {"select": {"options": []}}},
  {name: "container_key", "selector": {"select": {"options": []}}},
  {name: "switch_entity", "selector": {"entity": {"filter": {"integration": "unraid_ssh", "domain": "switch"}}}},
  {name: "update_entity", "selector": {"entity": {"filter": {"integration": "unraid_ssh", "domain": "update"}}}},
  {name: "layout", "selector": {"select": {"options": [{"value": "compact"}, {"value": "detailed"}]}}},
- {name: "show_status", "selector": {"boolean": {}}},
  {name: "show_controls", "selector": {"boolean": {}}},
  {name: "show_updates", "selector": {"boolean": {}}},
  {name: "show_restart", "selector": {"boolean": {}}},
@@ -1252,7 +1254,9 @@ const SCHEMA_BUSCH_UNRAID_VM_CARD = [
   selector: {
    text: {}
   }
- },
+ }, {name: "visible_items", selector: {select: {multiple: true, mode: "list", options: []}}},
+ {name: "collapsed_items", selector: {select: {multiple: true, mode: "list", options: []}}},
+
  {
   name: "device_id",
   selector: {
@@ -1321,12 +1325,7 @@ const SCHEMA_BUSCH_UNRAID_VM_CARD = [
    boolean: {}
   }
  },
- {
-  name: "show_status",
-  selector: {
-   boolean: {}
-  }
- },
+
  {
   name: "show_controls",
   selector: {
@@ -1351,18 +1350,8 @@ const SCHEMA_BUSCH_UNRAID_VM_CARD = [
    boolean: {}
   }
  },
- {
-  name: "show_cpu",
-  selector: {
-   boolean: {}
-  }
- },
- {
-  name: "show_ram",
-  selector: {
-   boolean: {}
-  }
- },
+
+
  {
   name: "show_all",
   selector: {
@@ -1373,7 +1362,7 @@ const SCHEMA_BUSCH_UNRAID_VM_CARD = [
 function buschUnraidSchema(core,config,kind){
  if(kind==='docker')return SCHEMA_BUSCH_UNRAID_DOCKER_CARD.map(field=>field.name==='device_id'?{...field,selector:{select:{options:buschUnraidServers(core).map(d=>({value:d.id,label:d.name_by_user||d.name||d.id}))}}}:field);
  const model=buschUnraidModel(core,config,kind),base=kind==='stack'?SCHEMA_BUSCH_UNRAID_STACK_CARD:kind==='vm'?SCHEMA_BUSCH_UNRAID_VM_CARD:SCHEMA_BUSCH_UNRAID_CONTAINER_CARD;
- return (kind==='vm'?base:[...base,...BUSCH_UNRAID_MEDIA_SCHEMA,...SCHEMA_BUSCH_UNRAID_VM_CARD.filter(f=>['show_cpu','show_ram','debug'].includes(f.name))]).map(field=>{
+ return (kind==='vm'?base:[...base,...BUSCH_UNRAID_MEDIA_SCHEMA,...SCHEMA_BUSCH_UNRAID_VM_CARD.filter(f=>f.name==='debug')]).map(field=>{
   // VM: Gerätewähler aus dem Schema (Server für die Liste oder eine einzelne VM), keine VM-Auswahlliste.
   if(field.name==='device_id'&&kind!=='vm')return {...field,selector:{select:{options:buschUnraidDevices(core,kind).map(d=>({value:d.id,label:d.name_by_user||d.name||d.id}))}}};
   if(field.name==='container_key')return {...field,selector:{select:{options:model.containers.map(c=>({value:c.key,label:c.name}))}}};
@@ -1401,7 +1390,7 @@ button{font:inherit;color:var(--primary-color);background:var(--secondary-backgr
 .disclosure{display:flex;align-items:center;justify-content:space-between;width:100%;margin-top:var(--unraid-small);text-align:start;color:var(--primary-text-color);background:var(--secondary-background-color)}.disclosure::after{content:'⌄';font-size:1.25em;line-height:1}.disclosure[aria-expanded=false]::after{transform:rotate(-90deg)}
 .rows{display:grid;margin-top:var(--unraid-small);border:1px solid var(--divider-color);border-radius:var(--ha-card-border-radius,12px);overflow:hidden}.row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:var(--unraid-small);align-items:center;padding:var(--ha-space-3,12px)}.row+.row{border-top:1px solid var(--divider-color)}.row-identity{display:flex;align-items:center;gap:var(--ha-space-3,12px);min-width:0}.row-text{display:grid;gap:var(--ha-space-1,4px);min-width:0}.row .name{font-size:var(--ha-font-size-m,14px)}.row>.actions{grid-column:1/-1;justify-content:flex-end}.row .detail{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
 .busch-media{overflow:hidden}.busch-media img{display:block;width:100%;height:100%;object-fit:contain}.metrics{display:flex;flex-wrap:wrap;gap:var(--unraid-space);padding-bottom:var(--unraid-small)}.metric{display:grid;gap:var(--ha-space-1,4px);flex:1 1 0;min-width:min(100%,var(--unraid-metric-min,100px))}.metric-label{color:var(--secondary-text-color);font-size:var(--ha-font-size-s,12px);overflow-wrap:anywhere}.metric-value{font-size:var(--ha-font-size-m,14px);overflow-wrap:anywhere}.metric progress{max-width:100%;width:100%;accent-color:var(--primary-color)}.row>.metrics{grid-column:1/-1}.message{margin-top:var(--unraid-space);overflow-wrap:anywhere}.row>.message,.row>progress{grid-column:1/-1}progress{width:100%;max-width:100%;accent-color:var(--primary-color)}.error{color:var(--error-color)}.compact .detail{display:none}
-@container (max-width:440px){.header{grid-template-columns:40px minmax(0,1fr);column-gap:var(--unraid-small);row-gap:var(--unraid-small);padding-bottom:var(--unraid-small)}.card-icon{width:40px;height:40px}.header>.status-badge{grid-column:2;justify-self:start}.header>.actions{grid-column:1/-1;justify-content:flex-start}.row>.status-badge{grid-column:1;justify-self:start}.row>.actions{justify-content:flex-start}.actions button{flex:1 1 0;padding-inline:var(--unraid-small);font-size:var(--ha-font-size-m,14px)}.actions:has(>button:nth-child(4)) button{flex-basis:calc(50% - var(--unraid-small))}.disclosure{margin-top:0}}
+@container (max-width:440px){.header{grid-template-columns:40px minmax(0,1fr);column-gap:var(--unraid-small);row-gap:var(--unraid-small);padding-bottom:var(--unraid-small)}.card-icon{width:40px;height:40px}.header>.status-badge{grid-column:2;justify-self:start}.header>.actions{grid-column:1/-1;justify-content:flex-start}.row>.status-badge{grid-column:1;justify-self:start}.row>.actions{justify-content:flex-start}.actions button{padding-inline:var(--unraid-small);font-size:var(--ha-font-size-m,14px)}.disclosure{margin-top:0}}
 `;
 function buschUnraidNode(tag,text,className){const node=document.createElement(tag);if(text!==undefined)node.textContent=text;if(className)node.className=className;return node;}
 /* Busch HA UI 0.1.0: domain states map to the same semantic badge roles. */
@@ -1469,6 +1458,8 @@ function unraidKompaktZeile(ids,werte,t){
   item.appendChild(buschUnraidNode('span',String(w.label??t?.kurz?.[id]??id),'compact-label'));item.appendChild(buschUnraidNode('span',String(w.wert),'compact-value'));zeile.appendChild(item);}
  return zeile.childNodes.length?zeile:null;
 }
+// Statusrollen der Badges → Punkte der Kompaktzeile (ok/warning/error/unknown).
+function unraidKompaktSemantik(status){const s=buschUiStatusSemantic(status);return s==='success'?'ok':s==='warning'||s==='error'?s:'unknown';}
 /* #643/2: der eine Einklapp-Knopf aller 17 Karten (R01, R08): flach, oben rechts im Kopf (Rasterbereich toggle),
  * nie Teil der Aktionsreihe. `t` liefert collapse/expand (UNRAID_TILE_TEXTE); data-focus-key=toggle hält den Fokus über Renders. */
 function unraidEinklappKnopf({eingeklappt,t,onClick}){const label=eingeklappt?t.expand:t.collapse,knopf=BuschUI.action({label,icon:eingeklappt?'mdi:chevron-down':'mdi:chevron-up',onClick,variant:'secondary'});
@@ -1500,13 +1491,26 @@ function unraidHassRender(karte,vorher,hass){const core=karte._core;
  karte._deps=null;karte._depsConfig=karte._config;if(typeof core?.track==='function')karte._deps=core.track(()=>karte._render());else karte._render();}
 class BuschUnraidBaseCard extends HTMLElement {
  constructor(){super();this.attachShadow({mode:'open'});this._config={...BUSCH_UNRAID_DEFAULTS};this._expanded=true;this._generation=0;}
- setConfig(config){const next={...BUSCH_UNRAID_DEFAULTS,...buschUnraidConfig(config)},same=buschCoreKey(this._config)===buschCoreKey(next),context=value=>buschCoreKey([value.device_id,value.container_key,value.vm_id]);if(same)return;if(context(this._config)!==context(next)||!this._config.device_id)this._expanded=next.start_expanded;this._config=next;this._error=null;this._generation++;this._render();}
+ setConfig(config){const next={...BUSCH_UNRAID_DEFAULTS,...buschUnraidConfig(config)},same=buschCoreKey(this._config)===buschCoreKey(next),context=value=>buschCoreKey([value.device_id,value.container_key,value.vm_id]);
+  // R21: Einklappen je Schlüssel gemerkt; gelesen nur, wenn sich der Schlüssel ändert (localStorage-Fehler still).
+  const schluessel=this._schluessel(next);if(schluessel!==this._klappSchluessel){this._klappSchluessel=schluessel;try{this._eingeklappt=unraidSpeicher()?.getItem(schluessel)==='1';}catch{this._eingeklappt=false;}}
+  if(same)return;if(context(this._config)!==context(next)||!this._config.device_id)this._expanded=next.start_expanded;this._config=next;this._anzeige=unraidAnzeige(next,UNRAID_ANZEIGE[this._kind]);this._error=null;this._generation++;this._render();}
+ // #642: Abschnitte aus `_anzeige` (nur in setConfig berechnet, #641).
+ _zeigt(id){return unraidZeigt(this,id);}
+ _metrikSicht(){return {cpu:this._zeigt('cpu'),ram:this._zeigt('ram')};}
+ // [A-10] unraid-cards:<art>:<device_id>:<title>, beim Container zusätzlich :<container_key> (zwei Container eines Stacks).
+ _schluessel(config=this._config){return 'unraid-cards:'+this._kind+':'+(config?.device_id||'')+':'+(config?.title||'')+(this._kind==='container'?':'+(config?.container_key||''):'');}
+ _umschalten(){this._eingeklappt=!this._eingeklappt;try{unraidSpeicher()?.setItem(this._schluessel(),this._eingeklappt?'1':'0');}catch{}this._render();}
+ // Kompaktwerte nur aus dem fertigen Modell; gestoppte VM/Container ohne CPU/RAM (Linie von #640).
+ _kompakt(m,t){if(!m?.device)return {};const lang=this._hass?.locale?.language,prozent=n=>typeof n==='number'&&Number.isFinite(n)?BuschUI.formatNumber(n,lang,{maximumFractionDigits:1})+' %':null,bytes=n=>typeof n==='number'&&Number.isFinite(n)?unraidBytes(n,lang):null,status=r=>unraidKw(buschUnraidStatusText(r,t,lang),unraidKompaktSemantik(r.status==='updating'?'warning':r.status));
+  if(this._kind==='stack')return {status:status(m),cpu:unraidKw(prozent(m.cpu)),ram:unraidKw(bytes(m.ram)),containers:m.total?unraidKw(`${m.running}/${m.total}`):null};
+  const r=m.selected;if(!r)return {};const laeuft=r.status==='running';return {status:status(r),cpu:laeuft?unraidKw(prozent(r.cpu)):null,ram:laeuft?unraidKw(bytes(r.ram)):null};}
  set hass(hass){const vorher=this._hass;this._hass=hass;if(this.isConnected)this._connect();this._core?.attach(hass);unraidHassRender(this,vorher,hass);}
  get hass(){return this._hass;}
  connectedCallback(){this._connect();this._render();}
  disconnectedCallback(){this._release?.();this._unwatch?.();this._unwatchDevice?.();this._unwatchDevice=null;this._watchDeviceId=null;this._release=this._unwatch=null;this._generation++;}
  _connect(){if(!this._hass||this._release)return;this._core=ensureBuschCore(1);this._release=this._core.retain(this._hass);this._unwatch=this._core.watch(()=>this._render());}
- getCardSize(){return this._kind==='stack'&&this._expanded?4:2;}
+ getCardSize(){return this._eingeklappt?1+(this._anzeige?.kompakt?.length?1:0):this._kind==='stack'&&this._expanded?4:2;}
  getGridOptions(){return {columns:12,min_columns:3};}
  _button(parent,text,action,disabled=false,destructive=false,focusKey){const button=BuschUI.action({label:text,text,onClick:action,disabled,variant:destructive?'danger':'secondary'});if(destructive)button.className+=' danger';if(focusKey)button.dataset.focusKey=focusKey;parent.appendChild(button);return button;}
  _actions(parent,row,t){const actions=buschUnraidNode('div',undefined,'actions');
@@ -1540,25 +1544,30 @@ class BuschUnraidBaseCard extends HTMLElement {
   catch{if(generation===this._generation)this._error=t.failed;}
   finally{this._busy=false;this._render();}
  }
- _render(){if(!this.shadowRoot||!this._config)return;const active=this.shadowRoot.activeElement,row=active?.closest?.('.row'),headerAction=active?.tagName==='BUTTON'&&active.closest?.('.header > .actions')?active.dataset.focusKey:null,focus=row&&active?.tagName==='BUTTON'?{entity:row.dataset.entityId,index:[...row.querySelectorAll('button')].indexOf(active)}:headerAction?{headerAction}:active?.classList?.contains('disclosure')?{disclosure:true}:null,scroll={x:window.scrollX,y:window.scrollY};const t=buschTexte(BUSCH_UNRAID_TEXT,this._hass),m=buschUnraidModel(this._core,this._config,this._kind);if(this.isConnected&&this._watchDeviceId!==m.device?.id){this._unwatchDevice?.();this._watchDeviceId=m.device?.id;this._unwatchDevice=this._watchDeviceId?this._core.watchDevice?.(this._watchDeviceId,()=>this._render()):null;}const signature=JSON.stringify([this._config,m,this._expanded,!!this._busy,this._error,t]);if(signature===this._renderSignature)return;this._renderSignature=signature;const card=buschUnraidNode('ha-card'),style=buschUnraidNode('style',UNRAID_FAMILIE_STYLE);card.className=this._config.layout;
+ _render(){if(!this.shadowRoot||!this._config)return;const active=this.shadowRoot.activeElement,row=active?.closest?.('.row'),headerAction=active?.tagName==='BUTTON'&&active.closest?.('.header > .actions')?active.dataset.focusKey:null,focus=row&&active?.tagName==='BUTTON'?{entity:row.dataset.entityId,index:[...row.querySelectorAll('button')].indexOf(active)}:headerAction?{headerAction}:active?.dataset?.focusKey==='toggle'?{toggle:true}:active?.classList?.contains('disclosure')?{disclosure:true}:null,scroll={x:window.scrollX,y:window.scrollY};const t=buschTexte(BUSCH_UNRAID_TEXT,this._hass),m=buschUnraidModel(this._core,this._config,this._kind);if(this.isConnected&&this._watchDeviceId!==m.device?.id){this._unwatchDevice?.();this._watchDeviceId=m.device?.id;this._unwatchDevice=this._watchDeviceId?this._core.watchDevice?.(this._watchDeviceId,()=>this._render()):null;}const signature=JSON.stringify([this._config,m,this._expanded,!!this._eingeklappt,!!this._busy,this._error,t]);if(signature===this._renderSignature)return;this._renderSignature=signature;const card=buschUnraidNode('ha-card'),style=buschUnraidNode('style',UNRAID_FAMILIE_STYLE);card.className=this._config.layout;
   // Kachel-Kopf (#564): neue Klassen tile-* zusätzlich; header/header-main/card-icon/detail bleiben für Fokuslogik und Renderskripte.
   const header=buschUnraidNode('div',undefined,'header tile-head'),title=this._config.title||m.device?.name_by_user||m.device?.name||t[this._kind];
-  const main=buschUnraidNode('div',undefined,'header-main tile-text'),titleNode=buschUnraidNode('h2',title,'tile-title');
-  main.appendChild(titleNode);header.appendChild(buschMedia(this._config,m.selected||m.device||{},this._kind==='vm'?'mdi:monitor':this._kind==='stack'?'mdi:docker':'mdi:cube-outline','card-icon tile-icon'));header.appendChild(main);card.appendChild(header);
-  const message=text=>card.appendChild(buschUnraidNode('p',text,'message'));
+  // #643/6: Titel und Badge in .title-row; Einklapp-Knopf oben rechts; Aktionen eigene Zeile (.header > .actions bleibt).
+  const main=buschUnraidNode('div',undefined,'header-main tile-text'),titleRow=buschUnraidNode('div',undefined,'title-row'),titleNode=buschUnraidNode('h2',title,'tile-title');
+  titleRow.appendChild(titleNode);main.appendChild(titleRow);header.appendChild(buschMedia(this._config,m.selected||m.device||{},this._kind==='vm'?'mdi:monitor':this._kind==='stack'?'mdi:docker':'mdi:cube-outline','card-icon tile-icon'));header.appendChild(main);
+  header.appendChild(unraidEinklappKnopf({eingeklappt:!!this._eingeklappt,t:buschTexte(UNRAID_TILE_TEXTE,this._hass),onClick:()=>this._umschalten()}));card.appendChild(header);
+  // Eingeklappt: Inhalt landet in einem nicht eingehängten Knoten (nur Kopf, Aktionen und ggf. Kompaktzeile sichtbar).
+  const zu=!!this._eingeklappt,body=zu?buschUnraidNode('div'):card,lang=this._hass?.locale?.language;
+  const message=text=>body.appendChild(buschUnraidNode('p',text,'message'));
   if(!m.device)message(t.empty);
   else if(this._kind==='container'||this._kind==='vm'){
-   const row=m.selected;if(!row)message(m.containers.length?t.choose:t.metadata);else{if(!this._config.title)titleNode.textContent=row.name;if(this._config.show_status)header.appendChild(buschUnraidBadge(row.status==='updating'?'warning':row.status,buschUnraidStatusText(row,t,this._hass?.locale?.language)));main.appendChild(buschUnraidNode('p',this._kind==='vm'?t.vm_subtitle:row.stack||t.standalone,'detail tile-sub'));if(row.status==='running')card.appendChild(buschUnraidMetrics(row,this._config,t,this._hass?.locale?.language));buschUnraidProgress(card,row,t);if(row.image)main.appendChild(buschUnraidNode('p',row.image,'detail tile-sub'));this._actions(header,row,t);}
+   const row=m.selected;if(!row)message(m.containers.length?t.choose:t.metadata);else{if(!this._config.title)titleNode.textContent=row.name;if(this._zeigt('status'))titleRow.appendChild(buschUnraidBadge(row.status==='updating'?'warning':row.status,buschUnraidStatusText(row,t,lang)));main.appendChild(buschUnraidNode('p',this._kind==='vm'?t.vm_subtitle:row.stack||t.standalone,'detail tile-sub'));if(row.status==='running'&&!zu)body.appendChild(buschUnraidMetrics(row,this._metrikSicht(),t,lang));buschUnraidProgress(body,row,t);if(row.image&&(this._kind!=='container'||this._zeigt('image')))main.appendChild(buschUnraidNode('p',row.image,'detail tile-sub'));this._actions(header,row,t);}
   }else{
-   if(this._config.show_status){header.appendChild(buschUnraidBadge(m.status==='updating'?'warning':m.status,buschUnraidStatusText(m,t,this._hass?.locale?.language)));main.appendChild(buschUnraidNode('p',t.running_count.replace('{running}',m.running).replace('{total}',m.total),'detail tile-sub'));}
-   if(m.update_queue){const q=m.update_queue;message(t.queue_count.replace('{completed}',q.completed_count).replace('{total}',q.total_count).replace('{failed}',q.failed_count).replace('{queued}',q.queued_count));if(q.current_target)message(t.current_target.replace('{name}',q.current_target));if(q.blocked)message(t.queue_blocked);buschUnraidProgress(card,m,t);}
-   this._actions(header,{...m,name:title},t);card.appendChild(buschUnraidMetrics(m,this._config,t,this._hass?.locale?.language));if(!m.switch&&!m.containers.length)message(t.metadata);
-   if(this._config.show_containers&&m.containers.length){const expand=this._button(card,t.container_group.replace('{count}',m.containers.length),()=>{this._expanded=!this._expanded;this._render();});expand.className+=' disclosure';expand.setAttribute('aria-expanded',String(this._expanded));expand.setAttribute('aria-label',this._expanded?t.collapse:t.expand);
-  if(this._expanded){const rows=buschUnraidNode('div',undefined,'rows'),visible=m.containers.filter(c=>this._config.state_filter==='all'||c.status===this._config.state_filter||(c.status==='updating'&&this._config.state_filter==='running'&&c.switch?.state==='on'));if(!visible.length)rows.appendChild(buschUnraidNode('p',t.none,'message'));for(const row of visible){const item=buschUnraidNode('div',undefined,'row');item.dataset.entityId=row.switch?.entity_id||row.update?.entity_id||row.container_key||row.name;const identity=buschUnraidNode('div',undefined,'row-identity'),texts=buschUnraidNode('div',undefined,'row-text');texts.appendChild(buschUnraidNode('div',row.name,'name'));if(row.image)texts.appendChild(buschUnraidNode('p',row.image,'detail'));identity.appendChild(buschMedia(this._config,row,'mdi:cube-outline','row-icon'));identity.appendChild(texts);item.appendChild(identity);if(this._config.show_status)item.appendChild(buschUnraidBadge(row.status==='updating'?'warning':row.status,buschUnraidStatusText(row,t,this._hass?.locale?.language)));item.appendChild(buschUnraidMetrics(row,this._config,t,this._hass?.locale?.language));buschUnraidProgress(item,row,t);this._actions(item,row,t);rows.appendChild(item);}card.appendChild(rows);}
+   if(this._zeigt('status')){titleRow.appendChild(buschUnraidBadge(m.status==='updating'?'warning':m.status,buschUnraidStatusText(m,t,lang)));main.appendChild(buschUnraidNode('p',t.running_count.replace('{running}',m.running).replace('{total}',m.total),'detail tile-sub'));}
+   if(m.update_queue&&this._zeigt('update_queue')){const q=m.update_queue;message(t.queue_count.replace('{completed}',q.completed_count).replace('{total}',q.total_count).replace('{failed}',q.failed_count).replace('{queued}',q.queued_count));if(q.current_target)message(t.current_target.replace('{name}',q.current_target));if(q.blocked)message(t.queue_blocked);buschUnraidProgress(body,m,t);}
+   this._actions(header,{...m,name:title},t);if(!zu)body.appendChild(buschUnraidMetrics(m,this._metrikSicht(),t,lang));if(!m.switch&&!m.containers.length)message(t.metadata);
+   if(this._zeigt('containers')&&m.containers.length&&!zu){const expand=this._button(body,t.container_group.replace('{count}',m.containers.length),()=>{this._expanded=!this._expanded;this._render();});expand.className+=' disclosure';expand.setAttribute('aria-expanded',String(this._expanded));expand.setAttribute('aria-label',this._expanded?t.collapse:t.expand);
+  if(this._expanded){const rows=buschUnraidNode('div',undefined,'rows'),visible=m.containers.filter(c=>this._config.state_filter==='all'||c.status===this._config.state_filter||(c.status==='updating'&&this._config.state_filter==='running'&&c.switch?.state==='on'));if(!visible.length)rows.appendChild(buschUnraidNode('p',t.none,'message'));for(const row of visible){const item=buschUnraidNode('div',undefined,'row');item.dataset.entityId=row.switch?.entity_id||row.update?.entity_id||row.container_key||row.name;const identity=buschUnraidNode('div',undefined,'row-identity'),texts=buschUnraidNode('div',undefined,'row-text');texts.appendChild(buschUnraidNode('div',row.name,'name'));if(row.image)texts.appendChild(buschUnraidNode('p',row.image,'detail'));identity.appendChild(buschMedia(this._config,row,'mdi:cube-outline','row-icon'));identity.appendChild(texts);item.appendChild(identity);if(this._zeigt('status'))item.appendChild(buschUnraidBadge(row.status==='updating'?'warning':row.status,buschUnraidStatusText(row,t,lang)));item.appendChild(buschUnraidMetrics(row,this._metrikSicht(),t,lang));buschUnraidProgress(item,row,t);this._actions(item,row,t);rows.appendChild(item);}body.appendChild(rows);}
    }
   }
-  if(this._config.debug){const debug=buschUnraidNode('p',JSON.stringify({device_id:m.device?.id,control:m.selected?.switch?.entity_id||m.switch?.entity_id,restart:m.selected?.restart?.entity_id||m.restart?.entity_id}),'message detail');card.appendChild(debug);}
-  if(this._error){const error=buschUnraidNode('p',this._error,'message error');error.setAttribute('role','alert');card.appendChild(error);}titleNode.title=titleNode.textContent;BuschUI.header({node:header,titleNode});this.shadowRoot.replaceChildren(style,card);if(focus){let target;if(focus.disclosure)target=this.shadowRoot.querySelector('.disclosure');else if(focus.headerAction)target=[...this.shadowRoot.querySelectorAll('.header > .actions button')].find(button=>button.dataset.focusKey===focus.headerAction);else{const item=[...this.shadowRoot.querySelectorAll('.row')].find(node=>node.dataset.entityId===focus.entity);const buttons=[...(item?.querySelectorAll('button')||[])];target=buttons[focus.index]||buttons[0];}target?.focus({preventScroll:true});}if(window.scrollX!==scroll.x||window.scrollY!==scroll.y)window.scrollTo({left:scroll.x,top:scroll.y,behavior:'instant'});
+  if(this._config.debug){const debug=buschUnraidNode('p',JSON.stringify({device_id:m.device?.id,control:m.selected?.switch?.entity_id||m.switch?.entity_id,restart:m.selected?.restart?.entity_id||m.restart?.entity_id}),'message detail');body.appendChild(debug);}
+  if(zu){const zeile=unraidKompaktZeile(this._anzeige?.kompakt,this._kompakt(m,t),t);if(zeile)card.appendChild(zeile);}
+  if(this._error){const error=buschUnraidNode('p',this._error,'message error');error.setAttribute('role','alert');card.appendChild(error);}titleNode.title=titleNode.textContent;BuschUI.header({node:header,titleNode});this.shadowRoot.replaceChildren(style,card);if(focus){let target;if(focus.disclosure)target=this.shadowRoot.querySelector('.disclosure');else if(focus.toggle)target=this.shadowRoot.querySelector('[data-focus-key="toggle"]');else if(focus.headerAction)target=[...this.shadowRoot.querySelectorAll('.header > .actions button')].find(button=>button.dataset.focusKey===focus.headerAction);else{const item=[...this.shadowRoot.querySelectorAll('.row')].find(node=>node.dataset.entityId===focus.entity);const buttons=[...(item?.querySelectorAll('button')||[])];target=buttons[focus.index]||buttons[0];}target?.focus({preventScroll:true});}if(window.scrollX!==scroll.x||window.scrollY!==scroll.y)window.scrollTo({left:scroll.x,top:scroll.y,behavior:'instant'});
  }
 }
 class BuschUnraidStackCard extends BuschUnraidBaseCard {
@@ -1575,10 +1584,8 @@ class BuschUnraidContainerCard extends BuschUnraidBaseCard {
 // VM-Geräts (alte Konfiguration) → unveränderte Einzelansicht der Familie. Aktionen je Zeile über _actions/_action.
 class BuschUnraidVmCard extends BuschUnraidBaseCard {
  get _kind(){return 'vm';}
- // Einklappen der Liste wie bei den Kacheln, gemerkt unter unraid-cards:vm:<device_id>:<title>.
- _schluessel(config=this._config){return 'unraid-cards:vm:'+(config?.device_id||'')+':'+(config?.title||'');}
- _umschalten(){this._eingeklappt=!this._eingeklappt;try{unraidSpeicher()?.setItem(this._schluessel(),this._eingeklappt?'1':'0');}catch{}this._render();}
- setConfig(config){try{this._eingeklappt=unraidSpeicher()?.getItem(this._schluessel(config))==='1';}catch{this._eingeklappt=false;}const vorher=buschCoreKey(this._config);super.setConfig(config);if(buschCoreKey(this._config)!==vorher&&this._alle!==undefined){this._alle=undefined;this._render();}}
+ // Einklappen (Liste und Einzelansicht) aus der Basis, gemerkt unter unraid-cards:vm:<device_id>:<title>.
+ setConfig(config){const vorher=buschCoreKey(this._config);super.setConfig(config);if(buschCoreKey(this._config)!==vorher&&this._alle!==undefined){this._alle=undefined;this._render();}}
  // Der Schalter „Alle VMs“ ändert nur die Anzeige dieser Karte, nicht die gespeicherte Konfiguration.
  _zeigeAlle(){return this._alle??!!this._config.show_all;}
  // Unbekanntes Gerät (Kern noch nicht geladen): im Zweifel Liste mit Ladezustand statt kurz der Einzelpfad.
@@ -1602,8 +1609,8 @@ class BuschUnraidVmCard extends BuschUnraidBaseCard {
   const message=text=>card.appendChild(buschUnraidNode('p',text,'message'));
   if(this._eingeklappt){/* eingeklappt: nur der Kopf */}else if(m.laedt)message(t.loading);else if(m.fehler)message(t[m.fehler]||t.empty);else if(!m.vms.length)message(m.unbekannt?.length?t.unavailable:t.none_vms);
   else{const rows=buschUnraidNode('div',undefined,'rows');for(const r of m.vms){const row=buschUnraidNode('div',undefined,'row vm-row');row.dataset.entityId=r.switch?.entity_id||r.key||r.name;const id=buschUnraidNode('div',undefined,'row-identity'),nm=buschUnraidNode('div',undefined,'row-text');id.appendChild(buschMedia(this._config,r,'mdi:monitor','row-icon'));nm.appendChild(buschUnraidNode('div',r.name,'name'));id.appendChild(nm);row.appendChild(id);
-   if(this._config.show_status)row.appendChild(buschUnraidBadge(r.status,buschUnraidStatusText(r,t,h?.locale?.language)));
-   if(r.status==='running'&&(this._config.show_cpu||this._config.show_ram))row.appendChild(buschUnraidMetrics(r,this._config,t,h?.locale?.language));
+   if(this._zeigt('status'))row.appendChild(buschUnraidBadge(r.status,buschUnraidStatusText(r,t,h?.locale?.language)));
+   if(r.status==='running'&&(this._zeigt('cpu')||this._zeigt('ram')))row.appendChild(buschUnraidMetrics(r,this._metrikSicht(),t,h?.locale?.language));
    this._actions(row,r,t);rows.appendChild(row);}card.appendChild(rows);if(m.unbekannt?.length)message(`${t.unavailable}: ${m.unbekannt.join(', ')}`);}
   if(this._error){const e=buschUnraidNode('p',this._error,'message error');e.setAttribute('role','alert');card.appendChild(e);}
   this.shadowRoot.replaceChildren(style,card);
@@ -1615,8 +1622,8 @@ class BuschUnraidVmCard extends BuschUnraidBaseCard {
 }
 class BuschUnraidBaseEditor extends BuschEditorBase {
  get _defaults(){return BUSCH_UNRAID_DEFAULTS;}
- // #642: Stack/Container/VM lesen show_* noch im Render-Pfad; ihr Katalog kommt mit Phase B (Schritt 13) dazu.
- get _katalog(){return this._kind==='docker'?UNRAID_ANZEIGE.docker:null;}
+ // #642: Abschnitte/Kompaktwerte aus dem Katalog der Kartenart (Stack, Container, VM, Docker).
+ get _katalog(){return UNRAID_ANZEIGE[this._kind]||null;}
  _formDaten(){return unraidAnzeigeEditor.formDaten({...this._defaults,...this._config},this._katalog);}
  setConfig(config){if(!this._acceptConfig(config,buschUnraidConfig))return;this._render();}
  set hass(hass){this._hass=hass;if(this.isConnected)this._connect();this._core?.attach(hass);this._render();}
@@ -2248,7 +2255,9 @@ const UNRAID_TILE_STYLE=BUSCH_UNRAID_STYLE+`
 const UNRAID_FAMILIE_STYLE=UNRAID_TILE_STYLE+`
 ha-card:not(.tile)>.header.tile-head{display:grid;align-items:center}
 .header>.card-icon.tile-icon,.header>.card-icon.head-icon{background:none;color:var(--primary-text-color)}
-.header-main.tile-text{display:grid;gap:var(--ha-space-1,4px)}.header-main .tile-sub{margin:0}`;
+.header-main.tile-text{display:grid;gap:var(--ha-space-1,4px)}.header-main .tile-sub{margin:0}
+/* #643/6: Badge neben dem Titel, umbrechend nur bei Platzmangel (R06); Aktionen bilden die zweite Kopfzeile. */
+.title-row{display:flex;flex-wrap:wrap;align-items:center;gap:var(--ha-space-1,4px) var(--ha-space-2,8px);min-width:0}.title-row>.tile-title{flex:0 1 auto;min-width:0}.title-row>.status-badge{flex:none;justify-self:auto}`;
 class BuschUnraidTile extends HTMLElement {
  constructor(){super();this.attachShadow({mode:'open'});this._config={};this._eingeklappt=false;this._busy=false;this._error=null;this._notice=null;this._actionGeneration=0;}
  static get kachel(){return 'tile';}

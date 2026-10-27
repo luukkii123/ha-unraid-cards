@@ -158,3 +158,13 @@ test('Schritt 11: Kompaktzeile verfolgt keine zusätzlichen Geräte', async () =
     assert.ok(zu.shadowRoot.querySelector('.compact-line'));
   }
 });
+test('Schritt 13: Einzel-VM klappt trotz Stream sofort ein; unveränderter hass rendert nicht, eigene Änderung schon', async () => {
+  const { BuschUnraidVmCard } = lade(), u = umgebung();
+  const k = await karte(BuschUnraidVmCard, { device_id: 'vm1', collapsed_items: ['cpu'] }, u);
+  k._umschalten();
+  assert.match(k.shadowRoot.querySelector('.compact-line')?.textContent || '', /36 %/, 'sofort eingeklappt mit Kompaktzeile');
+  const n = k.renders; k.hass = u.hass; k.hass = u.aendern('light.fremd', 'off'); assert.equal(k.renders, n, 'gleicher/fremder hass: kein Render');
+  k.hass = u.aendern('sensor.win_cpu', 41); assert.match(k.shadowRoot.querySelector('.compact-line').textContent, /41 %/);
+  const offen = await karte(BuschUnraidVmCard, { device_id: 'vm1' }, u), keys = x => x._deps.versions.map(([key]) => key).sort();
+  k.hass = u.aendern('sensor.win_cpu', 42); offen.hass = u.hass; assert.deepEqual(keys(k), keys(offen), 'keine zusätzlichen Lesungen');
+});
