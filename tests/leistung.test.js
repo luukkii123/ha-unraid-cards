@@ -168,3 +168,9 @@ test('Schritt 13: Einzel-VM klappt trotz Stream sofort ein; unveränderter hass 
   const offen = await karte(BuschUnraidVmCard, { device_id: 'vm1' }, u), keys = x => x._deps.versions.map(([key]) => key).sort();
   k.hass = u.aendern('sensor.win_cpu', 42); offen.hass = u.hass; assert.deepEqual(keys(k), keys(offen), 'keine zusätzlichen Lesungen');
 });
+test('Schritt 14: VM-Liste klappt trotz Stream sofort ein; unveränderter hass rendert nicht', async () => {
+  const { BuschUnraidVmCard } = lade(), u = umgebung();
+  const k = await karte(BuschUnraidVmCard, { device_id: 'srv', collapsed_items: ['vms'] }, u);
+  k._umschalten(); assert.ok(k.shadowRoot.querySelector('.compact-line'), 'sofort');
+  const n = k.renders; k.hass = u.hass; k.hass = u.aendern('light.fremd', 'on'); assert.equal(k.renders, n);
+});

@@ -126,3 +126,45 @@ test('Basiseditoren: visible_items/collapsed_items hinter title, überführte sh
   same(e._form.schema.find(f => f.name === 'visible_items').selector.select.options.map(o => o.value), ['status', 'cpu', 'ram', 'vms']);
   assert.equal(e._form.computeHelper({ name: 'collapsed_items' }), 'Kennzahlen in einer Zeile unter dem Kopf, wenn die Karte eingeklappt ist. Vorgabe: keine.');
 });
+
+// ── Schritt 14: VM-Liste und Docker ──
+const { dockerKarte } = require('./familie-attrappe.js');
+function vmListe(config = {}, core = unraidAttrappe({ zweiteVm: true })) {
+  const { BuschUnraidVmCard } = ladeKarte(['BuschUnraidVmCard']), k = new BuschUnraidVmCard();
+  k._core = core; k._hass = { locale: { language: 'de' }, states: {}, callService: async () => {} }; k.setConfig({ device_id: 'srv', ...config }); k._render(); return k;
+}
+test('VM-Liste: Knopf im Kopf außerhalb der Aktionen; Aktionen nur „Alle VMs“', () => {
+  const k = vmListe(), h = kopf(k), t = h.childNodes.find(n => n.dataset?.focusKey === 'toggle');
+  assert.ok(t); assert.match(t.className, /\bcollapse-toggle\b/); assert.equal(t.getAttribute('aria-label'), 'Einklappen');
+  same(k.shadowRoot.querySelector('.tile-actions').childNodes.map(b => b.dataset.focusKey), ['show-all']);
+  t.focus(); t.click(); assert.equal(k.shadowRoot.activeElement, knopf(k)); assert.equal(knopf(k).getAttribute('aria-expanded'), 'false');
+});
+test('VM-Liste: vms ist kompakt (laufende VMs); Einzelwerte ignoriert [A-2]; getCardSize', () => {
+  let k = vmListe({ collapsed_items: ['status', 'cpu', 'vms'] }); assert.equal(zeile(k), null, 'ausgeklappt keine Zeile'); assert.equal(k.getCardSize(), 3);
+  knopf(k).click(); same(labels(k), ['Laufende VMs']); same(werte(k), ['1']); assert.equal(k.getCardSize(), 2);
+  k.shadowRoot.querySelector('[data-focus-key="show-all"]').click(); same(werte(k), ['1'], '„Alle VMs“ ändert die Zahl laufender VMs nicht');
+  k = vmListe(); knopf(k).click(); assert.equal(zeile(k), null); assert.equal(k.getCardSize(), 1);
+  const laedt = (() => { const { BuschUnraidVmCard } = ladeKarte(['BuschUnraidVmCard']), x = new BuschUnraidVmCard(); x._hass = { locale: { language: 'de' } }; x.setConfig({ collapsed_items: ['vms'] }); x._eingeklappt = true; x._render(); return x; })();
+  assert.equal(zeile(laedt), null, 'Laden: keine Zeile');
+});
+test('VM-Liste: vms abwählbar, Kopf mit Aktionen bleibt; Altschalter wie bisher', () => {
+  const k = vmListe({ visible_items: ['status', 'cpu', 'ram'] });
+  assert.equal(k.shadowRoot.querySelectorAll('.vm-row').length, 0); assert.equal(k.shadowRoot.querySelector('.rows'), null);
+  assert.ok(k.shadowRoot.querySelector('[data-focus-key="show-all"]')); assert.ok(knopf(k));
+  assert.equal(bild(vmListe({ show_status: false }).shadowRoot), bild(vmListe({ visible_items: ['cpu', 'ram', 'vms'] }).shadowRoot));
+});
+test('Docker: Knopf direkt im Kopf, Kompaktzeile summary, getCardSize', () => {
+  const k = dockerKarte({ collapsed_items: ['summary'] }), h = kopf(k);
+  assert.ok(h.childNodes.find(n => n.dataset?.focusKey === 'toggle' && /\bcollapse-toggle\b/.test(n.className)));
+  assert.ok(!h.childNodes.some(n => /\bactions\b/.test(n.className)), 'keine Aktionsleiste nur für den Knopf');
+  knopf(k).click(); same(labels(k), ['Gestartet']); same(werte(k), ['3/7']); assert.equal(k.getCardSize(), 2);
+  const ohne = dockerKarte(); knopf(ohne).click(); assert.equal(zeile(ohne), null); assert.equal(ohne.getCardSize(), 1);
+});
+test('Docker: stacks/containers/summary abwählbar; alles abgewählt nur Kopf', () => {
+  const typen = k => k.shadowRoot.querySelectorAll('.tile').filter(t => t.dataset.key).map(t => t.dataset.key.split(':')[0]);
+  let k = dockerKarte({ visible_items: ['summary', 'containers'] }); assert.ok(typen(k).length); assert.ok(typen(k).every(x => x === 'container'));
+  k = dockerKarte({ visible_items: ['summary', 'stacks'], start_expanded: true }); assert.ok(typen(k).includes('stack')); assert.ok(k.shadowRoot.querySelectorAll('.tile').filter(t => t.dataset.key).every(t => t.dataset.key.startsWith('stack:') || /\bchild\b/.test(t.className)), 'nur Stacks samt Kindern');
+  k = dockerKarte({ visible_items: ['stacks', 'containers'] }); assert.equal(k.shadowRoot.querySelector('.tile-sub'), null, 'ohne summary kein Untertitel');
+  k = dockerKarte({ visible_items: [] }); assert.equal(k.shadowRoot.querySelector('.grid'), null); assert.equal(k.shadowRoot.querySelector('.message'), null); assert.ok(knopf(k));
+  assert.equal(bild(dockerKarte({ visible_items: ['summary', 'stacks', 'containers'] }).shadowRoot), bild(dockerKarte().shadowRoot), 'Vorgabe = heutige Ansicht');
+});
