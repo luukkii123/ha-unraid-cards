@@ -102,7 +102,7 @@ test('CPU-Editor: Zeitraum-Auswahl und Texte', () => { const { BuschUnraidCpuCar
 test('GPU: Werte und Leerzustand', () => { const { BuschUnraidGpuCard } = ladeKarte(['BuschUnraidGpuCard']); const txt = rendere(BuschUnraidGpuCard, unraidAttrappe()).shadowRoot.textContent; for (const r of [/19 %/, /9 %/, /52 °C/, /78 W/, /31 %/]) assert.match(txt, r); assert.match(rendere(BuschUnraidGpuCard, unraidAttrappe({ gpu: false })).shadowRoot.textContent, /Keine GPU/); });
 test('GPU: ohne Lüfter-Entität keine Lüfterzeile; Untertitel mit Last und Temperatur', () => {
   const { BuschUnraidGpuCard } = ladeKarte(['BuschUnraidGpuCard']); const core = unraidAttrappe(); core.entities.delete('sensor.gpu_fan'); const alt = core.getDeviceEntities; core.getDeviceEntities = id => alt(id).filter(e => e.entity_id !== 'sensor.gpu_fan');
-  const k = rendere(BuschUnraidGpuCard, core); assert.doesNotMatch(k.shadowRoot.textContent, /Lüfter/); assert.match(k.shadowRoot.querySelector('.tile-sub').textContent, /Last: 19 % · Temperatur: 52 °C/);
+  const k = rendere(BuschUnraidGpuCard, core); assert.doesNotMatch(k.shadowRoot.textContent, /Lüfter/); assert.doesNotMatch(k.shadowRoot.querySelector('.tile-sub').textContent, /Last|Temperatur/); // #643/4: Untertitel nur Modell + Treiber
   assert.match(rendere(BuschUnraidGpuCard, unraidAttrappe()).shadowRoot.textContent, /Lüfter/);
 });
 test('GPU: mehrere Karten nach Index (numerisch) mit Überschrift', () => {
