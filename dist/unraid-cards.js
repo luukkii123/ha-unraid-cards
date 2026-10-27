@@ -2162,7 +2162,7 @@ function unraidSpeicher(){try{return window.localStorage||null;}catch{return nul
 const UNRAID_TILE_STYLE=BUSCH_UNRAID_STYLE+`
 .tile-head{display:flex;align-items:flex-start;gap:var(--ha-space-3,12px);min-width:0}
 .tile-icon{--mdc-icon-size:40px;color:var(--primary-text-color);flex:0 0 auto}
-.tile-title{margin:0;font-size:var(--ha-font-size-l,16px);font-weight:var(--ha-font-weight-bold,600);text-transform:uppercase;letter-spacing:.02em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+.tile-title{margin:0;font-size:var(--ha-font-size-l,16px);font-weight:var(--ha-font-weight-bold,600);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
 .tile-sub{margin:2px 0 0;color:var(--secondary-text-color);font-size:var(--ha-font-size-s,13px);overflow-wrap:anywhere}
 .tile-text{flex:1 1 auto;min-width:0}
 .tile-actions{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:4px;flex:0 1 auto;max-width:50%}
