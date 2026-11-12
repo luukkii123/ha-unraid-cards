@@ -42,7 +42,7 @@ test('Kachel-Editor: Labels/Helper aus den Texten, value-changed → config-chan
 test('Registrierung: Kartenwähler-Eintrag je Kachel', () => {
   const kontext = { window: { customCards: [] }, customElements: { define() {} } };
   const { UNRAID_KACHELN } = ladeKarte(['UNRAID_KACHELN'], kontext);
-  for (const [tag] of UNRAID_KACHELN) { const c = kontext.window.customCards.find(x => x.type === tag); assert.ok(c, tag); assert.equal(c.preview, true); assert.equal(c.documentationURL, 'https://github.com/luukkii123/ha-unraid-cards#' + tag); assert.ok(c.name && c.description); }
+  for (const [tag] of UNRAID_KACHELN) { const c = kontext.window.customCards.find(x => x.type === tag); assert.ok(c, tag); assert.equal(c.preview, false); assert.equal(c.documentationURL, 'https://github.com/luukkii123/ha-unraid-cards#' + tag); assert.ok(c.name && c.description); }
 });
 test('System: RAM-Ring und Temperaturen', () => { const { BuschUnraidSystemCard } = ladeKarte(['BuschUnraidSystemCard']); const k = rendere(BuschUnraidSystemCard, unraidAttrappe()); const r = k.shadowRoot.querySelector('.ring'); assert.match(r.textContent, /67 %/); assert.match(k.shadowRoot.textContent, /CPU.*89 °C/s); assert.match(k.shadowRoot.textContent, /Mainboard.*41 °C/s); });
 test('System: Ausfall zeigt – statt NaN', () => { const { BuschUnraidSystemCard } = ladeKarte(['BuschUnraidSystemCard']); const txt = rendere(BuschUnraidSystemCard, unraidAttrappe({ ausfall: true })).shadowRoot.textContent; assert.doesNotMatch(txt, /NaN/); assert.match(txt, /–/); });

@@ -201,7 +201,7 @@ test('Registrierung, getStubConfig mit echtem Server, englische Texte', () => {
   const l = load('en'), core = fixture();
   assert.ok(l.registered.has('busch-unraid-docker-card') && l.registered.has('busch-unraid-docker-card-editor'));
   const entry = l.context.window.customCards.find((c) => c.type === 'busch-unraid-docker-card');
-  assert.equal(entry.name, 'Unraid Docker'); assert.ok(entry.preview && entry.documentationURL);
+  assert.equal(entry.name, 'Unraid: Docker'); assert.ok(entry.preview === false && entry.documentationURL);
   same({ ...l.BuschUnraidDockerCard.getStubConfig() }, { type: 'custom:busch-unraid-docker-card' });
   const card = karte(l, core, {}, 'en');
   assert.equal(card.shadowRoot.querySelector('h2')?.textContent ?? card.shadowRoot.all().find((n) => n.tagName === 'H2').textContent, 'Docker containers');

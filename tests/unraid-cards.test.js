@@ -17,7 +17,7 @@ function load(){
  return {...vm.runInContext('({buschMediaResolve:typeof buschMediaResolve==="undefined"?null:buschMediaResolve,buschMedia:typeof buschMedia==="undefined"?null:buschMedia,BuschUnraidVmCard:typeof BuschUnraidVmCard==="undefined"?null:BuschUnraidVmCard,BuschUnraidVmEditor:typeof BuschUnraidVmEditor==="undefined"?null:BuschUnraidVmEditor,buschUnraidModel,buschUnraidDevices,buschUnraidSchema,buschUiStatusSemantic,BUSCH_UNRAID_TEXT,BUSCH_UNRAID_DEFAULTS,BuschUnraidStackCard,BuschUnraidContainerCard,BuschUnraidStackEditor})',context),context,registered};
 }
 const {familienFixture:fixture}=require('./familie-attrappe.js');
-test('both Unraid cards and editors register with HA discovery metadata',()=>{const l=load();for(const type of ['busch-unraid-stack-card','busch-unraid-container-card']){assert.ok(l.registered.has(type));assert.ok(l.registered.has(type+'-editor'));assert.ok(l.context.window.customCards.find(c=>c.type===type&&c.preview&&c.documentationURL));}});
+test('both Unraid cards and editors register with HA discovery metadata',()=>{const l=load();for(const type of ['busch-unraid-stack-card','busch-unraid-container-card']){assert.ok(l.registered.has(type));assert.ok(l.registered.has(type+'-editor'));assert.ok(l.context.window.customCards.find(c=>c.type===type&&c.preview===false&&c.documentationURL));}});
 test('Unraid cards let Sections size their dynamic content naturally',()=>{
  const l=load(),stack=new l.BuschUnraidStackCard(),container=new l.BuschUnraidContainerCard();
  for(const expanded of [false,true]){

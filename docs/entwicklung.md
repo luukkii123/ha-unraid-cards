@@ -131,6 +131,13 @@ Ergebnisse landen in `docs/render/ergebnis/` (nicht im Repo).
 
 ## Geprüft
 
+**12.11.2026 · 0.4.1, Kartenwähler ohne Live-Vorschau (#1011, Tag `v0.4.1`)** — alle 17 Karten: Namen einheitlich „Unraid: …“ (neu: Stack, Container, VM, Docker), Beschreibung je ein Satz mit Verb; `getStubConfig` von Stack/Container/Docker ohne geteilten Kern (`buschUnraidStubCore`: ein Durchlauf, kein WebSocket; vorher abonnierte der erste `attach()` Ereignisse und lud Register). Kern byte-gleich zu Busch Cards.
+
+1. `node --check` grün; neue Tests `tests/kartenwaehler.test.js` (preview false, ein Satz Beschreibung de/en, höchstens ein Durchlauf je Register, kein Netz) zuerst rot, danach grün.
+2. `python3 scripts/ui-regeln-pruefen.py`: 0 Verstöße, mit der neuen Prüfung R3.6 (Kartenwähler-Vertrag), die vorher für dieses Repo rot war.
+3. Einziger Abnahmelauf `karten-alle.sh` für alle fünf geänderten Kartenrepos (Lauf `karten-20261112-175558-77c23e`): 9/9 Schritte grün, Node 381 Tests grün, 1312 Bilder.
+4. Eintrag in `docs/stand.md` der Projektverwaltung, Block 12.11.2026 (#1011).
+
 **27.10.2026 – 0.4.0, Abnahme vor dem Tag (#640–#643):** Anzeige und
 Einklappen konfigurierbar (`visible_items`/`collapsed_items`, alle 17 Karten),
 Design-Feinschliff, gestoppte VM/Container ohne CPU/RAM, Leistung bei
