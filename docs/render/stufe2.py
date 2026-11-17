@@ -58,8 +58,8 @@ customElements.define('ha-form',class extends HTMLElement {
 
 def fixtures():
     # Use the exact registry/state shapes tested by Node. No host data files are read.
-    import playwright
-    node = shutil.which("node") or str(pathlib.Path(playwright.__file__).parent / "driver" / "node")
+    # playwright only as fallback for its bundled node, so CI runs without it.
+    node = shutil.which("node") or str(pathlib.Path(__import__("playwright").__file__).parent / "driver" / "node")
     repo = pathlib.Path(__file__).resolve().parents[2]
     js = "const f=require('./tests/familie-attrappe.js').dashboardFixture; const out={}; for(const [name,options] of [['voll',{}],['legacy',{legacy:true}],['partial',{partial:true}]]){const x=f(options);out[name]={devices:[...x.devices.values()],entities:[...x.entities.values()]};} console.log(JSON.stringify(out))"
     data = json.loads(subprocess.check_output([node, "-e", js], cwd=repo, text=True))
