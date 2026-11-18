@@ -18,7 +18,27 @@ module.exports = { render, text };
 test('Docker folder mode never invents a vdisk ring or attributes a pool capacity to Docker', () => { const core = dashboardFixture(); const e = core.entities.get('sensor.demo_dashboard_storage'); e.attributes.docker_mode = 'folder'; e.attributes.filesystems = e.attributes.filesystems.filter(x => x.kind !== 'docker_vdisk'); const k = render('BuschUnraidSystemCard', core); assert.equal(k.shadowRoot.querySelectorAll('.ring').length, 3); assert.match(text(k), /Docker verwendet ein Verzeichnis; keine separate Image-Datei/); });
 test('Docker image and unknown modes keep the source distinction explicit', () => { const core = dashboardFixture(); const e = core.entities.get('sensor.demo_dashboard_storage'); e.attributes.docker_mode = 'image'; assert.equal(render('BuschUnraidSystemCard', core).shadowRoot.querySelectorAll('.ring').length, 4); e.attributes.docker_mode = 'unknown'; e.attributes.filesystems = e.attributes.filesystems.filter(x => x.kind !== 'docker_vdisk'); const k = render('BuschUnraidSystemCard', core); assert.match(text(k), /Docker.*unbekannt/i); assert.doesNotMatch(text(k), /keine separate Image-Datei/); });
 
-test('SMART cached epoch time and structured field warnings are readable, not silently dropped', () => { const k = render('BuschUnraidArrayCard'); assert.match(text(k), /Example health counter: 4/); assert.match(text(k), /emhttp_cache/); assert.match(text(k), /2026/); assert.doesNotMatch(text(k), /1767351600/); });
+test('SMART cached epoch time and structured field warnings are readable, not silently dropped', () => { const k = render('BuschUnraidArrayCard'); assert.match(text(k), /Example health counter: 4/); assert.match(text(k), /02\.01\.2026/); assert.doesNotMatch(text(k), /1767351600/); });
+// M33: local relative time, source only as tooltip, status as badge; never ISO or the source name in the main line.
+const alle = n => [n, ...n.childNodes.flatMap(alle)];
+test('SMART cell shows status as badge, local time and keeps the source in the tooltip (M33)', () => {
+  const k = render('BuschUnraidArrayCard'), content = text(k);
+  assert.doesNotMatch(content, /emhttp_cache|Quelle/); assert.doesNotMatch(content, /\d{4}-\d{2}-\d{2}T\d{2}:/);
+  const cell = alle(k.shadowRoot).find(n => String(n.className) === 'smart-cell');
+  assert.ok(cell, 'smart-cell missing'); assert.equal(cell.title, 'Quelle: emhttp_cache');
+  const badge = cell.childNodes.find(n => String(n.className).startsWith('status-badge'));
+  assert.equal(badge?.className, 'status-badge status-warning'); assert.equal(badge.textContent, 'Warnung');
+  assert.match(cell.textContent, /Letzter Stand · vor .* \(02\.01\.2026, \d{2}:00\) · Example health counter: 4/);
+});
+test('unraidSmartText formats relative and local time without ISO, status or source (M33)', () => {
+  const { unraidSmartText, TEXTE_BUSCH_UNRAID_ARRAY_CARD: T } = ladeKarte(['unraidSmartText', 'TEXTE_BUSCH_UNRAID_ARRAY_CARD']);
+  const e = { state: 'warning', attributes: { sampled_at: 1767351600, source: 'emhttp_cache', stale: false, details: [{ field: 'Example health counter', value: 4 }] } }, now = Date.parse('2026-01-02T13:00:00Z');
+  const de = unraidSmartText(e, T.de, 'de', now, 'Europe/Berlin'), en = unraidSmartText(e, T.en, 'en', now, 'Europe/Berlin');
+  assert.equal(de, 'Stand · vor 2 Std. (02.01.2026, 12:00) · Example health counter: 4');
+  assert.match(en, /^Sampled · 2 hr\. ago \(01\/02\/2026, 12:00\sPM\) · Example health counter: 4$/);
+  for (const s of [de, en]) { assert.doesNotMatch(s, /emhttp_cache|T11:00|Warn/); }
+  assert.equal(unraidSmartText({ state: 'passed', attributes: { sampled_at: 'kaputt' } }, T.de, 'de', now), '');
+});
 test('Pool names use natural numeric order without adding members to capacities', () => { const core = dashboardFixture(); const e = core.entities.get('sensor.demo_dashboard_storage'); e.attributes.pools = [{name:'pool10',filesystem:'zfs',state:'online',members:[],total_bytes:100,used_bytes:0,free_bytes:100},{name:'pool2',filesystem:'zfs',state:'online',members:[],total_bytes:100,used_bytes:0,free_bytes:100}]; const k = render('BuschUnraidArrayCard', core); const headings = k.shadowRoot.querySelectorAll('h3').map(x => x.textContent); assert.ok(headings.findIndex(x => x.startsWith('pool2')) < headings.findIndex(x => x.startsWith('pool10'))); });
 
 test('CPU core disclosure keeps focus and open state across streamed telemetry renders', () => {

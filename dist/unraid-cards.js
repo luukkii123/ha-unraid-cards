@@ -2101,7 +2101,7 @@ const UNRAID_TILE_TEXTE={de:{upgrade:'Zusatzdaten: Unraid SSH auf 0.9 oder neuer
   warning:'Warning',
   failed_smart:'Failed',
   last_sample:'Last cached sample',
-  sampled:'Sample',
+  sampled:'Sampled',
   security:'Security',
   exported:'Exported',
   streams:'Streams',
@@ -2221,13 +2221,29 @@ function unraidZusatzHinweis(body,quellen,t){
 }
 function unraidRate(value,lang){return typeof value==='number'&&Number.isFinite(value)&&value>=0?unraidBytes(value,lang)+'/s':'–';}
 function unraidListe(daten,key){return Array.isArray(daten?.[key])?daten[key]:[];}
-function unraidSmartText(e,t){
- const status=e?.state,a=e?.attributes||{},text=status==='failed'?t.failed_smart:t[status]||t.unknown;
+const UNRAID_ZEIT_STUFEN=[['year',31536000],['month',2592000],['day',86400],['hour',3600],['minute',60],['second',1]];
+function unraidZeitpunkt(date,lang,now=Date.now(),timeZone){
+ const diff=(date.getTime()-now)/1000,[unit,size]=UNRAID_ZEIT_STUFEN.find(([,size])=>Math.abs(diff)>=size)||UNRAID_ZEIT_STUFEN.at(-1);
+ const relativ=new Intl.RelativeTimeFormat(lang||'en',{numeric:'auto',style:'short'}).format(Math.round(diff/size),unit);
+ return `${relativ} (${new Intl.DateTimeFormat(lang||'en',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit',timeZone}).format(date)})`;
+}
+// M33: the main line carries sample age and details only. Status is a badge, the source a tooltip (unraidSmart).
+function unraidSmartText(e,t,lang,now,timeZone){
+ const a=e?.attributes||{};
  const details=Array.isArray(a.details)?a.details.map(x=>typeof x==='string'?x:typeof x?.field==='string'&&typeof x.value==='number'?`${x.field}: ${x.value}`:'').filter(Boolean).join('; '):'';
  // SMART cache mtime is an epoch timestamp. Dashboard sampled_at is a separate per-source map.
  const date=typeof a.sampled_at==='number'?new Date(a.sampled_at*1000):typeof a.sampled_at==='string'?new Date(a.sampled_at):null;
- const sampled=date&&Number.isFinite(date.getTime())?date.toISOString():null;
- return [text,a.stale?t.last_sample:sampled?t.sampled:null,sampled,a.source?`${t.source}: ${a.source}`:null,details].filter(Boolean).join(' · ');
+ const sampled=date&&Number.isFinite(date.getTime())?unraidZeitpunkt(date,lang,now,timeZone):null;
+ return [a.stale?t.last_sample:sampled?t.sampled:null,sampled,details].filter(Boolean).join(' · ');
+}
+const UNRAID_SMART_TON={passed:'success',warning:'warning',failed:'error'};
+function unraidSmart(e,t,lang,timeZone){
+ if(!e)return t.unknown;
+ const status=e.state,a=e.attributes||{},cell=buschUnraidNode('span',undefined,'smart-cell'),text=unraidSmartText(e,t,lang,Date.now(),timeZone);
+ cell.appendChild(buschUnraidBadge(UNRAID_SMART_TON[status]||'unknown',status==='failed'?t.failed_smart:t[status]||t.unknown));
+ if(text)cell.appendChild(buschUnraidNode('span',text,'smart-text'));
+ if(a.source)cell.title=`${t.source}: ${a.source}`;
+ return cell;
 }
 const UNRAID_SERVER_AKTIONEN={server_reboot:'mdi:restart',server_shutdown:'mdi:power',mover_start:'mdi:folder-move-outline',array_start:'mdi:play',array_stop:'mdi:stop',spindown_all:'mdi:power-sleep',parity_start:'mdi:shield-search',parity_pause:'mdi:pause',parity_resume:'mdi:play',parity_cancel:'mdi:close'};
 function unraidServerButtons(server,keys){return keys.map(key=>{const e=server.wert(key),button=e?.domain==='button'&&e.entity_id?.startsWith('button.');return {key,id:button?e.entity_id:null,verfuegbar:!!(button&&!e.registry?.disabled_by&&e.state!=null&&e.state!=='unavailable')};});}
@@ -2267,7 +2283,7 @@ const UNRAID_TILE_STYLE=BUSCH_UNRAID_STYLE+`
 .table th{text-align:left;color:var(--secondary-text-color);font-weight:500;padding:4px;overflow-wrap:anywhere}.table td{padding:4px;overflow-wrap:anywhere}
 .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:8px}
 .cell{display:grid;min-width:0}.cell-name{font-size:12px;color:var(--secondary-text-color);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}.cell-value{overflow-wrap:anywhere}
-.dot-row{display:inline-flex;align-items:center;gap:6px;min-width:0}.dot-text{overflow-wrap:anywhere;min-width:0}.dot{width:10px;height:10px;border-radius:50%;background:var(--secondary-text-color)}
+.dot-row{display:inline-flex;align-items:center;gap:6px;min-width:0}.smart-cell{display:inline-flex;flex-wrap:wrap;align-items:center;gap:var(--ha-space-1,4px) var(--ha-space-2,8px);min-width:0}.smart-text{overflow-wrap:anywhere;min-width:0}.dot-text{overflow-wrap:anywhere;min-width:0}.dot{width:10px;height:10px;border-radius:50%;background:var(--secondary-text-color)}
 .dot.sem-ok{background:var(--success-color)}.dot.sem-warning{background:var(--warning-color)}.dot.sem-error{background:var(--error-color)}
 /* #643/4 GPU: Wertegitter, Werte bündig rechts; Divs statt Tabelle, daher kein Stapeln unter 420 px. */
 .gpu-values{display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;gap:var(--ha-space-1,4px) var(--ha-space-3,12px);width:100%}.gpu-row{display:contents}
@@ -2590,11 +2606,11 @@ class BuschUnraidArrayCard extends BuschUnraidTile{
  _kopf(m,t){return {icon:'mdi:harddisk',titel:t.tile,untertitel:m.name};}
  _kompakt(m){if(m.laedt||m.fehler)return {};const lang=this._hass?.locale?.language,prozent=g=>g?.kapazitaet&&g.kapazitaet.total>0?unraidZahl(g.kapazitaet.used/g.kapazitaet.total*100,'%',lang):null;
   return {array:unraidKw(prozent(m.gruppen.find(g=>g.art===0))),pools:m.gruppen.filter(g=>g.art===1).map(g=>unraidKw(prozent(g),undefined,g.titel)).filter(Boolean),boot:unraidKw(prozent(m.gruppen.find(g=>g.art===2)))};}
- _inhalt(body,m,t){if(!this._inhaltSichtbar())return;const lang=String(this._hass?.locale?.language||'en'),st=UNRAID_DISK_STATUS[lang.startsWith('de')?'de':'en'];if(!m.gruppen.length){body.appendChild(buschUnraidNode('p',t.none,'message'));return;}
+ _inhalt(body,m,t){if(!this._inhaltSichtbar())return;const lang=String(this._hass?.locale?.language||'en'),st=UNRAID_DISK_STATUS[lang.startsWith('de')?'de':'en'],tz=this._hass?.locale?.time_zone==='server'?this._hass?.config?.time_zone:undefined;if(!m.gruppen.length){body.appendChild(buschUnraidNode('p',t.none,'message'));return;}
   unraidZusatzHinweis(body,[m.storage],t);
   const spalten=[{key:'n',label:t.col_device},{key:'s',label:t.col_status},{key:'t',label:t.col_temp},{key:'u',label:t.col_usage},...(this._zeigt('smart')?[{key:'smart',label:t.smart}]:[])];
   for(const g of m.gruppen.filter(g=>this._zeigt(['array','pools','boot'][g.art]))){if(g.pool)body.appendChild(unraidRaster([{name:t.pool_state,wert:t[g.pool.state]||t.unknown},{name:t.filesystem,wert:g.pool.filesystem||'–'},{name:t.members,wert:Array.isArray(g.pool.members)?g.pool.members.join(', '):'–'},{name:t.free,wert:unraidBytes(g.pool.free_bytes,lang)}]));body.appendChild(buschUnraidNode('h3',`${g.titel} · ${g.kapazitaet?t.capacity.replace('{used}',unraidBytes(g.kapazitaet.used,lang)).replace('{total}',unraidBytes(g.kapazitaet.total,lang)):'–'}`,'section'));
-   body.appendChild(unraidTabelle(spalten,g.geraete.map(d=>{const text=d.status?(st[d.status]||d.status):t.unavailable;return {smart:unraidSmartText(d.smart,t),n:d.name,s:unraidPunkt(UNRAID_DISK_SEMANTIK[d.status]||'unknown',d.schlaeft?`${text} · ${t.sleeping}`:text),t:d.schlaeft?'–':unraidZahl(d.temp,'°C',lang),u:d.usage===null?'–':unraidBalken(d.usage,unraidZahl(d.usage,'%',lang))};}),{leer:''}));}}
+   body.appendChild(unraidTabelle(spalten,g.geraete.map(d=>{const text=d.status?(st[d.status]||d.status):t.unavailable;return {smart:unraidSmart(d.smart,t,lang,tz),n:d.name,s:unraidPunkt(UNRAID_DISK_SEMANTIK[d.status]||'unknown',d.schlaeft?`${text} · ${t.sleeping}`:text),t:d.schlaeft?'–':unraidZahl(d.temp,'°C',lang),u:d.usage===null?'–':unraidBalken(d.usage,unraidZahl(d.usage,'%',lang))};}),{leer:''}));}}
  _aktionen(m,t){return unraidServerAktionen(this,m,t);}
  static getConfigElement(){return document.createElement('busch-unraid-array-card-editor');}
  static getStubConfig(){return {type:'custom:busch-unraid-array-card'};}
