@@ -7,6 +7,9 @@ class Element {
   attachShadow() { this.shadowRoot = new Element('#shadow'); return this.shadowRoot; }
   set textContent(v) { this._text = String(v); this.childNodes = []; }
   get textContent() { return this._text + this.childNodes.map((n) => n.textContent).join(''); }
+  // innerHTML is kept unparsed in `_innerHTML`, where the testkit's activeMarkup scans it (M19).
+  set innerHTML(v) { this._innerHTML = String(v); this.childNodes = []; this._text = ''; }
+  get innerHTML() { return this._innerHTML || ''; }
   appendChild(n) { n.parentNode = this; this.childNodes.push(n); return n; }
   append(...n) { for (const x of n) this.appendChild(x); }
   get lastChild() { return this.childNodes.at(-1) || null; }

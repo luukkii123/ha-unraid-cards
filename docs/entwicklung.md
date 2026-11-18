@@ -95,6 +95,7 @@ docker run --rm --network none \
 | `tests/unraid-docker-card.test.js` | Docker-Übersicht |
 | `tests/kern.test.js` | `smartQuery` des Kerns, Byte-Gleichheit des Kerns mit Busch Cards |
 | `tests/rechte.test.js` | Option `admin_actions` (M16): Nicht-Admin ohne Aktionsknöpfe und ohne `callService` in Server-, Array-, Paritäts-, Stack-, Container-, VM- und Docker-Karte, veraltete Knöpfe nach dem Wechsel Admin → Nicht-Admin, Admin unverändert; Option `confirm_update_all` |
+| `tests/xss.test.js` | M19: alle 17 Karten samt Servermenü, Bestätigungsdialog und Docker-Menü mit jedem Eintrag aus `XSS_PAYLOADS` in jedem angezeigten Textfeld; `activeMarkup` leer außer den benannten Elementen (Bild aus `BuschUI.media`, Ring-/Linien-SVG) |
 | `tests/schluss-*.test.js` | Schlussrunde #564: Render-Signatur und `watchDevice`, Lade-/Nicht-verfügbar-Zustände, Tabellen am Handy, Balkenkontrast, Ring, VM-Liste (Einklappen, `show_restart`), Kleinigkeiten |
 
 ## Renderprüfung (Chromium, erfundene Daten)
