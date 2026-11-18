@@ -1577,10 +1577,12 @@ const unraidAnzeigeEditor={
 };
 // Listenmodus der VM-Karte: leer, Server-ID oder (noch) unbekanntes Gerät; sonst Einzel-VM.
 function buschUnraidVmListe(core,config){if(!config?.device_id)return true;const d=core?.devices?.get?.(config.device_id);return !d||d.model==='Unraid';}
-// #641: Mit aktivem Stream baut `set hass` nur neu, wenn Sprache/Zeitzone oder die Konfiguration wechseln oder die beim letzten
-// Render gelesenen Geräte (Kern-`track`) neue Versionen haben; ohne Stream oder ohne `track` (älterer Kern) wie bisher immer.
+// #641: Mit aktuellem Kern baut `set hass` nur neu, wenn Sprache/Zeitzone oder die Konfiguration wechseln oder die beim letzten
+// Render gelesenen Geräte (Kern-`track`) neue Versionen haben; sonst oder ohne `track` (älterer Kern) wie bisher immer.
+// M10: core 1.3.0 reports via synced(hass) whether its index is current (entity stream or this hass.states); older cores via streaming.
+function unraidKernAktuell(core,hass){return typeof core?.synced==='function'?core.synced(hass):!!core?.streaming;}
 function unraidHassRender(karte,vorher,hass){const core=karte._core;
- if(karte._deps&&core?.streaming&&vorher&&karte._depsConfig===karte._config&&vorher.locale===hass?.locale&&vorher.language===hass?.language&&vorher.config?.time_zone===hass?.config?.time_zone&&core.unchanged(karte._deps))return;
+ if(karte._deps&&unraidKernAktuell(core,hass)&&vorher&&karte._depsConfig===karte._config&&vorher.locale===hass?.locale&&vorher.language===hass?.language&&vorher.config?.time_zone===hass?.config?.time_zone&&core.unchanged(karte._deps))return;
  karte._deps=null;karte._depsConfig=karte._config;if(typeof core?.track==='function')karte._deps=core.track(()=>karte._render());else karte._render();}
 /* M16: opt-in admin gate per card. With `admin_actions: true` a non-admin neither sees nor triggers server, Docker, VM
  * and update actions; render, click handlers and the dispatch path all ask this one function. Card side only and not a

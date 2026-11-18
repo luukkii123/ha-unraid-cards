@@ -27,14 +27,18 @@ function rohdaten() {
   return { devices, entities, states };
 }
 
-/** hass mit (optional) Stream; `aendern` schickt ein state_changed und liefert das neue hass. */
-function umgebung({ stream = true } = {}) {
+/** hass mit (optional) Registerereignissen und (optional) subscribe_entities-Strom (M10); `aendern` schickt die
+ *  Änderung über den Strom (wenn aktiv) und liefert das neue hass. */
+function umgebung({ stream = true, entities = false } = {}) {
   const roh = rohdaten(), subs = {};
+  let entityStream = null;
+  const verbindung = stream ? { subscribeEvents(cb, type) { subs[type] = cb; return Promise.resolve(() => {}); } } : {};
+  if (entities) verbindung.subscribeMessage = (cb, msg) => { if (msg.type === 'subscribe_entities') entityStream = cb; return Promise.resolve(() => {}); };
   const listen = { entity: roh.entities, device: roh.devices, area: [], floor: [], label: [] };
   let hass = {
     states: roh.states, entities: Object.fromEntries(roh.entities.map(e => [e.entity_id, e])), devices: Object.fromEntries(roh.devices.map(d => [d.id, d])), areas: {}, floors: {},
     locale: { language: 'de', number_format: 'language', time_format: 'language' }, language: 'de', config: { time_zone: 'Europe/Berlin' }, user: { is_admin: true },
-    connection: stream ? { subscribeEvents(cb, type) { subs[type] = cb; return Promise.resolve(() => {}); } } : {},
+    connection: verbindung,
     async callWS(msg) {
       if (msg.type === 'get_states') return Object.values(hass.states);
       const m = /^config\/(\w+)_registry\/list$/.exec(msg.type); return m ? listen[m[1]] : [];
@@ -44,10 +48,13 @@ function umgebung({ stream = true } = {}) {
   const aendern = (id, state) => {
     const ns = { ...hass.states[id], state: String(state), last_updated: new Date().toISOString() };
     subs.state_changed?.({ data: { entity_id: id, new_state: ns, old_state: hass.states[id] } });
+    entityStream?.({ c: { [id]: { '+': { s: String(state), lu: Date.parse(ns.last_updated) / 1000 } } } });
     hass = { ...hass, states: { ...hass.states, [id]: ns } };
     return hass;
   };
-  return { get hass() { return hass; }, set hass(v) { hass = v; }, aendern };
+  // Erste Strom-Nachricht: voller Zustand im komprimierten Format.
+  const voll = () => entityStream?.({ a: Object.fromEntries(Object.entries(hass.states).map(([id, s]) => [id, { s: s.state, a: s.attributes, c: s.context.id, lc: Date.parse(s.last_changed) / 1000 }])) });
+  return { get hass() { return hass; }, set hass(v) { hass = v; }, aendern, voll };
 }
 
 function lade() {
@@ -67,7 +74,7 @@ async function karte(Klasse, config, u) {
 test('U1: fremde Zustandsänderung baut die Kachel nicht neu, eigene schon', async () => {
   const { BuschUnraidArrayCard } = lade(), u = umgebung();
   const k = await karte(BuschUnraidArrayCard, { device_id: 'srv' }, u);
-  assert.equal(k._core.streaming, true, 'Stream aktiv');
+  assert.equal(k._core.synced(u.hass), true, 'Kern für dieses hass aktuell (M10)');
   k.hass = u.aendern('light.fremd', 'off');
   assert.equal(k.renders, 0, 'fremde Entität: kein Render');
   k.hass = u.aendern('sensor.disk1_temp', 46);
@@ -100,12 +107,36 @@ test('U1: Sprachwechsel und Zeitzonenwechsel bauen neu', async () => {
   assert.equal(k.renders, 2, 'Zeitzone');
 });
 
-test('U1: ohne Stream wird weiter jedes Mal gerendert', async () => {
+test('M10: ohne Verbindungsstrom greift der Wächter über den hass.states-Abgleich des Kerns', async () => {
   const { BuschUnraidArrayCard } = lade(), u = umgebung({ stream: false });
   const k = await karte(BuschUnraidArrayCard, { device_id: 'srv' }, u);
-  assert.ok(!k._core.streaming);
+  assert.ok(!k._core.streaming); assert.equal(k._core.synced(u.hass), true);
   k.hass = u.aendern('light.fremd', 'off'); k.hass = u.aendern('light.fremd', 'on');
-  assert.equal(k.renders, 2);
+  assert.equal(k.renders, 0, 'fremde Entität: kein Render');
+  k.hass = u.aendern('sensor.disk1_temp', 47);
+  assert.ok(k.renders >= 1); assert.match(k.shadowRoot.textContent, /47/);
+});
+
+test('M10: mit subscribe_entities-Strom rendert nur die eigene Änderung', async () => {
+  const { BuschUnraidArrayCard } = lade(), u = umgebung({ entities: true });
+  const k = await karte(BuschUnraidArrayCard, { device_id: 'srv' }, u);
+  u.voll(); k.hass = u.hass; k.renders = 0;
+  assert.equal(k._core.streaming, true); assert.equal(k._core.synced(u.hass), true);
+  k.hass = u.aendern('light.fremd', 'off');
+  assert.equal(k.renders, 0, 'fremde Entität: kein Render');
+  k.hass = u.aendern('sensor.disk1_temp', 48);
+  assert.ok(k.renders >= 1); assert.match(k.shadowRoot.textContent, /48/);
+});
+
+test('M10: älterer Kern ohne synced: mit streaming bleibt der Wächter, ohne wird jedes Mal gerendert', async () => {
+  const { BuschUnraidArrayCard } = lade(), u = umgebung({ stream: false });
+  const k = await karte(BuschUnraidArrayCard, { device_id: 'srv' }, u);
+  k._core.synced = undefined;
+  k.hass = u.aendern('light.fremd', 'off'); k.hass = u.aendern('light.fremd', 'on');
+  assert.equal(k.renders, 2, 'ohne streaming jedes Mal');
+  k._core.streaming = true; k.renders = 0;
+  k.hass = u.aendern('light.fremd', 'off');
+  assert.equal(k.renders, 0, 'mit streaming wie bisher');
 });
 
 test('U1: nach einem Konfigurationswechsel zählen die Geräte des neuen Servers', async () => {
