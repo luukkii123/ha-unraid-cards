@@ -25,7 +25,9 @@ keine echten Dienstaufrufe. Je Karte bei 320/480/960 px, hell und dunkel:
   Fokus kehrt auf ⋮ zurück;
 * Editoren aller 17 Karten mit einer ``ha-form``-Attrappe, die ``select``/``multiple``
   als Häkchenliste zeichnet: Felder ``visible_items``/``collapsed_items`` mit den
-  Katalogoptionen, Abwählen schreibt ``visible_items`` und keine ``show_*``.
+  Katalogoptionen, Abwählen schreibt ``visible_items`` und keine ``show_*``;
+  M48 (#1299): zwei fremde ``hass``-Updates setzen am ``ha-form`` kein Schema, keine
+  Daten und keine Label-/Helper-Funktion neu (Zähler ``_sets`` der Attrappe).
 """
 import base64
 import copy
@@ -88,11 +90,11 @@ ha-form input{min-height:44px;min-width:44px;max-width:100%;box-sizing:border-bo
 ha-form small{color:var(--secondary-text-color)}</style><script>
 // ha-form-Attrappe: select/multiple als Häkchenliste (wie mode:list), boolean als Häkchen, sonst Textfeld.
 customElements.define('ha-form',class extends HTMLElement {
- set schema(v){this._schema=v;this.draw()} get schema(){return this._schema}
- set data(v){this._data=v;this.draw()} get data(){return this._data}
+ set schema(v){this._sets=(this._sets||0)+1;this._schema=v;this.draw()} get schema(){return this._schema}
+ set data(v){this._sets=(this._sets||0)+1;this._data=v;this.draw()} get data(){return this._data}
  set hass(v){this._hass=v} get hass(){return this._hass}
- set computeLabel(v){this._label=v;this.draw()}
- set computeHelper(v){this._helper=v;this.draw()}
+ set computeLabel(v){this._sets=(this._sets||0)+1;this._label=v;this.draw()}
+ set computeHelper(v){this._sets=(this._sets||0)+1;this._helper=v;this.draw()}
  felder(){const out=[];const gehe=l=>{for(const s of l||[]){if(Array.isArray(s.schema))gehe(s.schema);else if(s.name)out.push(s);}};gehe(this._schema);return out;}
  senden(name,wert){this._data={...this._data,[name]:wert};this.dispatchEvent(new CustomEvent('value-changed',{detail:{value:this._data}}));}
  draw(){this.replaceChildren();for(const s of this.felder()){
@@ -342,6 +344,10 @@ def main():
                 check((len(felder["collapsed"]) == 0) == (name == "interface"), f"{ort}: collapsed_items {felder['collapsed']}")
                 check(not felder["show"], f"{ort}: überführte Altschalter im Formular: {felder['show']}")
                 eintrag["regel1"] = messe_text(pg, editor)
+                # M48: foreign updates (new hass, same language and devices) feed the form nothing but hass.
+                eintrag["fremde_sets"] = pg.evaluate("""ed=>{const e=document.querySelector(ed),f=e.querySelector('ha-form'),vor=f._sets||0;
+                  for(let i=0;i<2;i++)e.hass={locale:{language:'de'},states:{['sensor.fremd_'+i]:{state:String(i)}}};return (f._sets||0)-vor;}""", editor)
+                check(eintrag["fremde_sets"] == 0, f"{ort}: fremdes Update setzt ha-form neu ({eintrag['fremde_sets']} Sets)")
                 ergebnis[f"editor-{name}"] = eintrag["regel1"]
                 if breite == 960 and thema == "light":
                     erstes = felder["visible"][0]["wert"]

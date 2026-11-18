@@ -1798,6 +1798,12 @@ class BuschUnraidVmCard extends BuschUnraidBaseCard {
  // Ohne device_id: bei genau einem Server sofort die VM-Liste, bei mehreren „Server wählen“.
  static getStubConfig(){return {type:'custom:busch-unraid-vm-card'};}
 }
+// M48 (#1299, P9): an editor feeds its ha-form only when a key changes, so a foreign update (every set hass) re-renders no
+// field. `schema`/`data` are compared by content (configuration, language, device-dependent options); `immer` is for the
+// editor's own value-changed, which always sets data. computeLabel/computeHelper are made once per dictionary (= language).
+// Only `hass` is passed on every update, like the smart editor of busch-cards and the localtrack editors.
+function unraidFormSetzen(editor,key,wert,immer=false){const v=editor._versorgt||(editor._versorgt={}),s=JSON.stringify(wert);if(!immer&&v[key]===s)return;v[key]=s;editor._form[key]=wert;}
+function unraidFormTexte(editor,a,b,erzeuge){const v=editor._versorgt||(editor._versorgt={});if(v.texteA===a&&v.texteB===b)return;v.texteA=a;v.texteB=b;const f=erzeuge();editor._form.computeLabel=f.label;editor._form.computeHelper=f.helper;}
 class BuschUnraidBaseEditor extends BuschEditorBase {
  get _defaults(){return BUSCH_UNRAID_DEFAULTS;}
  // #642: Abschnitte/Kompaktwerte aus dem Katalog der Kartenart (Stack, Container, VM, Docker).
@@ -1808,9 +1814,11 @@ class BuschUnraidBaseEditor extends BuschEditorBase {
  connectedCallback(){this._connect();this._render();}
  disconnectedCallback(){this._release?.();this._unwatch?.();this._release=this._unwatch=null;}
  _connect(){if(!this._hass||this._release)return;this._core=ensureBuschCore(1);this._release=this._core.retain(this._hass);this._unwatch=this._core.watch(()=>this._render());}
- _render(){if(!this._config||!this._hass)return;const t=buschTexte(BUSCH_UNRAID_TEXT,this._hass);if(!this._form){this._form=BuschUI.ha.form();this._form.addEventListener('value-changed',event=>{event.stopPropagation();const next=buschUnraidConfig({...this._config,...event.detail.value});let structural=false;if((next.device_id||'')!==(this._config.device_id||'')){delete next.container_key;delete next.switch_entity;delete next.update_entity;structural=true;}this._publishConfig(unraidAnzeigeEditor.normalisiere(next,this._katalog,this._config));this._form.data=this._formDaten();if(structural)this._render();});this.appendChild(this._form);}
+ _render(){if(!this._config||!this._hass)return;const t=buschTexte(BUSCH_UNRAID_TEXT,this._hass);if(!this._form){this._form=BuschUI.ha.form();this._form.addEventListener('value-changed',event=>{event.stopPropagation();const next=buschUnraidConfig({...this._config,...event.detail.value});let structural=false;if((next.device_id||'')!==(this._config.device_id||'')){delete next.container_key;delete next.switch_entity;delete next.update_entity;structural=true;}this._publishConfig(unraidAnzeigeEditor.normalisiere(next,this._katalog,this._config));unraidFormSetzen(this,'data',this._formDaten(),true);if(structural)this._render();});this.appendChild(this._form);}
   const fields=this._kind==='vm'?buschTexte(TEXTE_BUSCH_UNRAID_VM_CARD,this._hass):this._kind==='docker'?buschTexte(TEXTE_BUSCH_UNRAID_DOCKER_CARD,this._hass):t;
-  this._form.hass=this._hass;this._form.data=this._formDaten();this._form.schema=buschSchemaMitTexten(unraidAnzeigeEditor.schema(buschUnraidSchema(this._core,this._config,this._kind),this._katalog,fields),this._kind==='docker'?fields:t);this._form.computeLabel=s=>fields.labels[s.name]||s.name;this._form.computeHelper=s=>s.name==='show_restart'&&s.disabled?t.restart_missing:fields.helpers[s.name]||'';
+  // M48: the schema depends on the devices (servers, stacks, containers, restart buttons), so it is built and compared by content.
+  this._form.hass=this._hass;unraidFormSetzen(this,'data',this._formDaten());unraidFormSetzen(this,'schema',buschSchemaMitTexten(unraidAnzeigeEditor.schema(buschUnraidSchema(this._core,this._config,this._kind),this._katalog,fields),this._kind==='docker'?fields:t));
+  unraidFormTexte(this,fields,t,()=>({label:s=>fields.labels[s.name]||s.name,helper:s=>s.name==='show_restart'&&s.disabled?t.restart_missing:fields.helpers[s.name]||''}));
  }
 }
 class BuschUnraidStackEditor extends BuschUnraidBaseEditor {get _kind(){return 'stack';}}
@@ -2602,8 +2610,11 @@ class BuschUnraidTileEditor extends BuschEditorBase {
  set hass(hass){this._hass=hass;this._render();}
  get hass(){return this._hass;}
  _render(){if(!this._config||!this._hass)return;const t=buschTexte(this._texte,this._hass);
-  if(!this._form){this._form=BuschUI.ha.form();this._form.addEventListener('value-changed',event=>{event.stopPropagation();this._publishConfig(unraidAnzeigeEditor.normalisiere(buschUnraidConfig({...this._config,...event.detail.value}),this._katalog,this._config));this._form.data=this._formDaten();});this.appendChild(this._form);}
-  this._form.hass=this._hass;this._form.data=this._formDaten();this._form.schema=buschSchemaMitTexten(unraidAnzeigeEditor.schema(this._schema,this._katalog,t),t);this._form.computeLabel=s=>t.labels?.[s.name]||s.name;this._form.computeHelper=s=>t.helpers?.[s.name]||'';
+  if(!this._form){this._form=BuschUI.ha.form();this._form.addEventListener('value-changed',event=>{event.stopPropagation();this._publishConfig(unraidAnzeigeEditor.normalisiere(buschUnraidConfig({...this._config,...event.detail.value}),this._katalog,this._config));unraidFormSetzen(this,'data',this._formDaten(),true);});this.appendChild(this._form);}
+  // M48: the tile schema depends only on the language, so it is built only for a new dictionary.
+  this._form.hass=this._hass;unraidFormSetzen(this,'data',this._formDaten());
+  if(this._versorgt?.schemaTexte!==t){unraidFormSetzen(this,'schema',buschSchemaMitTexten(unraidAnzeigeEditor.schema(this._schema,this._katalog,t),t));this._versorgt.schemaTexte=t;}
+  unraidFormTexte(this,t,t,()=>({label:s=>t.labels?.[s.name]||s.name,helper:s=>t.helpers?.[s.name]||''}));
  }
 }
 const UNRAID_ARRAY_STATUS={de:{started:'Gestartet',stopped:'Gestoppt',starting:'Startet',stopping:'Stoppt'},en:{started:'Started',stopped:'Stopped',starting:'Starting',stopping:'Stopping'}};

@@ -94,6 +94,8 @@ docker run --rm --network none \
 | `tests/unraid-cards.test.js` | Stack-, Container- und VM-Karte, Abbildung alter Konfigurationsschlüssel |
 | `tests/unraid-docker-card.test.js` | Docker-Übersicht |
 | `tests/kern.test.js` | `smartQuery` des Kerns, Byte-Gleichheit des Kerns mit Busch Cards |
+| `tests/cpu-verlauf.test.js` | M36: CPU-Verlauf mit Testkit-`hass` und virtueller Uhr: 10 min sichtbar genau ein `history/history_during_period`, letzter Punkt = Zustand; Reconnect, Lücke und Zeitraumwechsel laden neu |
+| `tests/editor-versorgung.test.js` | M48: alle 17 Editoren setzen bei fremdem Update kein `schema`/`data`/`computeLabel`/`computeHelper` am `ha-form` (nur `hass`); Sprache, Konfiguration und Geräteliste versorgen weiter |
 | `tests/rechte.test.js` | Option `admin_actions` (M16): Nicht-Admin ohne Aktionsknöpfe und ohne `callService` in Server-, Array-, Paritäts-, Stack-, Container-, VM- und Docker-Karte, veraltete Knöpfe nach dem Wechsel Admin → Nicht-Admin, Admin unverändert; Option `confirm_update_all` |
 | `tests/xss.test.js` | M19: alle 17 Karten samt Servermenü, Bestätigungsdialog und Docker-Menü mit jedem Eintrag aus `XSS_PAYLOADS` in jedem angezeigten Textfeld; `activeMarkup` leer außer den benannten Elementen (Bild aus `BuschUI.media`, Ring-/Linien-SVG) |
 | `tests/schluss-*.test.js` | Schlussrunde #564: Render-Signatur und `watchDevice`, Lade-/Nicht-verfügbar-Zustände, Tabellen am Handy, Balkenkontrast, Ring, VM-Liste (Einklappen, `show_restart`), Kleinigkeiten |
