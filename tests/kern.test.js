@@ -107,3 +107,18 @@ test('core: a throwing registry listener after a failed refresh logs exactly one
   assert.match(warnings[0], /Busch Core registry listener failed/);
   assert.ok(core.lastErrors.has('label'));
 });
+
+test('M4: Kern bündelt Änderungen je Mikrotask, Abonnent einmal je Bündel', async () => {
+  const { BuschCardsCore } = ladeKarte(['BuschCardsCore'], { performance: { now: () => 0 }, setTimeout, clearTimeout });
+  const core = new BuschCardsCore(), states = {}, entities = {};
+  for (let i = 0; i < 6; i++) { const id = 'sensor.k_' + i; states[id] = { entity_id: id, state: '1', attributes: {} }; entities[id] = { entity_id: id, platform: 'mqtt' }; }
+  core.seed({ states, entities, devices: {}, areas: {} });
+  const q = core.query({ filter: { include: [{ domain: 'sensor', state: '< 5' }] } });
+  let calls = 0; const off = core.subscribe(q, () => calls++); calls = 0;
+  for (let i = 0; i < 6; i++) core.updateState('sensor.k_' + i, { ...states['sensor.k_' + i], state: i < 3 ? '9' : '1' });
+  assert.strictEqual(calls, 0);
+  await Promise.resolve();
+  assert.strictEqual(calls, 1);
+  assert.deepStrictEqual([...q.result], ['sensor.k_3', 'sensor.k_4', 'sensor.k_5']);
+  off(); core.dispose();
+});
