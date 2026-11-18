@@ -142,8 +142,10 @@ CPU-Temperatur, CPU-Modell, Package-Leistung und die Gesamtlast als
 Verlaufslinie mit Zeitraum sowie Minimum und Maximum. Der Aufklapper
 *CPU-Kerne* (mit Pfeil) öffnet ein Raster der Kerne mit ihren numerischen
 Linux-IDs. Leistungszeilen ohne Messwert entfallen. Der Verlauf wird nur
-geladen, solange die Karte sichtbar und ausgeklappt ist, und höchstens
-einmal je Minute.
+geladen, solange die Karte sichtbar und ausgeklappt ist: einmal beim ersten
+Anzeigen, danach hängt die Karte jeden neuen Lastwert live an die Linie an.
+Neu geladen wird nur bei anderem Zeitraum, nach einem Verbindungsabbruch
+oder wenn Werte verpasst wurden (Lücke).
 
 **CPU-Temperatur:** ab 80 °C steht hinter dem Wert „hoch“ mit Warnpunkt, ab
 90 °C „kritisch“ mit Fehlerpunkt (auch in der System-Karte). Die Integration

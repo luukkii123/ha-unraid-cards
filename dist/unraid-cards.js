@@ -2669,14 +2669,32 @@ class BuschUnraidSystemCard extends BuschUnraidTile{
  static getStubConfig(){return {type:'custom:busch-unraid-system-card'};}
 }
 class BuschUnraidSystemCardEditor extends BuschUnraidTileEditor{get _schema(){return SCHEMA_BUSCH_UNRAID_SYSTEM_CARD;}get _texte(){return TEXTE_BUSCH_UNRAID_SYSTEM_CARD;}get _defaults(){return new BuschUnraidSystemCard()._vorgaben;}}
-// Verlauf aus der HA-History (R20): höchstens ein Abruf je Minute und Entität+Zeitraum. Gecacht wird das Promise,
-// damit auch gleichzeitige Renders vor der ersten Antwort keinen zweiten Abruf auslösen; ein Fehlschlag gilt ebenfalls eine Minute.
-const UNRAID_VERLAUF_CACHE=new Map();
-function unraidVerlauf(hass,entityId,minuten){const key=entityId+'|'+minuten,alt=UNRAID_VERLAUF_CACHE.get(key);if(alt&&Date.now()-alt.zeit<60000)return alt.punkte;
- const start=new Date(Date.now()-minuten*60000).toISOString();
- const punkte=Promise.resolve().then(()=>hass.callWS({type:'history/history_during_period',start_time:start,entity_ids:[entityId],minimal_response:true,no_attributes:true,significant_changes_only:false}))
-  .then(antwort=>(antwort?.[entityId]||[]).map(r=>({t:Number(r.lu??r.lc)*1000,v:Number(r.s)})).filter(p=>Number.isFinite(p.v)&&Number.isFinite(p.t)));
- UNRAID_VERLAUF_CACHE.set(key,{zeit:Date.now(),punkte});return punkte;}
+// Verlauf aus der HA-History (R20). M36 (#1299, N11): one full load per entity+period, then live. Each call appends the
+// current state `zustand` ({t: last_updated ms, v}) when it is newer than the last point and trims points before the window
+// (the last trimmed value stays as the window start, like HA's start-time state). A full load runs again only for a new
+// key (period/entity), after a reconnect (connection `ready`, or a new connection) or when the live state lies more than
+// twice the sampling interval after the last point (gap: states were missed); without a live state (no last_updated) at
+// most once a minute as before. The promise is cached, so concurrent renders
+// before the first answer share one call; a failed load is retried after one minute. No history/stream.
+const UNRAID_VERLAUF_CACHE=new Map(),UNRAID_VERBINDUNGEN=new WeakMap();
+// Reconnect counter per connection: one `ready` listener per connection object for the page lifetime.
+function unraidVerbindungsStand(conn){if(!conn||typeof conn!=='object')return 0;let s=UNRAID_VERBINDUNGEN.get(conn);if(!s){s={n:0};UNRAID_VERBINDUNGEN.set(conn,s);try{conn.addEventListener?.('ready',()=>{s.n++;});}catch{}}return s.n;}
+// Sampling interval: median spacing of the loaded points, 10 s to 10 min, 60 s without two spacings.
+function unraidVerlaufIntervall(p){const d=[];for(let i=1;i<p.length;i++)d.push(p[i].t-p[i-1].t);d.sort((a,b)=>a-b);return d.length>1?Math.min(600000,Math.max(10000,d[d.length>>1])):60000;}
+function unraidVerlaufLive(p,z,minuten){if(z&&(!p.length||z.t>p[p.length-1].t))p=[...p,z];
+ const grenze=Date.now()-minuten*60000;let i=0;while(i<p.length&&p[i].t<grenze)i++;
+ return i?(i<p.length&&p[i].t===grenze?p.slice(i):[{t:grenze,v:p[i-1].v},...p.slice(i)]):p;}
+function unraidVerlauf(hass,entityId,minuten,zustand){const key=entityId+'|'+minuten,conn=hass?.connection||null,stand=unraidVerbindungsStand(conn),alt=UNRAID_VERLAUF_CACHE.get(key),jetzt=Date.now();
+ const z=zustand&&Number.isFinite(zustand.t)&&Number.isFinite(zustand.v)?{t:zustand.t,v:zustand.v}:null;
+ if(alt&&alt.conn===conn&&alt.stand===stand){
+  if(!alt.liste){if(z)alt.zustand=z;if(jetzt-alt.zeit<60000)return alt.punkte;}
+  else{const letzter=alt.liste[alt.liste.length-1];if(z?!(letzter&&z.t-letzter.t>2*alt.intervall):jetzt-alt.zeit<60000){alt.liste=unraidVerlaufLive(alt.liste,z,minuten);return Promise.resolve(alt.liste);}}
+ }
+ const start=new Date(jetzt-minuten*60000).toISOString(),e={zeit:jetzt,conn,stand,liste:null,intervall:60000,zustand:z};
+ e.punkte=Promise.resolve().then(()=>hass.callWS({type:'history/history_during_period',start_time:start,entity_ids:[entityId],minimal_response:true,no_attributes:true,significant_changes_only:false}))
+  .then(antwort=>{const p=(antwort?.[entityId]||[]).map(r=>({t:Number(r.lu??r.lc)*1000,v:Number(r.s)})).filter(p=>Number.isFinite(p.v)&&Number.isFinite(p.t));
+   e.intervall=unraidVerlaufIntervall(p);e.liste=e.zustand?unraidVerlaufLive(p,e.zustand,minuten):p;return e.liste;});
+ UNRAID_VERLAUF_CACHE.set(key,e);return e.punkte;}
 function unraidLinie(punkte,leer,label=leer){if(!punkte||punkte.length<2)return buschUnraidNode('p',leer,'message');const ns='http://www.w3.org/2000/svg',svg=document.createElementNS(ns,'svg');svg.setAttribute('viewBox','0 0 100 30');svg.setAttribute('preserveAspectRatio','none');svg.setAttribute('class','line');svg.setAttribute('role','img');svg.setAttribute('aria-label',label);
  const t0=punkte[0].t,t1=punkte[punkte.length-1].t,d=punkte.map((p,i)=>`${i?'L':'M'}${((p.t-t0)/(t1-t0||1)*100).toFixed(2)},${(30-Math.max(0,Math.min(100,p.v))*0.3).toFixed(2)}`).join(' ');const path=document.createElementNS(ns,'path');path.setAttribute('d',d);svg.appendChild(path);return svg;}
 const UNRAID_CPU_ZEITRAEUME=['5','10','30','60'];
@@ -2689,7 +2707,7 @@ class BuschUnraidCpuCard extends BuschUnraidTile{
  static get kachel(){return 'cpu';}get _texte(){return TEXTE_BUSCH_UNRAID_CPU_CARD;}get _vorgaben(){return {device_id:'',title:'',history_minutes:'10'};}
  // `open` changes before the deferred native toggle event; capture the live DOM before replacing it.
  _render(){const details=this.shadowRoot?.querySelector('.core-details');if(details)this._coreDetailsOpen=!!details.open;super._render();}
- _modell(core,config){const s=unraidServer(core,config);const z=unraidZustand(s);if(z)return z;const cpu=s.wert('cpu_percent');return {dashboard:unraidDashboard(s,'cpu'),hw:unraidDashboard(s,'hardware'),power:unraidNum(s.wert('cpu_power')),name:s.server.name_by_user||s.server.name,cpu:unraidNum(cpu),cpuId:cpu?.entity_id,temp:unraidNum(s.wert('cpu_temp')),load:unraidNum(s.wert('load_1'))};}
+ _modell(core,config){const s=unraidServer(core,config);const z=unraidZustand(s);if(z)return z;const cpu=s.wert('cpu_percent');return {dashboard:unraidDashboard(s,'cpu'),hw:unraidDashboard(s,'hardware'),power:unraidNum(s.wert('cpu_power')),name:s.server.name_by_user||s.server.name,cpu:unraidNum(cpu),cpuId:cpu?.entity_id,cpuZeit:Date.parse(cpu?.stateObject?.last_updated)||null,temp:unraidNum(s.wert('cpu_temp')),load:unraidNum(s.wert('load_1'))};}
  _kopf(m,t){return {icon:'mdi:cpu-64-bit',titel:t.tile,untertitel:m.hw?.daten.hardware?.cpu_model||m.name};}
  _kompakt(m,t){if(m.laedt||m.fehler)return {};const lang=this._hass?.locale?.language;return {temperature:unraidKw(unraidCpuTempText(m.temp,lang,t),unraidCpuTempStufe(m.temp)),load_average:unraidKw(unraidZahl(m.load,'',lang,1)),load:unraidKw(unraidZahl(m.cpu,'%',lang)),power:unraidKw(unraidZahl(m.power,'W',lang))};}
  _signaturZusatz(){return this._zeigt('history')&&!this._eingeklappt?Math.floor(Date.now()/60000):null;}
@@ -2700,12 +2718,13 @@ class BuschUnraidCpuCard extends BuschUnraidTile{
   if(this._zeigt('power'))for(const pkg of unraidListe(m.dashboard.daten,'packages').filter(p=>typeof p?.power_w==='number'&&Number.isFinite(p.power_w)))body.appendChild(unraidRaster([{name:pkg.id,wert:`${unraidZahl(pkg.power_w,'W',lang)} · ${t.source}: ${pkg.source||'–'}`} ]));
   const kerne=unraidListe(m.dashboard.daten,'cores');if(this._zeigt('cores')&&kerne.length){const details=buschUnraidNode('details',undefined,'core-details'),summary=buschUnraidNode('summary');summary.appendChild(buschUnraidNode('span',t.core_details,'summary-text'));const pfeil=BuschUI.ha.icon('mdi:chevron-down');pfeil.className='chevron';pfeil.setAttribute('aria-hidden','true');summary.appendChild(pfeil);summary.dataset.focusKey='cpu-core-details';details.open=!!this._coreDetailsOpen;details.addEventListener('toggle',()=>{if(this.shadowRoot.querySelector('.core-details')===details)this._coreDetailsOpen=details.open;});details.appendChild(summary);details.appendChild(unraidRaster(kerne.map(c=>({name:t.core+' '+c.id,wert:unraidZahl(c.percent,'%',lang)}))));body.appendChild(details);}unraidZusatzHinweis(body,[m.dashboard,m.hw],t);
   // Ohne callWS (Vorschau, Tests) entfällt der Verlauf. Die letzte Linie bleibt bis zur Antwort stehen, damit Renders nicht flackern.
+  // M36: the live state of cpu_percent (value and last_updated from the model) becomes the last point of the line.
   // #643/5: Zeitraum als Überschrift, Min/Max aus denselben Punkten (kein zusätzlicher Abruf).
   if(this._zeigt('history')&&m.cpuId&&typeof this._hass?.callWS==='function'){const min=UNRAID_VERLAUF_MINUTEN.includes(Number(this._config.history_minutes))?Number(this._config.history_minutes):10,key=m.cpuId+'|'+min;
    body.appendChild(buschUnraidNode('h3',buschFuellen(t.history_title,{minutes:min}),'section'));const platz=buschUnraidNode('div',undefined,'history'),spanne=buschUnraidNode('p',undefined,'detail history-range');body.appendChild(platz);body.appendChild(spanne);
    const zeige=p=>{platz.replaceChildren(unraidLinie(p,t.no_history,t.load));const werte=(p||[]).map(x=>x.v);spanne.textContent=werte.length>1?buschFuellen(t.history_range,{min:unraidZahl(Math.min(...werte),'%',lang),max:unraidZahl(Math.max(...werte),'%',lang)}):'';};
    if(this._linie?.key===key)zeige(this._linie.punkte);
-   unraidVerlauf(this._hass,m.cpuId,min).then(p=>{this._linie={key,punkte:p};zeige(p);}).catch(()=>{platz.replaceChildren(buschUnraidNode('p',t.no_history,'message'));spanne.textContent='';});}}
+   unraidVerlauf(this._hass,m.cpuId,min,{t:m.cpuZeit,v:m.cpu}).then(p=>{this._linie={key,punkte:p};zeige(p);}).catch(()=>{platz.replaceChildren(buschUnraidNode('p',t.no_history,'message'));spanne.textContent='';});}}
  static getConfigElement(){return document.createElement('busch-unraid-cpu-card-editor');}
  static getStubConfig(){return {type:'custom:busch-unraid-cpu-card'};}
 }
