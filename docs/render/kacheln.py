@@ -61,6 +61,8 @@ FAELLE = [
     ("vm-usage", "busch-unraid-vm-usage-card", "voll", {}),
     ("vm-liste", "busch-unraid-vm-card", "voll", {}),
     ("vm-liste-alle", "busch-unraid-vm-card", "voll", {"show_all": True}),
+    # M16 (#1282): admin_actions with a non-admin user; the header keeps only the collapse toggle (no mover, no ⋮ menu).
+    ("server-nicht-admin", "busch-unraid-server-card", "voll", {"admin_actions": True}),
 ]
 
 ATTRAPPE = json.loads(r"""
@@ -225,8 +227,8 @@ const baueKern=v=>{const roh=window.ATTRAPPE[v];const devices=new Map(roh.device
  return {devices,entities,lastErrors:new Map(),getEntity:id=>entities.get(id),getDevice:id=>devices.get(id),getDeviceEntities:id=>list.filter(e=>e.device_id===id),attach(){},retain(){return()=>{}},watch(){return()=>{}},watchDevice(){return()=>{}}};};
 window.kern=baueKern('voll');window.ensureBuschCore=()=>window.kern;window.calls=[];window.ws=[];
 const verlauf=()=>{const jetzt=Date.now()/1000,p=[];for(let i=0;i<=20;i++)p.push({s:String(20+Math.round(15*Math.sin(i/3))),lu:jetzt-600+i*30});return p;};
-window.place=(tag,variante,config)=>{window.kern=baueKern(variante);const wrap=document.getElementById('wrap');wrap.replaceChildren();const c=document.createElement(tag);c.setConfig({type:'custom:'+tag,...config});
- c.hass={locale:{language:'de'},config:{time_zone:'Europe/Berlin'},states:{},callService:async(...a)=>{window.calls.push(a)},callWS:async m=>{window.ws.push(m.type);return Object.fromEntries((m.entity_ids||[]).map(id=>[id,verlauf()]))}};wrap.append(c);return true;};
+window.place=(tag,variante,config,admin=true)=>{window.kern=baueKern(variante);const wrap=document.getElementById('wrap');wrap.replaceChildren();const c=document.createElement(tag);c.setConfig({type:'custom:'+tag,...config});
+ c.hass={locale:{language:'de'},config:{time_zone:'Europe/Berlin'},user:{is_admin:admin},states:{},callService:async(...a)=>{window.calls.push(a)},callWS:async m=>{window.ws.push(m.type);return Object.fromEntries((m.entity_ids||[]).map(id=>[id,verlauf()]))}};wrap.append(c);return true;};
 window.addEventListener('hass-more-info',e=>window.calls.push(['more-info',e.detail.entityId]));
 </script></body></html>"""
 
@@ -254,6 +256,9 @@ JS_KARTE = r"""(sel)=>{const host=document.querySelector(sel);const r=host.shado
   kontrast.push({text:el.textContent.trim().slice(0,40),klasse:el.className&&typeof el.className==='string'?el.className:el.localName,q:Math.round(q*100)/100});}
  kontrast.sort((x,y)=>x.q-y.q);
  return {ziele,meldungen,laedt:meldungen.some(m=>/lädt|loading/i.test(m)),kontrast_min:kontrast[0]||null,kontrast_niedrig:kontrast.filter(k=>k.q<4.5),hoehe:Math.round(host.getBoundingClientRect().height)};}"""
+
+# Header buttons of the server tile apart from the collapse toggle (M16: none for a non-admin with admin_actions).
+JS_AKTIONEN = "(sel)=>[...document.querySelector(sel).shadowRoot.querySelectorAll('button')].map(b=>b.dataset.focusKey).filter(k=>k&&k!=='toggle')"
 
 DIALOG = "[role=alertdialog]"
 ABBRECHEN = "[role=alertdialog] .buttons button:first-child"
@@ -298,7 +303,7 @@ def main():
             t = pg.evaluate("document.documentElement.dataset.theme")
             ergebnis = {}
             for name, tag, variante, cfg in FAELLE:
-                pg.evaluate("([t,v,c])=>place(t,v,c)", [tag, variante, cfg])
+                pg.evaluate("([t,v,c,a])=>place(t,v,c,a)", [tag, variante, cfg, not name.endswith("nicht-admin")])
                 pg.wait_for_timeout(350)
                 if name == "array":
                     assert pg.locator(tag + " h3").all_text_contents() == [
@@ -311,6 +316,8 @@ def main():
                 info = pg.evaluate(JS_KARTE, tag)
                 if pg.evaluate(JS_HSCROLL):
                     report["hscroll"].append(f"{fall} {breite} {t}")
+                if name.startswith("server"):
+                    info["aktionsknoepfe"] = pg.evaluate(JS_AKTIONEN, tag)
                 report["karten"].append({"fall": fall, "breite": breite, "thema": t, "bild": datei, **info})
                 ergebnis[fall] = messe_text(pg, tag)
             return ergebnis
@@ -373,6 +380,10 @@ def main():
             eigene.append(f"touchziel {tag}: {k['ziele']}")
         if k["laedt"]:
             eigene.append(f"ladezustand {tag}: {k['meldungen']}")
+        if k["fall"] == "server-nicht-admin-voll" and k.get("aktionsknoepfe") != []:
+            eigene.append(f"nicht-admin sieht Serveraktionen {tag}: {k.get('aktionsknoepfe')}")
+        if k["fall"] == "server-voll" and "more" not in (k.get("aktionsknoepfe") or []):
+            eigene.append(f"admin ohne Menüknopf {tag}: {k.get('aktionsknoepfe')}")
         if k["fall"].endswith("-leer") and not k["meldungen"]:
             eigene.append(f"kein leerzustand {tag}")
         niedrig = [x for x in k["kontrast_niedrig"] if x["q"] < 2]

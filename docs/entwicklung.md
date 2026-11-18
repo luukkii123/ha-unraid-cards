@@ -94,6 +94,7 @@ docker run --rm --network none \
 | `tests/unraid-cards.test.js` | Stack-, Container- und VM-Karte, Abbildung alter Konfigurationsschlüssel |
 | `tests/unraid-docker-card.test.js` | Docker-Übersicht |
 | `tests/kern.test.js` | `smartQuery` des Kerns, Byte-Gleichheit des Kerns mit Busch Cards |
+| `tests/rechte.test.js` | Option `admin_actions` (M16): Nicht-Admin ohne Aktionsknöpfe und ohne `callService` in Server-, Array-, Paritäts-, Stack-, Container-, VM- und Docker-Karte, veraltete Knöpfe nach dem Wechsel Admin → Nicht-Admin, Admin unverändert; Option `confirm_update_all` |
 | `tests/schluss-*.test.js` | Schlussrunde #564: Render-Signatur und `watchDevice`, Lade-/Nicht-verfügbar-Zustände, Tabellen am Handy, Balkenkontrast, Ring, VM-Liste (Einklappen, `show_restart`), Kleinigkeiten |
 
 ## Renderprüfung (Chromium, erfundene Daten)
@@ -122,7 +123,7 @@ docker run --rm --network none \
 | `unraid-queue.py` | Update-Warteschlange und Fortschritt |
 | `unraid-updated-family.py` | Stack/Container/VM im Kachelstil |
 | `unraid-docker.py` | Docker-Übersicht, Menü, Bestätigung |
-| `kacheln.py` | neun Kacheln und VM-Liste bei 320/480/960 px hell/dunkel, Leerzustände, Bestätigungsdialog (Regel 2, R04), Kontrast |
+| `kacheln.py` | neun Kacheln und VM-Liste bei 320/480/960 px hell/dunkel, Leerzustände, Bestätigungsdialog (Regel 2, R04), Kontrast; Serverkachel `nicht-admin` (`admin_actions: true`, Nutzer ohne Adminrechte, kein Menüknopf) |
 | `stufe2.py`, `stufe3.py` | Telemetrie-, Interface- und Inventarkarten samt Editoren und bestätigten Serveraktionen (Neustart/Ausschalten über das ⋮-Menü) |
 | `anzeige.py` | alle 17 Karten aus- und eingeklappt (Einklappschlüssel vorbelegt, `collapsed_items`), Kopf und Einklapp-Knopf, Kompaktzeile, GPU-Spalte, CPU-Temperaturstufen, VM-Kopf, ⋮-Servermenü (Regel 2, Bottom-Sheet, Bestätigung), alle Editoren mit Häkchenlisten |
 | `live-ha-unraid-family.py` | echte `ha-form`-Editoren in einem laufenden Home Assistant; braucht eine Zugangsdatei (`base_url`, `token`) außerhalb des Repos, die nie hineingehört |

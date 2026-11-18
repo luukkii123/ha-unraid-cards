@@ -113,6 +113,7 @@ Rand.
 | Schlüssel | Typ | Vorgabe | Bedeutung |
 | --- | --- | --- | --- |
 | `show_clock` | Wahrheitswert | `true` | Älterer Schalter, weiter gültig: wie die ID `clock` in `visible_items` |
+| `admin_actions` | Wahrheitswert | `false` | Blendet die Serveraktionen für Nutzer ohne Adminrechte aus, siehe [Rechte](#rechte) |
 
 ```yaml
 type: custom:busch-unraid-server-card
@@ -191,6 +192,7 @@ die in Home Assistant gewählte Einheit und formatiert binär (KiB bis PiB).
 | Schlüssel | Typ | Vorgabe | Bedeutung |
 | --- | --- | --- | --- |
 | `show_boot` | Wahrheitswert | `true` | Älterer Schalter, weiter gültig: wie die ID `boot` in `visible_items` (USB-Stick bzw. Bootgerät als eigene Gruppe) |
+| `admin_actions` | Wahrheitswert | `false` | Blendet Array starten/stoppen und Schlafenlegen für Nutzer ohne Adminrechte aus, siehe [Rechte](#rechte) |
 
 ```yaml
 type: custom:busch-unraid-array-card
@@ -203,7 +205,11 @@ Vorgabetitel: „Parität“. Zeigt „Prüfung läuft“ oder „Keine Prüfung
 „Prüfung pausiert“ oder eine andere Sync-Aktion, den Fortschritt und die
 Fehlerzahl; ohne Paritätsplatte „Keine Paritätsplatte
 vorhanden.“ Starten prüft ausschließlich ohne Korrektur; Pausieren,
-Fortsetzen und Abbrechen verlangen ebenfalls eine Bestätigung. Keine weiteren Parameter.
+Fortsetzen und Abbrechen verlangen ebenfalls eine Bestätigung.
+
+| Schlüssel | Typ | Vorgabe | Bedeutung |
+| --- | --- | --- | --- |
+| `admin_actions` | Wahrheitswert | `false` | Blendet die Paritätsaktionen für Nutzer ohne Adminrechte aus, siehe [Rechte](#rechte) |
 
 ```yaml
 type: custom:busch-unraid-parity-card
@@ -347,6 +353,7 @@ für die VM anbietet.
 | `show_restart` | Wahrheitswert | `true` | Neustart anzeigen; nur mit nativem Neustart-Button der Integration verfügbar |
 | `confirm_stop` | Wahrheitswert | `true` | Fragt vor dem Stoppen nach |
 | `confirm_restart` | Wahrheitswert | `true` | Fragt vor dem Neustart nach |
+| `admin_actions` | Wahrheitswert | `false` | Blendet die VM-Aktionen für Nutzer ohne Adminrechte aus, siehe [Rechte](#rechte) |
 | `show_cpu` | Wahrheitswert | `true` | Älterer Schalter, weiter gültig: wie die ID `cpu` (CPU in Prozent je Kern; über 100 % ist möglich) |
 | `show_ram` | Wahrheitswert | `true` | Älterer Schalter, weiter gültig: wie die ID `ram` (Gastverbrauch, sonst ausdrücklich zugewiesener RAM) |
 | `display_mode` | `auto` \| `image` \| `icon` | `auto` | Automatisch bevorzugt verfügbare Bilder; *Bild* bevorzugt das eigene Bild, *Icon* zeigt nur das Icon |
@@ -392,6 +399,8 @@ Untertitel nennt gestartete und alle Container.
 | `collapsed_items` | Liste | leer | Eingeklappt: `summary` („Gestartet 3/7“) |
 | `confirm_stop` | Wahrheitswert | `true` | Fragt vor dem Stoppen nach |
 | `confirm_restart` | Wahrheitswert | `true` | Fragt vor dem Neustart nach |
+| `confirm_update_all` | Wahrheitswert | `false` | Fragt vor *Alle aktualisieren* nach |
+| `admin_actions` | Wahrheitswert | `false` | Blendet Starten, Stoppen, Neustart und Updates für Nutzer ohne Adminrechte aus, siehe [Rechte](#rechte) |
 
 ```yaml
 type: custom:busch-unraid-docker-card
@@ -424,6 +433,8 @@ Gemeinsame Schlüssel (S = Stack, C = Container):
 | `show_restart` | Wahrheitswert | `true` | ja | ja | Zeigt ausschließlich native Neustartaktionen; ohne Unterstützung der Integration nicht verfügbar |
 | `confirm_stop` | Wahrheitswert | `true` | ja | ja | Fragt vor dem Stoppen nach |
 | `confirm_restart` | Wahrheitswert | `true` | ja | ja | Fragt vor dem Neustart nach |
+| `confirm_update_all` | Wahrheitswert | `false` | ja | – | Fragt vor *Alle aktualisieren* nach |
+| `admin_actions` | Wahrheitswert | `false` | ja | ja | Blendet Steuer- und Update-Knöpfe für Nutzer ohne Adminrechte aus, siehe [Rechte](#rechte) |
 | `display_mode` | `auto` \| `image` \| `icon` | `auto` | ja | ja | Automatisch bevorzugt vorhandene Bilder, dann eigenes Bild und Icon |
 | `image` | Text | leer | ja | ja | Optionale Bild-URL, kein Docker-Image-Tag |
 | `icon` | Icon | leer | ja | ja | Optionales `mdi:`-Icon; Ersatz bei fehlendem oder fehlerhaftem Bild |
@@ -512,6 +523,32 @@ visible_items: [temperature, load, cores]
 collapsed_items: [load, temperature]
 ```
 
+## Rechte
+
+Mit `admin_actions: true` (Vorgabe `false`, Editorfeld „Aktionen nur für
+Admins“) zeigt eine Karte Nutzern ohne Administratorrechte in Home Assistant
+keine Knöpfe mehr, die etwas verändern:
+
+- Server-, Array- und Paritätskarte: Server neu starten und ausschalten,
+  Mover starten, Array starten und stoppen, alle Platten schlafen legen,
+  Paritätsprüfung starten, pausieren, fortsetzen und abbrechen. Das Menü ⋮
+  entfällt dann.
+- Stack-, Container-, VM- und Docker-Karte: Starten, Stoppen bzw.
+  Herunterfahren, Neu starten, Sofort ausschalten, Update und *Alle
+  aktualisieren*.
+
+Anzeige, Einklappen und *Details* bleiben. Ein Knopf, der noch aus einer
+früheren Anzeige stammt, löst für einen Nicht-Admin ebenfalls nichts aus.
+Administratoren sehen alles wie bisher. Die Option gilt je Karte; ohne sie
+bleibt alles wie bisher.
+
+**Die Karte ist keine Sicherheitsgrenze.** Sie blendet Knöpfe nur in der
+Oberfläche aus. Die Integration `unraid_ssh` prüft serverseitig nicht, ob ein
+Aufruf von einem Administrator kommt: Jeder in Home Assistant angemeldete
+Nutzer kann ihre Schalter und Knöpfe weiter direkt auslösen, etwa über eine
+andere Karte, die Entitätsansicht (auch *Details*) oder die
+Entwicklerwerkzeuge.
+
 ## Bedienung und Darstellung
 
 ![Prozessor- und Array-Karte bei 320 px Breite im dunklen Thema, untereinander](docs/preview-mobil-dunkel.png)
@@ -524,7 +561,8 @@ collapsed_items: [load, temperature]
   aktualisieren Uhr und Verlauf nicht im Minutentakt.
 - **Bestätigungsdialog:** Stoppen, Herunterfahren, Neu starten und Sofort
   ausschalten fragen vorher nach (Sofort ausschalten immer). Der Dialog nennt
-  das betroffene Objekt, z. B. „„Nextcloud“ stoppen?“. Er schließt mit
+  das betroffene Objekt, z. B. „„Nextcloud“ stoppen?“. *Alle
+  aktualisieren* fragt nur mit `confirm_update_all: true` nach. Der Dialog schließt mit
   Escape, Browser-Zurück oder *Abbrechen*; ein Klick daneben schließt ihn
   bewusst nicht, damit nichts versehentlich ausgelöst oder verworfen wird.
   Während eine Aktion läuft, ist der Knopf gesperrt; ein Fehler wird mit dem

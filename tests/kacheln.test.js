@@ -34,7 +34,7 @@ test('Server: Uhr-Intervall wird beim Trennen geräumt', () => {
 test('Kachel-Editor: Labels/Helper aus den Texten, value-changed → config-changed', () => {
   const { BuschUnraidServerCardEditor } = ladeKarte(['BuschUnraidServerCardEditor'], { CustomEvent: class { constructor(type, init = {}) { this.type = type; this.detail = init.detail; } } });
   const e = new BuschUnraidServerCardEditor(); e.hass = { locale: { language: 'de' } }; e.setConfig({ type: 'custom:busch-unraid-server-card' });
-  const form = e.querySelector('ha-form'); assert.ok(form); assert.deepEqual(form.schema.map(s => s.name), ['device_id', 'title', 'visible_items', 'collapsed_items']);
+  const form = e.querySelector('ha-form'); assert.ok(form); assert.deepEqual(form.schema.map(s => s.name), ['device_id', 'title', 'visible_items', 'collapsed_items', 'admin_actions']);
   assert.ok(form.data.visible_items.includes('clock')); assert.equal(form.computeLabel({ name: 'visible_items' }), 'Angezeigt'); assert.match(form.computeHelper({ name: 'visible_items' }), /Vorgabe/);
   for (const fn of form.listeners['value-changed']) fn({ stopPropagation() {}, detail: { value: { ...form.data, visible_items: form.data.visible_items.filter(id => id !== 'clock') } } });
   assert.equal(e.event.type, 'config-changed'); assert.ok(!e.event.detail.config.visible_items.includes('clock')); assert.equal(e.event.detail.config.type, 'custom:busch-unraid-server-card');
@@ -126,7 +126,7 @@ test('Array: Boot abschaltbar, Leerzustand, Editor', () => {
   const { BuschUnraidArrayCard, BuschUnraidArrayCardEditor } = ladeKarte(['BuschUnraidArrayCard', 'BuschUnraidArrayCardEditor']);
   assert.match(rendere(BuschUnraidArrayCard, unraidAttrappe()).shadowRoot.textContent, /Boot · –/); assert.doesNotMatch(rendere(BuschUnraidArrayCard, unraidAttrappe(), { show_boot: false }).shadowRoot.textContent, /Boot/);
   const core = unraidAttrappe(); for (const [id, d] of core.devices) if (/disk$/.test(d.model)) core.devices.delete(id); assert.match(rendere(BuschUnraidArrayCard, core).shadowRoot.textContent, /Keine Platten gefunden/);
-  const e = new BuschUnraidArrayCardEditor(); e.hass = { locale: { language: 'de' } }; e.setConfig({ type: 'custom:busch-unraid-array-card' }); const form = e.querySelector('ha-form'); assert.deepEqual(form.schema.map(s => s.name), ['device_id', 'title', 'visible_items', 'collapsed_items']); assert.ok(form.data.visible_items.includes('boot')); assert.equal(form.computeLabel({ name: 'visible_items' }), 'Angezeigt');
+  const e = new BuschUnraidArrayCardEditor(); e.hass = { locale: { language: 'de' } }; e.setConfig({ type: 'custom:busch-unraid-array-card' }); const form = e.querySelector('ha-form'); assert.deepEqual(form.schema.map(s => s.name), ['device_id', 'title', 'visible_items', 'collapsed_items', 'admin_actions']); assert.ok(form.data.visible_items.includes('boot')); assert.equal(form.computeLabel({ name: 'visible_items' }), 'Angezeigt');
 });
 // Task 10: Parität und Airflow.
 test('Parität: ohne Paritätsplatte', () => { const { BuschUnraidParityCard } = ladeKarte(['BuschUnraidParityCard']); assert.match(rendere(BuschUnraidParityCard, unraidAttrappe()).shadowRoot.textContent, /Keine Paritätsplatte/); });
