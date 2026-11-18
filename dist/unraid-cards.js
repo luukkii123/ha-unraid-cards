@@ -2251,6 +2251,7 @@ function unraidServerAktionen(karte,modell,t){return (modell.buttons||[]).map(b=
  // Resolve again after confirmation. Changing the selected server while the dialog is open cannot send a request to a new target.
  const aktuell=unraidServer(karte._core,karte._config),ziel=aktuell.wert?.(b.key);
  if(!aktuell.server||aktuell.server.id!==modell.serverId||ziel?.entity_id!==b.id||ziel?.domain!=='button'||ziel.registry?.disabled_by||ziel.state==null||ziel.state==='unavailable')throw new Error('Unavailable action');
+ // callservice-ok: rejection is caught by the caller (_ausfuehren try/catch shows the failure notice)
  await karte._hass.callService('button','press',{entity_id:b.id});if(anfrage.generation===karte._actionGeneration&&unraidServer(karte._core,karte._config).server?.id===anfrage.serverId)karte._notice=t.sent;
 }}));}
 function unraidServerIds(core,config){try{const s=unraidServer(core,config);return s.server?s.ids:[];}catch{return [];}}
