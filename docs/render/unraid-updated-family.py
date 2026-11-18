@@ -48,7 +48,9 @@ with sync_playwright() as p:
       assert page.locator('[data-test-card]').get_by_role('button',name='Herunterfahren',exact=True).is_disabled()
       assert page.locator('[data-test-card]').get_by_role('button',name='Sofort ausschalten',exact=True).is_enabled()
      if scenario in ('updating','updating-percent') and kind!='vm':
-      badge=page.locator('[data-test-card]').locator('.status-badge').first.inner_text()
+      # M3: warning badges carry an ha-icon; the harness icon stub renders a glyph, so read the label without it
+      badge=page.locator('[data-test-card]').locator('.status-badge').first.evaluate("e=>[...e.childNodes].filter(n=>n.nodeName!=='HA-ICON').map(n=>n.textContent).join('').trim()")
+      assert page.locator('[data-test-card]').locator('.status-badge').first.locator('ha-icon').count()==1
       assert badge==('Update läuft · 42,5 %' if scenario=='updating-percent' else 'Update läuft'),badge
       assert page.locator('[data-test-card]').get_by_role('button',name='Update läuft',exact=True).first.is_disabled()
      if scenario=='normal' and width==320 and not dark:
