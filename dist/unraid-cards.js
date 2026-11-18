@@ -907,7 +907,7 @@ class BuschSmartQueries {
 
 
 /* === Version und Sprache === */
-const CARD_VERSION = "0.4.1";
+const CARD_VERSION = "0.4.2";
 
 console.info(
   `%c UNRAID-CARDS %c v${CARD_VERSION} `,
