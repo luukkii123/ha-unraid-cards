@@ -131,6 +131,8 @@ Ergebnisse landen in `docs/render/ergebnis/` (nicht im Repo).
 
 ## Geprüft
 
+**18.11.2026 · 0.4.3, Buschcheck Etappe B (#1268, Tag `v0.4.3`)** — Kernpaar mit busch-cards 0.22.4: `BUSCH SHARED CORE 1.1.1`, Kernprüfung auch im GitHub-CI (M8), Konfliktwarnung und lesbare Version (M9), Listener-Warnung (M43); Testkit (M5). 389 Node-Tests. Keine sichtbare Änderung. Abschlusslauf `karten-20261118-131312-6dd1c4` grün (51/51, 1003 Node-Tests, Block `statisch` grün), `--beleg-pruefen` gleich; Bilder gegen Etappe A: 1836/1901 bytegleich, Rest Uhrzeit-/Animationsrauschen.
+
 **18.11.2026 · 0.4.2, Buschcheck Etappe A (#1267, Tag `v0.4.2`)** — Badge-Ton aus dem Update-Zustand (fehlgeschlagen rot, laufend bernstein, je mit Symbol, M3); SMART-Zeile mit lokaler relativer Zeit, Quelle im Tooltip, Status als Badge (M33). 385 Node-Tests (2 brauchen python3, 1 skip); Renderprobe updated-family liest Badge-Text ohne ha-icon. 32-unraid-queue und 36-stufe2 sichtgeprüft. Abschlusslauf `karten-20261118-115150-b741a7` grün (38/38, 908 Node-Tests), `--beleg-pruefen` gleich; `node --check`, `ui-regeln-pruefen.py` (0), `hacs-contract-lint.py` (0), Kern bytegleich.
 
 **12.11.2026 · 0.4.1, Kartenwähler ohne Live-Vorschau (#1011, Tag `v0.4.1`)** — alle 17 Karten: Namen einheitlich „Unraid: …“ (neu: Stack, Container, VM, Docker), Beschreibung je ein Satz mit Verb; `getStubConfig` von Stack/Container/Docker ohne geteilten Kern (`buschUnraidStubCore`: ein Durchlauf, kein WebSocket; vorher abonnierte der erste `attach()` Ereignisse und lud Register). Kern byte-gleich zu Busch Cards.
