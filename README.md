@@ -538,6 +538,8 @@ keine Knöpfe mehr, die etwas verändern:
 - Stack-, Container-, VM- und Docker-Karte: Starten, Stoppen bzw.
   Herunterfahren, Neu starten, Sofort ausschalten, Update und *Alle
   aktualisieren*.
+- Server-, Array-, Paritäts- und VM-Karte: *Erneut versuchen*, wenn der
+  Unraid-Server nicht erreichbar ist (lädt die Unraid-SSH-Integration neu).
 
 Anzeige, Einklappen und *Details* bleiben. Ein Knopf, der noch aus einer
 früheren Anzeige stammt, löst für einen Nicht-Admin ebenfalls nichts aus.

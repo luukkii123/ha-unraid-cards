@@ -180,3 +180,17 @@ test('options default to off and have an editor field with bilingual label and h
   }
 });
 function vmContextWerte(context, namen) { return require('node:vm').runInContext(`({${namen.join(',')}})`, context); }
+
+// Etappe H follow-up (#1312): admin_actions also hides the retry of an offline server (reload_config_entry, M27), so the
+// helper of every card that offers it names that action in both languages.
+test('admin_actions helper names the retry action on every card that offers it (de + en)', () => {
+  const T = ladeKarte(['TEXTE_BUSCH_UNRAID_SERVER_CARD', 'TEXTE_BUSCH_UNRAID_ARRAY_CARD', 'TEXTE_BUSCH_UNRAID_PARITY_CARD', 'TEXTE_BUSCH_UNRAID_VM_CARD', 'UNRAID_TILE_TEXTE']);
+  const retry = { de: T.UNRAID_TILE_TEXTE.de.retry, en: T.UNRAID_TILE_TEXTE.en.retry };
+  assert.equal(retry.de, 'Erneut versuchen'); assert.equal(retry.en, 'Try again');
+  for (const name of ['TEXTE_BUSCH_UNRAID_SERVER_CARD', 'TEXTE_BUSCH_UNRAID_ARRAY_CARD', 'TEXTE_BUSCH_UNRAID_PARITY_CARD', 'TEXTE_BUSCH_UNRAID_VM_CARD'])
+    for (const lang of ['de', 'en']) {
+      const helper = T[name][lang].helpers.admin_actions;
+      assert.ok(helper.includes(lang === 'de' ? '„' + retry.de + '“' : '“' + retry.en + '”'), `${name} ${lang}: ${helper}`);
+      assert.match(helper, lang === 'de' ? /Vorgabe: aus\.$/ : /Default: off\.$/, `${name} ${lang} keeps the default`);
+    }
+});
