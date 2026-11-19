@@ -1686,7 +1686,8 @@ p,.detail,.message{margin:0;overflow-wrap:anywhere;font-size:var(--ha-font-size-
 .status-badge{display:inline-flex;align-items:center;gap:var(--ha-space-2,8px);justify-self:end;padding:var(--ha-space-1,4px) var(--ha-space-3,12px);border-radius:999px;font-size:var(--ha-font-size-s,12px);font-weight:var(--ha-font-weight-medium,500);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%;min-width:0;background:var(--secondary-background-color);color:var(--secondary-text-color)}
 .status-badge::before{content:'';width:8px;height:8px;flex:none;border-radius:50%;background:currentColor}.status-success{color:var(--success-color,#16864b);background:color-mix(in srgb,var(--success-color,#16864b) 12%,var(--card-background-color))}.status-warning{color:color-mix(in srgb,var(--warning-color,#a76900) 50%,var(--primary-text-color,#212121));background:color-mix(in srgb,var(--warning-color,#a76900) 12%,var(--card-background-color))}.status-warning::before{background:var(--warning-color,#a76900)}.status-badge:has(>ha-icon)::before{display:none}.status-badge>ha-icon{order:-1;flex:none;--mdc-icon-size:16px}.status-warning>ha-icon{color:var(--warning-color,#a76900)}.status-error,.status-unavailable{color:var(--error-color);background:color-mix(in srgb,var(--error-color) 10%,var(--card-background-color))}
 .actions{display:flex;flex-wrap:wrap;gap:var(--unraid-small)}.header>.actions{grid-column:2/-1;justify-content:flex-end}
-button{font:inherit;color:var(--primary-color);background:var(--secondary-background-color);border:1px solid var(--divider-color);border-radius:var(--ha-card-border-radius,12px);padding:var(--unraid-small) var(--ha-space-3,12px);min-height:44px;cursor:pointer;overflow-wrap:anywhere;max-width:100%}button:disabled{color:var(--disabled-text-color);cursor:default}button:focus-visible{outline:2px solid var(--primary-color);outline-offset:2px}.danger{color:var(--error-color);border-color:color-mix(in srgb,var(--error-color) 35%,var(--divider-color));background:color-mix(in srgb,var(--error-color) 7%,var(--card-background-color))}.quiet{background:var(--card-background-color)}
+/* M62: action buttons look like .busch-btn (BuschUI.styles); this rule only resets native buttons, Docker tiles paint their own surface. */
+button{font:inherit;cursor:pointer;overflow-wrap:anywhere;max-width:100%}button:disabled{cursor:default}button:focus-visible{outline:2px solid var(--primary-color);outline-offset:2px}
 .disclosure{display:flex;align-items:center;justify-content:space-between;width:100%;margin-top:var(--unraid-small);text-align:start;color:var(--primary-text-color);background:var(--secondary-background-color)}.disclosure::after{content:'⌄';font-size:1.25em;line-height:1}.disclosure[aria-expanded=false]::after{transform:rotate(-90deg)}
 .rows{display:grid;margin-top:var(--unraid-small);border:1px solid var(--divider-color);border-radius:var(--ha-card-border-radius,12px);overflow:hidden}.row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:var(--unraid-small);align-items:center;padding:var(--ha-space-3,12px)}.row+.row{border-top:1px solid var(--divider-color)}.row-identity{display:flex;align-items:center;gap:var(--ha-space-3,12px);min-width:0}.row-text{display:grid;gap:var(--ha-space-1,4px);min-width:0}.row .name{font-size:var(--ha-font-size-m,14px)}.row>.actions{grid-column:1/-1;justify-content:flex-end}.row .detail{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
 .busch-media{overflow:hidden}.busch-media img{display:block;width:100%;height:100%;object-fit:contain}.metrics{display:flex;flex-wrap:wrap;gap:var(--unraid-space);padding-bottom:var(--unraid-small)}.metric{display:grid;gap:var(--ha-space-1,4px);flex:1 1 0;min-width:min(100%,var(--unraid-metric-min,100px))}.metric-label{color:var(--secondary-text-color);font-size:var(--ha-font-size-s,12px);overflow-wrap:anywhere}.metric-value{font-size:var(--ha-font-size-m,14px);overflow-wrap:anywhere}.metric progress{max-width:100%;width:100%;accent-color:var(--primary-color)}.row>.metrics{grid-column:1/-1}.message{margin-top:var(--unraid-space);overflow-wrap:anywhere}.row>.message,.row>progress{grid-column:1/-1}progress{width:100%;max-width:100%;accent-color:var(--primary-color)}.error{color:var(--error-color)}.compact .detail{display:none}
@@ -1746,13 +1747,17 @@ function unraidKind(n,cls){for(const c of n?.childNodes||[])if(c.nodeType===1&&S
 function unraidGleich(a,b){if(!a||!b||a.length!==b.length)return false;for(let i=0;i<a.length;i++)if(!Object.is(a[i],b[i]))return false;return true;}
 function unraidBehalten(tag,key){const node=document.createElement(tag);node._unraidBehalten=true;if(key!==undefined)node.dataset.key=key;return node;}
 /* Button whose click always runs the handler of the latest render (see above). */
-function unraidKnopf(optionen,fn){const node=document.createElement('button');node._unraidAct=fn;return BuschUI.action({...optionen,node,onClick:event=>node._unraidAct?.(event,node)});}
+function unraidKnopf(optionen,fn){const node=document.createElement('button');node._unraidAct=fn;BuschUI.action({...optionen,node,onClick:event=>node._unraidAct?.(event,node)});return unraidBtn(node);}
+/* M62 (#1317, W12): the one button look is .busch-btn (BuschUI.styles, variant from data-variant). BuschUI.action() also adds
+ * .busch-ui-action, whose base rule follows in cardStyles with the same zero specificity and would cover .busch-btn, so the
+ * class is taken off again (name, keyboard and tooltip of action() stay). */
+function unraidBtn(node){node.className=('busch-btn '+String(node.className||'')).split(/\s+/).filter((c,i,a)=>c&&c!=='busch-ui-action'&&a.indexOf(c)===i).join(' ');return node;}
 function unraidKlick(node,fn){node._unraidAct=fn;node.addEventListener('click',event=>node._unraidAct?.(event,node));return node;}
 /* M27 (#1317, W3): the one state block of the family (BuschUI.stateBlock) for loading, empty, error and offline. data-key
  * pairs it across renders, so it stays the same live region and a change of kind is announced. `aktion` {label,fn,disabled}
  * adds one button whose click runs the handler of the latest render (like unraidKnopf). */
 function unraidZustandBlock(kind,title,hint,aktion){let act=null;if(aktion){const node=document.createElement('button');node._unraidAct=aktion.fn;node.dataset.focusKey='state-action';act={node,label:aktion.label,text:aktion.label,disabled:!!aktion.disabled,onClick:event=>node._unraidAct?.(event,node)};}
- const block=BuschUI.stateBlock({kind,title:title||'–',hint:hint||undefined,action:act||undefined});block.dataset.key='state';return block;}
+ const block=BuschUI.stateBlock({kind,title:title||'–',hint:hint||undefined,action:act||undefined});if(act)unraidBtn(act.node);block.dataset.key='state';return block;}
 /* M27/F4: a polite live region in every card from its first render (it exists before it is filled, so screen readers
  * announce what appears in it). Only its text changes; a notice sits in it as role=status. */
 function unraidLiveRegion(text){const region=buschUnraidNode('div',undefined,'live-region');region.dataset.key='live';region.setAttribute('aria-live','polite');region.setAttribute('aria-atomic','true');
@@ -1952,11 +1957,11 @@ class BuschUnraidBaseCard extends HTMLElement {
  _connect(){if(!this._hass||this._release)return;this._core=ensureBuschCore(1);this._release=this._core.retain(this._hass);this._unwatch=this._core.watch(()=>this._render());}
  getCardSize(){return this._eingeklappt?1+(this._anzeige?.kompakt?.length?1:0):this._kind==='stack'&&this._expanded?4:2;}
  getGridOptions(){return {columns:12,min_columns:3};}
- _button(parent,text,action,disabled=false,destructive=false,focusKey){const button=unraidKnopf({label:text,text,disabled,variant:destructive?'danger':'secondary'},action);if(destructive)button.className+=' danger';if(focusKey)button.dataset.focusKey=focusKey;parent.appendChild(button);return button;}
+ _button(parent,text,action,disabled=false,destructive=false,focusKey){const button=unraidKnopf({label:text,text,disabled,variant:destructive?'danger':'secondary'},action);if(focusKey)button.dataset.focusKey=focusKey;parent.appendChild(button);return button;}
  _actions(parent,row,t){const actions=buschUnraidNode('div',undefined,'actions'),darf=unraidDarf(this);
   if(darf&&this._config.show_controls&&row.switch){const running=this._kind==='vm'?buschUnraidVmForceable(row.status):row.status==='running'||row.status==='partial'||row.switch.state==='on';this._button(actions,running?(this._kind==='vm'?t.vm_shutdown:t.stop):t.start,()=>this._action(running?'stop':'start',row),this._busy||!buschUnraidAvailable(row.switch)||row.status==='updating'||(this._kind==='vm'&&!['running','stopped'].includes(row.status)),running,'control');}
   if(darf&&this._config.show_controls&&this._config.show_restart&&row.restart)this._button(actions,t.restart,()=>this._action('restart',row),this._busy||row.restart.state==='unavailable'||row.status==='updating'||(this._kind==='vm'&&row.status!=='running'),false,'restart');
-  if(row.switch){const details=this._button(actions,t.details,()=>this._action('details',row),false,false,'details');details.className+=' quiet';}
+  if(row.switch)this._button(actions,t.details,()=>this._action('details',row),false,false,'details');
   if(darf&&this._kind==='vm'&&this._config.show_controls&&row.force_stop&&buschUnraidVmForceable(row.status))this._button(actions,t.force_stop,()=>this._action('force_stop',row),this._busy||row.force_stop.state==='unavailable',true,'force-stop');
   if(darf&&this._config.show_updates&&row.update_all)this._button(actions,row.update_queue?.active?t.updating:t.update_all,()=>this._action('update_all',row),this._busy||row.update_queue?.active||row.update_all.state==='unavailable',false,'update-all');
   if(darf&&this._config.show_updates&&row.update&&(row.update.state==='on'||row.status==='updating'))this._button(actions,row.status==='updating'?t.updating:t.update,()=>this._action('update',row),row.status==='updating',false,'update');
@@ -2081,6 +2086,8 @@ class BuschUnraidVmCard extends BuschUnraidBaseCard {
 // editor's own value-changed, which always sets data. computeLabel/computeHelper are made once per dictionary (= language).
 // Only `hass` is passed on every update, like the smart editor of busch-cards and the localtrack editors.
 function unraidFormSetzen(editor,key,wert,immer=false){const v=editor._versorgt||(editor._versorgt={}),s=JSON.stringify(wert);if(!immer&&v[key]===s)return;v[key]=s;editor._form[key]=wert;}
+// M62 restfund: the editors take the shared editor style (light DOM <style>, host class), BuschUI.fieldText and BuschUI.validateConfig.
+function unraidEditorStil(editor){editor.classList?.add('busch-ui-editor');const style=document.createElement('style');style.textContent=BuschUI.editorStyles;return style;}
 function unraidFormTexte(editor,a,b,erzeuge){const v=editor._versorgt||(editor._versorgt={});if(v.texteA===a&&v.texteB===b)return;v.texteA=a;v.texteB=b;const f=erzeuge();editor._form.computeLabel=f.label;editor._form.computeHelper=f.helper;}
 class BuschUnraidBaseEditor extends BuschEditorBase {
  get _defaults(){return BUSCH_UNRAID_DEFAULTS;}
@@ -2092,11 +2099,12 @@ class BuschUnraidBaseEditor extends BuschEditorBase {
  connectedCallback(){this._connect();this._render();}
  disconnectedCallback(){this._release?.();this._unwatch?.();this._release=this._unwatch=null;}
  _connect(){if(!this._hass||this._release)return;this._core=ensureBuschCore(1);this._release=this._core.retain(this._hass);this._unwatch=this._core.watch(()=>this._render());}
- _render(){if(!this._config||!this._hass)return;const t=buschTexte(BUSCH_UNRAID_TEXT,this._hass);if(!this._form){this._form=BuschUI.ha.form();this._form.addEventListener('value-changed',event=>{event.stopPropagation();const next=buschUnraidConfig({...this._config,...event.detail.value});let structural=false;if((next.device_id||'')!==(this._config.device_id||'')){delete next.container_key;delete next.switch_entity;delete next.update_entity;structural=true;}this._publishConfig(unraidAnzeigeEditor.normalisiere(next,this._katalog,this._config));unraidFormSetzen(this,'data',this._formDaten(),true);if(structural)this._render();});this.appendChild(this._form);}
+ _render(){if(!this._config||!this._hass)return;const t=buschTexte(BUSCH_UNRAID_TEXT,this._hass);if(!this._form){this._form=BuschUI.ha.form();this._form.addEventListener('value-changed',event=>{event.stopPropagation();const result=BuschUI.validateConfig({...this._config,...event.detail.value},{normalize:buschUnraidConfig});if(!result.ok)return;const next=result.value;let structural=false;if((next.device_id||'')!==(this._config.device_id||'')){delete next.container_key;delete next.switch_entity;delete next.update_entity;structural=true;}this._publishConfig(unraidAnzeigeEditor.normalisiere(next,this._katalog,this._config));unraidFormSetzen(this,'data',this._formDaten(),true);if(structural)this._render();});this.appendChild(this._form);this.appendChild(unraidEditorStil(this));}
   const fields=this._kind==='vm'?buschTexte(TEXTE_BUSCH_UNRAID_VM_CARD,this._hass):this._kind==='docker'?buschTexte(TEXTE_BUSCH_UNRAID_DOCKER_CARD,this._hass):t;
   // M48: the schema depends on the devices (servers, stacks, containers, restart buttons), so it is built and compared by content.
   this._form.hass=this._hass;unraidFormSetzen(this,'data',this._formDaten());unraidFormSetzen(this,'schema',buschSchemaMitTexten(unraidAnzeigeEditor.schema(buschUnraidSchema(this._core,this._config,this._kind),this._katalog,fields),this._kind==='docker'?fields:t));
-  unraidFormTexte(this,fields,t,()=>({label:s=>fields.labels[s.name]||s.name,helper:s=>s.name==='show_restart'&&s.disabled?t.restart_missing:fields.helpers[s.name]||''}));
+  const tabelle=this._kind==='vm'?TEXTE_BUSCH_UNRAID_VM_CARD:this._kind==='docker'?TEXTE_BUSCH_UNRAID_DOCKER_CARD:BUSCH_UNRAID_TEXT,feld=s=>BuschUI.fieldText(tabelle,this._hass,s.name,{legacy:true});
+  unraidFormTexte(this,fields,t,()=>({label:s=>feld(s).label,helper:s=>s.name==='show_restart'&&s.disabled?t.restart_missing:feld(s).helper}));
  }
 }
 class BuschUnraidStackEditor extends BuschUnraidBaseEditor {get _kind(){return 'stack';}}
@@ -2855,7 +2863,7 @@ class BuschUnraidTile extends HTMLElement {
   const actions=buschUnraidNode('div',undefined,'tile-actions');
   // a.text: sichtbare Beschriftung neben dem Icon; a.menu: Knopf öffnet das flüchtige Menü (BuschUnraidDockerMenu, R08).
   // M16: every tile action is a server action (admin level); with admin_actions a non-admin gets none.
-  for(const a of liste){const key=a.key,b=unraidKnopf({label:a.label,icon:a.icon,disabled:!!a.deaktiviert,variant:a.gefahr?'danger':'secondary'},()=>{const x=this._aktionsListe?.get(key);if(x)x.menu?this._menuOeffnen(x,t):this._ausfuehren(x,t);});if(a.text){b.appendChild(buschUnraidNode('span',a.text,'action-text'));b.className+=' with-text';}if(a.menu){b.setAttribute('aria-haspopup','menu');b.setAttribute('aria-expanded',String(this._menuOffen===a.key));}if(this._busy&&!a.deaktiviert)b.setAttribute('aria-disabled','true');b.dataset.focusKey=a.key;actions.appendChild(b);}
+  for(const a of liste){const key=a.key,b=unraidKnopf({label:a.label,icon:a.icon,disabled:!!a.deaktiviert,variant:'secondary'},()=>{const x=this._aktionsListe?.get(key);if(x)x.menu?this._menuOeffnen(x,t):this._ausfuehren(x,t);});if(a.text){b.appendChild(buschUnraidNode('span',a.text,'action-text'));b.className+=' with-text';}if(a.menu){b.setAttribute('aria-haspopup','menu');b.setAttribute('aria-expanded',String(this._menuOffen===a.key));}if(this._busy&&!a.deaktiviert)b.setAttribute('aria-disabled','true');b.dataset.focusKey=a.key;actions.appendChild(b);}
   head.appendChild(unraidEinklappKnopf({eingeklappt:this._eingeklappt,t,onClick:()=>this._umschalten()}));if(actions.childNodes.length)head.appendChild(actions);card.appendChild(head);}
   // #642: eingeklappt nur Kopf und (gewählt, nicht beim Laden/Fehler) die Kompaktzeile aus demselben Modell.
   if(this._eingeklappt){const zeile=m.laedt||m.fehler?null:unraidKompaktZeile(this._anzeige?.kompakt,this._kompakt(m,t),t);if(zeile)card.appendChild(zeile);}
@@ -2938,11 +2946,11 @@ class BuschUnraidTileEditor extends BuschEditorBase {
  set hass(hass){this._hass=hass;this._render();}
  get hass(){return this._hass;}
  _render(){if(!this._config||!this._hass)return;const t=buschTexte(this._texte,this._hass);
-  if(!this._form){this._form=BuschUI.ha.form();this._form.addEventListener('value-changed',event=>{event.stopPropagation();this._publishConfig(unraidAnzeigeEditor.normalisiere(buschUnraidConfig({...this._config,...event.detail.value}),this._katalog,this._config));unraidFormSetzen(this,'data',this._formDaten(),true);});this.appendChild(this._form);}
+  if(!this._form){this._form=BuschUI.ha.form();this._form.addEventListener('value-changed',event=>{event.stopPropagation();const vorher=this._config,result=BuschUI.validateConfig({...vorher,...event.detail.value},{normalize:c=>unraidAnzeigeEditor.normalisiere(buschUnraidConfig(c),this._katalog,vorher)});if(!result.ok)return;this._publishConfig(result.value);unraidFormSetzen(this,'data',this._formDaten(),true);});this.appendChild(this._form);this.appendChild(unraidEditorStil(this));}
   // M48: the tile schema depends only on the language, so it is built only for a new dictionary.
   this._form.hass=this._hass;unraidFormSetzen(this,'data',this._formDaten());
   if(this._versorgt?.schemaTexte!==t){unraidFormSetzen(this,'schema',buschSchemaMitTexten(unraidAnzeigeEditor.schema(this._schema,this._katalog,t),t));this._versorgt.schemaTexte=t;}
-  unraidFormTexte(this,t,t,()=>({label:s=>t.labels?.[s.name]||s.name,helper:s=>t.helpers?.[s.name]||''}));
+  const feld=s=>BuschUI.fieldText(this._texte,this._hass,s.name,{legacy:true});unraidFormTexte(this,t,t,()=>({label:s=>feld(s).label,helper:s=>feld(s).helper}));
  }
 }
 const UNRAID_ARRAY_STATUS={de:{started:'Gestartet',stopped:'Gestoppt',starting:'Startet',stopping:'Stoppt'},en:{started:'Started',stopped:'Stopped',starting:'Starting',stopping:'Stopping'}};
