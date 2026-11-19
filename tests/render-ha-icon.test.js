@@ -15,3 +15,11 @@ test('M79 every runner render script installs the shared ha-icon stand-in and re
     assert.match(text, /ha_icon_fehlend\(/, name + ': ha_icon_fehlend (report) missing');
   }
 });
+
+test('M79 the contrast measurement keeps no ha-icon exception: the real glyphs are measured with 3:1 (WCAG 1.4.11)', () => {
+  const liste = JSON.parse(fs.readFileSync(path.join(RENDER, 'kontrast-ausnahmen.json'), 'utf8'));
+  for (const bereich of ['kontrast', 'touch']) {
+    const treffer = (liste[bereich] || []).filter(a => /(^|[\s>,])ha-icon\b/.test(a.selektor));
+    assert.deepEqual(treffer, [], bereich + ': ha-icon exception left');
+  }
+});
