@@ -2936,6 +2936,7 @@ ${BuschUI.styles}
 .scrim{position:absolute;inset:0;background:var(--mdc-dialog-scrim-color,rgba(0,0,0,.32))}
 .dialog{position:relative;box-shadow:var(--ha-card-box-shadow,0 8px 24px rgba(0,0,0,.3))}
 .busch-dialog-content p{margin:0;overflow-wrap:anywhere}
+.busch-dialog-foot>.busch-btn:last-child{margin-inline-end:0}
 .close{display:inline-grid;place-items:center;width:44px;height:44px;min-width:44px;min-height:44px;padding:0;border:0;border-radius:50%;background:transparent;color:var(--secondary-text-color);cursor:pointer;font:inherit}
 button:focus-visible{outline:2px solid var(--primary-color);outline-offset:2px}
 @media (max-width:449px),(max-height:499px){:host{place-items:end stretch}}`;
@@ -2956,6 +2957,7 @@ class BuschUnraidConfirm extends HTMLElement {
   this._close=document.createElement('button');this._close.className='close busch-dialog-close';this._close.setAttribute('type','button');this._close.setAttribute('aria-label',t.close);this._close.title=t.close;const icon=BuschUI.ha.icon('mdi:close');icon.setAttribute('aria-hidden','true');this._close.appendChild(icon);head.append(this._close,h);
   const inhalt=document.createElement('div');inhalt.className='busch-dialog-content';inhalt.appendChild(p);
   // Footer: Cancel before the primary action (right-aligned); a final action is filled red (ui-regeln Regel 2).
+  // The style resets the shared left offset of data-variant=destructive (meant for a third Delete action): here it is the primary.
   const knopf=(text,variante)=>{const b=document.createElement('button');b.className='busch-btn';b.setAttribute('type','button');b.setAttribute('data-variant',variante);b.textContent=text;return b;};
   const row=document.createElement('div');row.className='buttons busch-dialog-foot';this._abbr=knopf(t.cancel,'secondary');
   this._ok=knopf(aktion,gefahr?'destructive':'primary');if(gefahr)this._ok.setAttribute('data-filled','');row.append(this._abbr,this._ok);box.append(head,inhalt,row);root.append(style,this._scrim,box);

@@ -25,6 +25,10 @@ test('M28 confirmation: shared anatomy, shared history entry, Cancel before the 
     assert.match(d._abbr.className, /\bbusch-btn\b/); assert.equal(d._abbr.getAttribute('data-variant'), 'secondary');
     assert.match(d._ok.className, /\bbusch-btn\b/); assert.equal(d._ok.getAttribute('data-variant'), gefahr ? 'destructive' : 'primary');
     assert.equal(d._ok.getAttribute('data-filled') !== null, gefahr, 'destructive is filled red');
+    // ui-regeln Regel 2: the primary action stays right even when it is destructive; the shared rule
+    // `[data-variant=destructive]{margin-inline-end:auto}` is meant for a separate third Delete action and must be reset here.
+    const css = r.querySelector('style').textContent, nachShared = css.slice(css.lastIndexOf('busch-dialog-foot) :where([data-variant=destructive])'));
+    assert.match(nachShared, /\.busch-dialog-foot>\.busch-btn:last-child\{margin-inline-end:0\}/, 'confirm action keeps the right edge');
     assert.equal(env.history.state.buschUiDialog.name, 'busch-unraid-confirm'); assert.equal(env.history.state.dialog, undefined);
     d._abbr.click(); assert.equal(await p, false); assert.equal(env.history.length, 1);
     await new Promise(r => setTimeout(r));
