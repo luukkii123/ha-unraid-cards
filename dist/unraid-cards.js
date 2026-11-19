@@ -1944,7 +1944,16 @@ function unraidHassRender(karte,vorher,hass){const core=karte._core;
  * and update actions; render, click handlers and the dispatch path all ask this one function. Card side only and not a
  * security boundary: unraid_ssh does not check admin rights on the server (README, "Rechte"). */
 function unraidDarf(karte){return BuschUI.mayAct(karte._hass,karte._config,'admin');}
-class BuschUnraidBaseCard extends HTMLElement {
+/* M72 (#1322, D15): collapse toggle and core connection exist once, as mixins. The storage key comes from the class's
+ * `_schluessel()`; an optional focus target after toggling from `_klappFokus()` (Docker card). Named bases keep the class
+ * headers plain `extends Name {`, which the static UI rule check needs to follow the inheritance. */
+function unraidEinklappbar(Base){return class extends Base{
+ _umschalten(){this._eingeklappt=!this._eingeklappt;try{unraidSpeicher()?.setItem(this._schluessel(),this._eingeklappt?'1':'0');}catch{}const fokus=this._klappFokus?.();if(fokus)this._focusAfter=fokus;this._render();}};}
+function unraidKernAnbindung(Base){return class extends Base{
+ _connect(){if(!this._hass||this._release)return;this._core=ensureBuschCore(1);this._release=this._core.retain(this._hass);this._unwatch=this._core.watch(()=>this._render());}};}
+const BuschUnraidKartenBasis=unraidKernAnbindung(unraidEinklappbar(HTMLElement));
+const BuschUnraidEditorBasis=unraidKernAnbindung(BuschEditorBase);
+class BuschUnraidBaseCard extends BuschUnraidKartenBasis {
  constructor(){super();this.attachShadow({mode:'open'});this._config={...BUSCH_UNRAID_DEFAULTS};this._expanded=true;this._generation=0;}
  setConfig(config){const next={...BUSCH_UNRAID_DEFAULTS,...buschUnraidConfig(config)},same=buschCoreKey(this._config)===buschCoreKey(next),context=value=>buschCoreKey([value.device_id,value.container_key,value.vm_id]);
   // R21: Einklappen je Schlüssel gemerkt; gelesen nur, wenn sich der Schlüssel ändert (localStorage-Fehler still).
@@ -1955,7 +1964,6 @@ class BuschUnraidBaseCard extends HTMLElement {
  _metrikSicht(){return {cpu:this._zeigt('cpu'),ram:this._zeigt('ram')};}
  // [A-10] unraid-cards:<art>:<device_id>:<title>, beim Container zusätzlich :<container_key> (zwei Container eines Stacks).
  _schluessel(config=this._config){return 'unraid-cards:'+this._kind+':'+(config?.device_id||'')+':'+(config?.title||'')+(this._kind==='container'?':'+(config?.container_key||''):'');}
- _umschalten(){this._eingeklappt=!this._eingeklappt;try{unraidSpeicher()?.setItem(this._schluessel(),this._eingeklappt?'1':'0');}catch{}this._render();}
  // Kompaktwerte nur aus dem fertigen Modell; gestoppte VM/Container ohne CPU/RAM (Linie von #640).
  _kompakt(m,t){if(!m?.device)return {};const lang=this._hass?.locale?.language,prozent=n=>typeof n==='number'&&Number.isFinite(n)?unraidFormatNumber(n,lang,{maximumFractionDigits:1})+' %':null,bytes=n=>typeof n==='number'&&Number.isFinite(n)?unraidBytes(n,lang):null,status=r=>unraidKw(buschUnraidStatusText(r,t,lang),unraidKompaktSemantik(buschUnraidBadgeTone(r)));
   if(this._kind==='stack')return {status:status(m),cpu:unraidKw(prozent(m.cpu)),ram:unraidKw(bytes(m.ram)),containers:m.total?unraidKw(`${m.running}/${m.total}`):null};
@@ -1964,7 +1972,6 @@ class BuschUnraidBaseCard extends HTMLElement {
  get hass(){return this._hass;}
  connectedCallback(){this._connect();this._render();}
  disconnectedCallback(){this._release?.();this._unwatch?.();this._unwatchDevice?.();this._unwatchDevice=null;this._watchDeviceId=null;this._release=this._unwatch=null;this._generation++;}
- _connect(){if(!this._hass||this._release)return;this._core=ensureBuschCore(1);this._release=this._core.retain(this._hass);this._unwatch=this._core.watch(()=>this._render());}
  getCardSize(){return this._eingeklappt?1+(this._anzeige?.kompakt?.length?1:0):this._kind==='stack'&&this._expanded?4:2;}
  getGridOptions(){return {columns:12,min_columns:3};}
  _button(parent,text,action,disabled=false,destructive=false,focusKey){const button=unraidKnopf({label:text,text,disabled,variant:destructive?'danger':'secondary'},action);if(focusKey)button.dataset.focusKey=focusKey;parent.appendChild(button);return button;}
@@ -2099,7 +2106,7 @@ function unraidFormSetzen(editor,key,wert,immer=false){const v=editor._versorgt|
 // M62 restfund: the editors take the shared editor style (light DOM <style>, host class), BuschUI.fieldText and BuschUI.validateConfig.
 function unraidEditorStil(editor){editor.classList?.add('busch-ui-editor');const style=document.createElement('style');style.textContent=BuschUI.editorStyles;return style;}
 function unraidFormTexte(editor,a,b,erzeuge){const v=editor._versorgt||(editor._versorgt={});if(v.texteA===a&&v.texteB===b)return;v.texteA=a;v.texteB=b;const f=erzeuge();editor._form.computeLabel=f.label;editor._form.computeHelper=f.helper;}
-class BuschUnraidBaseEditor extends BuschEditorBase {
+class BuschUnraidBaseEditor extends BuschUnraidEditorBasis {
  get _defaults(){return BUSCH_UNRAID_DEFAULTS;}
  // #642: Abschnitte/Kompaktwerte aus dem Katalog der Kartenart (Stack, Container, VM, Docker).
  get _katalog(){return UNRAID_ANZEIGE[this._kind]||null;}
@@ -2108,7 +2115,6 @@ class BuschUnraidBaseEditor extends BuschEditorBase {
  set hass(hass){this._hass=hass;if(this.isConnected)this._connect();this._core?.attach(hass);this._render();}
  connectedCallback(){this._connect();this._render();}
  disconnectedCallback(){this._release?.();this._unwatch?.();this._release=this._unwatch=null;}
- _connect(){if(!this._hass||this._release)return;this._core=ensureBuschCore(1);this._release=this._core.retain(this._hass);this._unwatch=this._core.watch(()=>this._render());}
  _render(){if(!this._config||!this._hass)return;const t=buschTexte(BUSCH_UNRAID_TEXT,this._hass);if(!this._form){this._form=BuschUI.ha.form();this._form.addEventListener('value-changed',event=>{event.stopPropagation();const result=BuschUI.validateConfig({...this._config,...event.detail.value},{normalize:buschUnraidConfig});if(!result.ok)return;const next=result.value;let structural=false;if((next.device_id||'')!==(this._config.device_id||'')){delete next.container_key;delete next.switch_entity;delete next.update_entity;structural=true;}this._publishConfig(unraidAnzeigeEditor.normalisiere(next,this._katalog,this._config));unraidFormSetzen(this,'data',this._formDaten(),true);if(structural)this._render();});this.appendChild(this._form);this.appendChild(unraidEditorStil(this));}
   const fields=this._kind==='vm'?buschTexte(TEXTE_BUSCH_UNRAID_VM_CARD,this._hass):this._kind==='docker'?buschTexte(TEXTE_BUSCH_UNRAID_DOCKER_CARD,this._hass):t;
   // M48: the schema depends on the devices (servers, stacks, containers, restart buttons), so it is built and compared by content.
@@ -2353,7 +2359,7 @@ class BuschUnraidDockerCard extends BuschUnraidBaseCard {
  setConfig(config){const next={...BUSCH_UNRAID_DOCKER_DEFAULTS,...buschUnraidConfig(config)};if(buschCoreKey(this._config)===buschCoreKey(next)&&this._renderSignature)return;if(next.device_id!==this._config.device_id||next.start_expanded!==this._config.start_expanded)this._toggled.clear();this._config=next;this._anzeige=unraidAnzeige(next,UNRAID_ANZEIGE.docker);try{this._eingeklappt=unraidSpeicher()?.getItem(this._schluessel())==='1';}catch{this._eingeklappt=false;}this._error=null;this._generation++;this._render();}
  // Einklappen der ganzen Karte wie BuschUnraidTile, gemerkt je Server und Titel (localStorage, Fehler still).
  _schluessel(){return 'unraid-cards:docker:'+(this._config.device_id||'')+':'+(this._config.title||'');}
- _umschalten(){this._eingeklappt=!this._eingeklappt;try{unraidSpeicher()?.setItem(this._schluessel(),this._eingeklappt?'1':'0');}catch{}this._focusAfter={key:'card',role:'toggle'};this._render();}
+ _klappFokus(){return {key:'card',role:'toggle'};}
  disconnectedCallback(){super.disconnectedCallback();this._menu?._finish();}
  getCardSize(){if(this._eingeklappt)return 1+(this._anzeige?.kompakt?.length?1:0);const m=this._lastModel;return Math.max(2,1+Math.ceil(((m?.tiles.length)||1)/2));}
  getGridOptions(){return {columns:12,min_columns:3};}
@@ -2852,7 +2858,7 @@ ha-card:not(.tile)>.header.tile-head{display:grid;align-items:center}
 .title-row{display:flex;flex-wrap:wrap;align-items:center;gap:var(--ha-space-1,4px) var(--ha-space-2,8px);min-width:0}.title-row>.tile-title{flex:0 1 auto;min-width:0}.title-row>.status-badge{flex:none;justify-self:auto}`;
 // M49 follow-up (#1299): subtitle of a kept tile head; only its text changes, the head and its ha-icon objects stay.
 function unraidUntertitel(head,text){const box=unraidKind(head,'tile-text');if(!box)return;let sub=unraidKind(box,'tile-sub');if(!text){if(sub)box.removeChild(sub);return;}if(!sub){sub=buschUnraidNode('p',undefined,'tile-sub busch-ui-subtitle');box.appendChild(sub);}if(sub.textContent!==text)sub.textContent=text;}
-class BuschUnraidTile extends HTMLElement {
+class BuschUnraidTile extends BuschUnraidKartenBasis {
  constructor(){super();this.attachShadow({mode:'open'});this._config={};this._eingeklappt=false;this._busy=false;this._error=null;this._notice=null;this._actionGeneration=0;}
  static get kachel(){return 'tile';}
  get _texte(){return UNRAID_TILE_TEXTE;}
@@ -2862,12 +2868,10 @@ class BuschUnraidTile extends HTMLElement {
  _zeigt(id){return unraidZeigt(this,id);}
  _inhaltSichtbar(){return !!this._anzeige?.sichtbar?.size;}
  _schluessel(){return 'unraid-cards:'+this.constructor.kachel+':'+(this._config.device_id||'')+':'+(this._config.title||'');}
- _umschalten(){this._eingeklappt=!this._eingeklappt;try{unraidSpeicher()?.setItem(this._schluessel(),this._eingeklappt?'1':'0');}catch{}this._render();}
- set hass(hass){const vorher=this._hass;this._hass=hass;if(this.isConnected)this._verbinden();this._core?.attach(hass);unraidHassRender(this,vorher,hass);}
+ set hass(hass){const vorher=this._hass;this._hass=hass;if(this.isConnected)this._connect();this._core?.attach(hass);unraidHassRender(this,vorher,hass);}
  get hass(){return this._hass;}
- connectedCallback(){this._verbinden();this._render();}
+ connectedCallback(){this._connect();this._render();}
  disconnectedCallback(){this._release?.();this._unwatch?.();this._release=this._unwatch=null;unraidBeobachten(this,[]);this._menu?._finish();}
- _verbinden(){if(!this._hass||this._release)return;this._core=ensureBuschCore(1);this._release=this._core.retain(this._hass);this._unwatch=this._core.watch(()=>this._render());}
  // Eingeklappt: Kopf, mit Kompaktzeile eine Zeile mehr; vor setConfig (Kartenwähler) ohne _anzeige sicher.
  getCardSize(){return this._eingeklappt?1+(this._anzeige?.kompakt?.length?1:0):3;}
  getGridOptions(){return {columns:12,min_columns:6};}

@@ -14,7 +14,7 @@ nie. Die Datei gliedert sich in Abschnitte (Kommentarköpfe im Code):
 | Version und Sprache | `CARD_VERSION`, Konsolenbanner, Sprachwahl nach `hass.locale.language` (im Kartenwähler nach `navigator.language`). |
 | Unraid-Familie | Stack-, Container- und VM-Karte samt Modell (`buschUnraidModel`), Editoren und gemeinsamen Vorgaben (`BUSCH_UNRAID_DEFAULTS`). |
 | Unraid-Docker-Übersicht | `busch-unraid-docker-card` mit Kachelraster und Aktionsmenü. |
-| Kachel-Basis | `BuschUnraidTile` (Kopf, Einklappen mit `localStorage`), Bausteine Balken, Ring, Tabelle, Raster, Statuspunkt, das Servermodell und der zentrale Bestätigungsdialog `busch-unraid-confirm`. |
+| Kachel-Basis | `BuschUnraidTile` (Kopf, Einklappen mit `localStorage`; `_umschalten` und `_connect` kommen wie bei der Familienkarte aus den Mixins `unraidEinklappbar`/`unraidKernAnbindung` über die Basis `BuschUnraidKartenBasis`, die Editoren über `BuschUnraidEditorBasis`), Bausteine Balken, Ring, Tabelle, Raster, Statuspunkt, das Servermodell und der zentrale Bestätigungsdialog `busch-unraid-confirm`. |
 | Kacheln | die neun Kacheln Server, System, Prozessor, GPU, Array, Parität, Airflow, Shares, VM-Nutzung mit gemeinsamem Editor `BuschUnraidTileEditor`. |
 
 Feste Verträge:
