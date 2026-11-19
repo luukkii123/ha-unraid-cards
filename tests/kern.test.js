@@ -44,7 +44,7 @@ function evaluateTwice(firstText, secondText) {
   const warnings = [];
   const context = {
     console: { info() {}, warn: (...args) => warnings.push(args.join(' ')), error() {}, log() {} },
-    window: { customCards: [] }, customElements: { define() {} }, HTMLElement: Element, document: dokument(),
+    window: { customCards: [] }, customElements: { define() {}, get() { return undefined; } }, HTMLElement: Element, document: dokument(),
     setTimeout, clearTimeout, queueMicrotask, performance,
   };
   context.globalThis = context; vm.createContext(context);

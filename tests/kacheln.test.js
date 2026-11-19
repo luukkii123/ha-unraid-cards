@@ -40,7 +40,7 @@ test('Kachel-Editor: Labels/Helper aus den Texten, value-changed → config-chan
   assert.equal(e.event.type, 'config-changed'); assert.ok(!e.event.detail.config.visible_items.includes('clock')); assert.equal(e.event.detail.config.type, 'custom:busch-unraid-server-card');
 });
 test('Registrierung: Kartenwähler-Eintrag je Kachel', () => {
-  const kontext = { window: { customCards: [] }, customElements: { define() {} } };
+  const kontext = { window: { customCards: [] }, customElements: { define() {}, get() { return undefined; } } };
   const { UNRAID_KACHELN } = ladeKarte(['UNRAID_KACHELN'], kontext);
   for (const [tag] of UNRAID_KACHELN) { const c = kontext.window.customCards.find(x => x.type === tag); assert.ok(c, tag); assert.equal(c.preview, false); assert.equal(c.documentationURL, 'https://github.com/luukkii123/ha-unraid-cards#' + tag); assert.ok(c.name && c.description); }
 });

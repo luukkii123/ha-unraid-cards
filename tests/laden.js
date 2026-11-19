@@ -31,7 +31,7 @@ function ladeKarte(namen, zusatz, nachlauf) {
   const kontext = {
     console: { info() {}, warn() {}, error() {}, log() {} },
     window: { customCards: [] },
-    customElements: { define() {} },
+    customElements: { define() {}, get() { return undefined; } }, // get: BuschUI.register asks first (M42)
     HTMLElement: Element,
     document: dokument(),
   };

@@ -2109,18 +2109,15 @@ class BuschUnraidBaseEditor extends BuschEditorBase {
 }
 class BuschUnraidStackEditor extends BuschUnraidBaseEditor {get _kind(){return 'stack';}}
 class BuschUnraidContainerEditor extends BuschUnraidBaseEditor {get _kind(){return 'container';}}
-if(!customElements.get?.('busch-unraid-stack-card'))customElements.define('busch-unraid-stack-card',BuschUnraidStackCard);
-if(!customElements.get?.('busch-unraid-container-card'))customElements.define('busch-unraid-container-card',BuschUnraidContainerCard);
-if(!customElements.get?.('busch-unraid-stack-card-editor'))customElements.define('busch-unraid-stack-card-editor',BuschUnraidStackEditor);
-if(!customElements.get?.('busch-unraid-container-card-editor'))customElements.define('busch-unraid-container-card-editor',BuschUnraidContainerEditor);
-window.customCards=window.customCards||[];
-if(!window.customCards.some(c=>c.type==='busch-unraid-stack-card'))window.customCards.push({type:'busch-unraid-stack-card',name:buschTexte(TEXTE_BUSCH_UNRAID_STACK_CARD).waehler_stack,description:buschTexte(TEXTE_BUSCH_UNRAID_STACK_CARD).stack_description,preview:false,documentationURL:'https://github.com/luukkii123/ha-unraid-cards'});
-if(!window.customCards.some(c=>c.type==='busch-unraid-container-card'))window.customCards.push({type:'busch-unraid-container-card',name:buschTexte(TEXTE_BUSCH_UNRAID_CONTAINER_CARD).waehler_container,description:buschTexte(TEXTE_BUSCH_UNRAID_CONTAINER_CARD).container_description,preview:false,documentationURL:'https://github.com/luukkii123/ha-unraid-cards'});
+// M42 (#1317, D8): BuschUI.register defines only without a definition and adds one picker entry per type (double-load safe).
+BuschUI.register('busch-unraid-stack-card',BuschUnraidStackCard,{type:'busch-unraid-stack-card',name:buschTexte(TEXTE_BUSCH_UNRAID_STACK_CARD).waehler_stack,description:buschTexte(TEXTE_BUSCH_UNRAID_STACK_CARD).stack_description,preview:false,documentationURL:'https://github.com/luukkii123/ha-unraid-cards'});
+BuschUI.register('busch-unraid-container-card',BuschUnraidContainerCard,{type:'busch-unraid-container-card',name:buschTexte(TEXTE_BUSCH_UNRAID_CONTAINER_CARD).waehler_container,description:buschTexte(TEXTE_BUSCH_UNRAID_CONTAINER_CARD).container_description,preview:false,documentationURL:'https://github.com/luukkii123/ha-unraid-cards'});
+BuschUI.register('busch-unraid-stack-card-editor',BuschUnraidStackEditor);
+BuschUI.register('busch-unraid-container-card-editor',BuschUnraidContainerEditor);
 
 class BuschUnraidVmEditor extends BuschUnraidBaseEditor {get _kind(){return 'vm';}}
-if(!customElements.get?.('busch-unraid-vm-card'))customElements.define('busch-unraid-vm-card',BuschUnraidVmCard);
-if(!customElements.get?.('busch-unraid-vm-card-editor'))customElements.define('busch-unraid-vm-card-editor',BuschUnraidVmEditor);
-if(!window.customCards.some(c=>c.type==='busch-unraid-vm-card'))window.customCards.push({type:'busch-unraid-vm-card',name:buschTexte(BUSCH_UNRAID_TEXT).waehler_vm,description:buschTexte(BUSCH_UNRAID_TEXT).vm_description,preview:false,documentationURL:'https://github.com/luukkii123/ha-unraid-cards'});
+BuschUI.register('busch-unraid-vm-card',BuschUnraidVmCard,{type:'busch-unraid-vm-card',name:buschTexte(BUSCH_UNRAID_TEXT).waehler_vm,description:buschTexte(BUSCH_UNRAID_TEXT).vm_description,preview:false,documentationURL:'https://github.com/luukkii123/ha-unraid-cards'});
+BuschUI.register('busch-unraid-vm-card-editor',BuschUnraidVmEditor);
 
 /* ── Unraid Docker overview: one tile per Compose stack and per standalone
  * container of one Unraid server, Unraid-dashboard style. Reuses the family
@@ -2427,10 +2424,9 @@ class BuschUnraidDockerCard extends BuschUnraidBaseCard {
  }
 }
 class BuschUnraidDockerEditor extends BuschUnraidBaseEditor {get _kind(){return 'docker';}get _defaults(){return BUSCH_UNRAID_DOCKER_DEFAULTS;}}
-if(!customElements.get?.('busch-unraid-docker-menu'))customElements.define('busch-unraid-docker-menu',BuschUnraidDockerMenu);
-if(!customElements.get?.('busch-unraid-docker-card'))customElements.define('busch-unraid-docker-card',BuschUnraidDockerCard);
-if(!customElements.get?.('busch-unraid-docker-card-editor'))customElements.define('busch-unraid-docker-card-editor',BuschUnraidDockerEditor);
-if(!window.customCards.some(c=>c.type==='busch-unraid-docker-card'))window.customCards.push({type:'busch-unraid-docker-card',name:buschTexte(TEXTE_BUSCH_UNRAID_DOCKER_CARD).name,description:buschTexte(TEXTE_BUSCH_UNRAID_DOCKER_CARD).description,preview:false,documentationURL:'https://github.com/luukkii123/ha-unraid-cards'});
+BuschUI.register('busch-unraid-docker-menu',BuschUnraidDockerMenu);
+BuschUI.register('busch-unraid-docker-card',BuschUnraidDockerCard,{type:'busch-unraid-docker-card',name:buschTexte(TEXTE_BUSCH_UNRAID_DOCKER_CARD).name,description:buschTexte(TEXTE_BUSCH_UNRAID_DOCKER_CARD).description,preview:false,documentationURL:'https://github.com/luukkii123/ha-unraid-cards'});
+BuschUI.register('busch-unraid-docker-card-editor',BuschUnraidDockerEditor);
 
 
 /* === Kachel-Basis === */
@@ -2967,7 +2963,7 @@ class BuschUnraidConfirm extends HTMLElement {
  }
 }
 function unraidBestaetigen(titel,text,aktion,gefahr){return BuschUnraidConfirm.frage({titel,text,aktion,gefahr});}
-if(!customElements.get?.('busch-unraid-confirm'))customElements.define('busch-unraid-confirm',BuschUnraidConfirm);
+BuschUI.register('busch-unraid-confirm',BuschUnraidConfirm);
 
 /* === Kacheln === */
 // Gemeinsamer Editor aller Kacheln: `ha-form` mit Schema und Texten der Kachel
@@ -3390,47 +3386,33 @@ class BuschUnraidCoralCardEditor extends BuschUnraidTileEditor{get _schema(){ret
 
 // [tag, Karte, Editor] — für den Vertragstest; registriert wird wörtlich je Kachel (Regelprüfer findet nur das).
 const UNRAID_KACHELN=[['busch-unraid-users-card',BuschUnraidUsersCard,BuschUnraidUsersCardEditor],['busch-unraid-usb-card',BuschUnraidUsbCard,BuschUnraidUsbCardEditor],['busch-unraid-coral-card',BuschUnraidCoralCard,BuschUnraidCoralCardEditor],['busch-unraid-interface-card',BuschUnraidInterfaceCard,BuschUnraidInterfaceCardEditor],['busch-unraid-server-card',BuschUnraidServerCard,BuschUnraidServerCardEditor],['busch-unraid-system-card',BuschUnraidSystemCard,BuschUnraidSystemCardEditor],['busch-unraid-cpu-card',BuschUnraidCpuCard,BuschUnraidCpuCardEditor],['busch-unraid-gpu-card',BuschUnraidGpuCard,BuschUnraidGpuCardEditor],['busch-unraid-array-card',BuschUnraidArrayCard,BuschUnraidArrayCardEditor],['busch-unraid-parity-card',BuschUnraidParityCard,BuschUnraidParityCardEditor],['busch-unraid-airflow-card',BuschUnraidAirflowCard,BuschUnraidAirflowCardEditor],['busch-unraid-shares-card',BuschUnraidSharesCard,BuschUnraidSharesCardEditor],['busch-unraid-vm-usage-card',BuschUnraidVmUsageCard,BuschUnraidVmUsageCardEditor]];
-if(!customElements.get?.('busch-unraid-server-card'))customElements.define('busch-unraid-server-card',BuschUnraidServerCard);
-if(!customElements.get?.('busch-unraid-server-card-editor'))customElements.define('busch-unraid-server-card-editor',BuschUnraidServerCardEditor);
-window.customCards=window.customCards||[];
-if(!window.customCards.some(c=>c.type==='busch-unraid-server-card'))window.customCards.push({type:'busch-unraid-server-card',name:buschTexte(TEXTE_BUSCH_UNRAID_SERVER_CARD).name,description:buschTexte(TEXTE_BUSCH_UNRAID_SERVER_CARD).description,preview:false,documentationURL:'https://github.com/luukkii123/ha-unraid-cards#busch-unraid-server-card'});
-if(!customElements.get?.('busch-unraid-system-card'))customElements.define('busch-unraid-system-card',BuschUnraidSystemCard);
-if(!customElements.get?.('busch-unraid-system-card-editor'))customElements.define('busch-unraid-system-card-editor',BuschUnraidSystemCardEditor);
-if(!window.customCards.some(c=>c.type==='busch-unraid-system-card'))window.customCards.push({type:'busch-unraid-system-card',name:buschTexte(TEXTE_BUSCH_UNRAID_SYSTEM_CARD).name,description:buschTexte(TEXTE_BUSCH_UNRAID_SYSTEM_CARD).description,preview:false,documentationURL:'https://github.com/luukkii123/ha-unraid-cards#busch-unraid-system-card'});
-if(!customElements.get?.('busch-unraid-cpu-card'))customElements.define('busch-unraid-cpu-card',BuschUnraidCpuCard);
-if(!customElements.get?.('busch-unraid-cpu-card-editor'))customElements.define('busch-unraid-cpu-card-editor',BuschUnraidCpuCardEditor);
-if(!window.customCards.some(c=>c.type==='busch-unraid-cpu-card'))window.customCards.push({type:'busch-unraid-cpu-card',name:buschTexte(TEXTE_BUSCH_UNRAID_CPU_CARD).name,description:buschTexte(TEXTE_BUSCH_UNRAID_CPU_CARD).description,preview:false,documentationURL:'https://github.com/luukkii123/ha-unraid-cards#busch-unraid-cpu-card'});
-if(!customElements.get?.('busch-unraid-gpu-card'))customElements.define('busch-unraid-gpu-card',BuschUnraidGpuCard);
-if(!customElements.get?.('busch-unraid-gpu-card-editor'))customElements.define('busch-unraid-gpu-card-editor',BuschUnraidGpuCardEditor);
-if(!window.customCards.some(c=>c.type==='busch-unraid-gpu-card'))window.customCards.push({type:'busch-unraid-gpu-card',name:buschTexte(TEXTE_BUSCH_UNRAID_GPU_CARD).name,description:buschTexte(TEXTE_BUSCH_UNRAID_GPU_CARD).description,preview:false,documentationURL:'https://github.com/luukkii123/ha-unraid-cards#busch-unraid-gpu-card'});
-if(!customElements.get?.('busch-unraid-array-card'))customElements.define('busch-unraid-array-card',BuschUnraidArrayCard);
-if(!customElements.get?.('busch-unraid-array-card-editor'))customElements.define('busch-unraid-array-card-editor',BuschUnraidArrayCardEditor);
-if(!window.customCards.some(c=>c.type==='busch-unraid-array-card'))window.customCards.push({type:'busch-unraid-array-card',name:buschTexte(TEXTE_BUSCH_UNRAID_ARRAY_CARD).name,description:buschTexte(TEXTE_BUSCH_UNRAID_ARRAY_CARD).description,preview:false,documentationURL:'https://github.com/luukkii123/ha-unraid-cards#busch-unraid-array-card'});
-if(!customElements.get?.('busch-unraid-parity-card'))customElements.define('busch-unraid-parity-card',BuschUnraidParityCard);
-if(!customElements.get?.('busch-unraid-parity-card-editor'))customElements.define('busch-unraid-parity-card-editor',BuschUnraidParityCardEditor);
-if(!window.customCards.some(c=>c.type==='busch-unraid-parity-card'))window.customCards.push({type:'busch-unraid-parity-card',name:buschTexte(TEXTE_BUSCH_UNRAID_PARITY_CARD).name,description:buschTexte(TEXTE_BUSCH_UNRAID_PARITY_CARD).description,preview:false,documentationURL:'https://github.com/luukkii123/ha-unraid-cards#busch-unraid-parity-card'});
-if(!customElements.get?.('busch-unraid-airflow-card'))customElements.define('busch-unraid-airflow-card',BuschUnraidAirflowCard);
-if(!customElements.get?.('busch-unraid-airflow-card-editor'))customElements.define('busch-unraid-airflow-card-editor',BuschUnraidAirflowCardEditor);
-if(!window.customCards.some(c=>c.type==='busch-unraid-airflow-card'))window.customCards.push({type:'busch-unraid-airflow-card',name:buschTexte(TEXTE_BUSCH_UNRAID_AIRFLOW_CARD).name,description:buschTexte(TEXTE_BUSCH_UNRAID_AIRFLOW_CARD).description,preview:false,documentationURL:'https://github.com/luukkii123/ha-unraid-cards#busch-unraid-airflow-card'});
-if(!customElements.get?.('busch-unraid-shares-card'))customElements.define('busch-unraid-shares-card',BuschUnraidSharesCard);
-if(!customElements.get?.('busch-unraid-shares-card-editor'))customElements.define('busch-unraid-shares-card-editor',BuschUnraidSharesCardEditor);
-if(!window.customCards.some(c=>c.type==='busch-unraid-shares-card'))window.customCards.push({type:'busch-unraid-shares-card',name:buschTexte(TEXTE_BUSCH_UNRAID_SHARES_CARD).name,description:buschTexte(TEXTE_BUSCH_UNRAID_SHARES_CARD).description,preview:false,documentationURL:'https://github.com/luukkii123/ha-unraid-cards#busch-unraid-shares-card'});
-if(!customElements.get?.('busch-unraid-vm-usage-card'))customElements.define('busch-unraid-vm-usage-card',BuschUnraidVmUsageCard);
-if(!customElements.get?.('busch-unraid-vm-usage-card-editor'))customElements.define('busch-unraid-vm-usage-card-editor',BuschUnraidVmUsageCardEditor);
-if(!window.customCards.some(c=>c.type==='busch-unraid-vm-usage-card'))window.customCards.push({type:'busch-unraid-vm-usage-card',name:buschTexte(TEXTE_BUSCH_UNRAID_VM_USAGE_CARD).name,description:buschTexte(TEXTE_BUSCH_UNRAID_VM_USAGE_CARD).description,preview:false,documentationURL:'https://github.com/luukkii123/ha-unraid-cards#busch-unraid-vm-usage-card'});
+BuschUI.register('busch-unraid-server-card',BuschUnraidServerCard,{type:'busch-unraid-server-card',name:buschTexte(TEXTE_BUSCH_UNRAID_SERVER_CARD).name,description:buschTexte(TEXTE_BUSCH_UNRAID_SERVER_CARD).description,preview:false,documentationURL:'https://github.com/luukkii123/ha-unraid-cards#busch-unraid-server-card'});
+BuschUI.register('busch-unraid-server-card-editor',BuschUnraidServerCardEditor);
+BuschUI.register('busch-unraid-system-card',BuschUnraidSystemCard,{type:'busch-unraid-system-card',name:buschTexte(TEXTE_BUSCH_UNRAID_SYSTEM_CARD).name,description:buschTexte(TEXTE_BUSCH_UNRAID_SYSTEM_CARD).description,preview:false,documentationURL:'https://github.com/luukkii123/ha-unraid-cards#busch-unraid-system-card'});
+BuschUI.register('busch-unraid-system-card-editor',BuschUnraidSystemCardEditor);
+BuschUI.register('busch-unraid-cpu-card',BuschUnraidCpuCard,{type:'busch-unraid-cpu-card',name:buschTexte(TEXTE_BUSCH_UNRAID_CPU_CARD).name,description:buschTexte(TEXTE_BUSCH_UNRAID_CPU_CARD).description,preview:false,documentationURL:'https://github.com/luukkii123/ha-unraid-cards#busch-unraid-cpu-card'});
+BuschUI.register('busch-unraid-cpu-card-editor',BuschUnraidCpuCardEditor);
+BuschUI.register('busch-unraid-gpu-card',BuschUnraidGpuCard,{type:'busch-unraid-gpu-card',name:buschTexte(TEXTE_BUSCH_UNRAID_GPU_CARD).name,description:buschTexte(TEXTE_BUSCH_UNRAID_GPU_CARD).description,preview:false,documentationURL:'https://github.com/luukkii123/ha-unraid-cards#busch-unraid-gpu-card'});
+BuschUI.register('busch-unraid-gpu-card-editor',BuschUnraidGpuCardEditor);
+BuschUI.register('busch-unraid-array-card',BuschUnraidArrayCard,{type:'busch-unraid-array-card',name:buschTexte(TEXTE_BUSCH_UNRAID_ARRAY_CARD).name,description:buschTexte(TEXTE_BUSCH_UNRAID_ARRAY_CARD).description,preview:false,documentationURL:'https://github.com/luukkii123/ha-unraid-cards#busch-unraid-array-card'});
+BuschUI.register('busch-unraid-array-card-editor',BuschUnraidArrayCardEditor);
+BuschUI.register('busch-unraid-parity-card',BuschUnraidParityCard,{type:'busch-unraid-parity-card',name:buschTexte(TEXTE_BUSCH_UNRAID_PARITY_CARD).name,description:buschTexte(TEXTE_BUSCH_UNRAID_PARITY_CARD).description,preview:false,documentationURL:'https://github.com/luukkii123/ha-unraid-cards#busch-unraid-parity-card'});
+BuschUI.register('busch-unraid-parity-card-editor',BuschUnraidParityCardEditor);
+BuschUI.register('busch-unraid-airflow-card',BuschUnraidAirflowCard,{type:'busch-unraid-airflow-card',name:buschTexte(TEXTE_BUSCH_UNRAID_AIRFLOW_CARD).name,description:buschTexte(TEXTE_BUSCH_UNRAID_AIRFLOW_CARD).description,preview:false,documentationURL:'https://github.com/luukkii123/ha-unraid-cards#busch-unraid-airflow-card'});
+BuschUI.register('busch-unraid-airflow-card-editor',BuschUnraidAirflowCardEditor);
+BuschUI.register('busch-unraid-shares-card',BuschUnraidSharesCard,{type:'busch-unraid-shares-card',name:buschTexte(TEXTE_BUSCH_UNRAID_SHARES_CARD).name,description:buschTexte(TEXTE_BUSCH_UNRAID_SHARES_CARD).description,preview:false,documentationURL:'https://github.com/luukkii123/ha-unraid-cards#busch-unraid-shares-card'});
+BuschUI.register('busch-unraid-shares-card-editor',BuschUnraidSharesCardEditor);
+BuschUI.register('busch-unraid-vm-usage-card',BuschUnraidVmUsageCard,{type:'busch-unraid-vm-usage-card',name:buschTexte(TEXTE_BUSCH_UNRAID_VM_USAGE_CARD).name,description:buschTexte(TEXTE_BUSCH_UNRAID_VM_USAGE_CARD).description,preview:false,documentationURL:'https://github.com/luukkii123/ha-unraid-cards#busch-unraid-vm-usage-card'});
+BuschUI.register('busch-unraid-vm-usage-card-editor',BuschUnraidVmUsageCardEditor);
 
-if(!customElements.get?.('busch-unraid-interface-card'))customElements.define('busch-unraid-interface-card',BuschUnraidInterfaceCard);
-if(!customElements.get?.('busch-unraid-interface-card-editor'))customElements.define('busch-unraid-interface-card-editor',BuschUnraidInterfaceCardEditor);
-if(!window.customCards.some(c=>c.type==='busch-unraid-interface-card'))window.customCards.push({type:'busch-unraid-interface-card',name:buschTexte(TEXTE_BUSCH_UNRAID_INTERFACE_CARD).name,description:buschTexte(TEXTE_BUSCH_UNRAID_INTERFACE_CARD).description,preview:false,documentationURL:'https://github.com/luukkii123/ha-unraid-cards#busch-unraid-interface-card'});
+BuschUI.register('busch-unraid-interface-card',BuschUnraidInterfaceCard,{type:'busch-unraid-interface-card',name:buschTexte(TEXTE_BUSCH_UNRAID_INTERFACE_CARD).name,description:buschTexte(TEXTE_BUSCH_UNRAID_INTERFACE_CARD).description,preview:false,documentationURL:'https://github.com/luukkii123/ha-unraid-cards#busch-unraid-interface-card'});
+BuschUI.register('busch-unraid-interface-card-editor',BuschUnraidInterfaceCardEditor);
 
-if(!customElements.get?.('busch-unraid-users-card'))customElements.define('busch-unraid-users-card',BuschUnraidUsersCard);
-if(!customElements.get?.('busch-unraid-users-card-editor'))customElements.define('busch-unraid-users-card-editor',BuschUnraidUsersCardEditor);
-if(!window.customCards.some(c=>c.type==='busch-unraid-users-card'))window.customCards.push({type:'busch-unraid-users-card',name:buschTexte(TEXTE_BUSCH_UNRAID_USERS_CARD).name,description:buschTexte(TEXTE_BUSCH_UNRAID_USERS_CARD).description,preview:false,documentationURL:'https://github.com/luukkii123/ha-unraid-cards#busch-unraid-users-card'});
+BuschUI.register('busch-unraid-users-card',BuschUnraidUsersCard,{type:'busch-unraid-users-card',name:buschTexte(TEXTE_BUSCH_UNRAID_USERS_CARD).name,description:buschTexte(TEXTE_BUSCH_UNRAID_USERS_CARD).description,preview:false,documentationURL:'https://github.com/luukkii123/ha-unraid-cards#busch-unraid-users-card'});
+BuschUI.register('busch-unraid-users-card-editor',BuschUnraidUsersCardEditor);
 
-if(!customElements.get?.('busch-unraid-usb-card'))customElements.define('busch-unraid-usb-card',BuschUnraidUsbCard);
-if(!customElements.get?.('busch-unraid-usb-card-editor'))customElements.define('busch-unraid-usb-card-editor',BuschUnraidUsbCardEditor);
-if(!window.customCards.some(c=>c.type==='busch-unraid-usb-card'))window.customCards.push({type:'busch-unraid-usb-card',name:buschTexte(TEXTE_BUSCH_UNRAID_USB_CARD).name,description:buschTexte(TEXTE_BUSCH_UNRAID_USB_CARD).description,preview:false,documentationURL:'https://github.com/luukkii123/ha-unraid-cards#busch-unraid-usb-card'});
+BuschUI.register('busch-unraid-usb-card',BuschUnraidUsbCard,{type:'busch-unraid-usb-card',name:buschTexte(TEXTE_BUSCH_UNRAID_USB_CARD).name,description:buschTexte(TEXTE_BUSCH_UNRAID_USB_CARD).description,preview:false,documentationURL:'https://github.com/luukkii123/ha-unraid-cards#busch-unraid-usb-card'});
+BuschUI.register('busch-unraid-usb-card-editor',BuschUnraidUsbCardEditor);
 
-if(!customElements.get?.('busch-unraid-coral-card'))customElements.define('busch-unraid-coral-card',BuschUnraidCoralCard);
-if(!customElements.get?.('busch-unraid-coral-card-editor'))customElements.define('busch-unraid-coral-card-editor',BuschUnraidCoralCardEditor);
-if(!window.customCards.some(c=>c.type==='busch-unraid-coral-card'))window.customCards.push({type:'busch-unraid-coral-card',name:buschTexte(TEXTE_BUSCH_UNRAID_CORAL_CARD).name,description:buschTexte(TEXTE_BUSCH_UNRAID_CORAL_CARD).description,preview:false,documentationURL:'https://github.com/luukkii123/ha-unraid-cards#busch-unraid-coral-card'});
+BuschUI.register('busch-unraid-coral-card',BuschUnraidCoralCard,{type:'busch-unraid-coral-card',name:buschTexte(TEXTE_BUSCH_UNRAID_CORAL_CARD).name,description:buschTexte(TEXTE_BUSCH_UNRAID_CORAL_CARD).description,preview:false,documentationURL:'https://github.com/luukkii123/ha-unraid-cards#busch-unraid-coral-card'});
+BuschUI.register('busch-unraid-coral-card-editor',BuschUnraidCoralCardEditor);
