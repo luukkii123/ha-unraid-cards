@@ -1289,7 +1289,7 @@ function buschUnraidResources(entities,kind,running){
 }
 // sicht = {cpu,ram} aus der Anzeige der Karte (#642, _metrikSicht).
 function buschUnraidMetrics(row,sicht,t,locale){
- const root=buschUnraidNode('div',undefined,'metrics'),format=n=>BuschUI.formatNumber(n,locale,{maximumFractionDigits:1}),bytes=n=>{const units=['B','KiB','MiB','GiB','TiB'];let unit=0;while(n>=1024&&unit<units.length-1){n/=1024;unit++;}return format(n)+' '+units[unit];};
+ const root=buschUnraidNode('div',undefined,'metrics'),format=n=>unraidFormatNumber(n,locale,{maximumFractionDigits:1}),bytes=n=>{const units=['B','KiB','MiB','GiB','TiB'];let unit=0;while(n>=1024&&unit<units.length-1){n/=1024;unit++;}return format(n)+' '+units[unit];};
  const add=(label,value,ratio)=>root.appendChild(BuschUI.metric(label,value,ratio));
  if(sicht?.cpu)add('CPU',row.cpu===null||row.cpu===undefined?t.unavailable:format(row.cpu)+' %');
  if(sicht?.ram)add(t[row.ram_label]||'RAM',row.ram===null||row.ram===undefined?t.unavailable:bytes(row.ram)+(row.ram_total?' / '+bytes(row.ram_total):''),row.ram!==null&&row.ram!==undefined&&row.ram_total?row.ram/row.ram_total:undefined);
@@ -1659,7 +1659,7 @@ function buschUnraidStatusText(row,t,locale){
  const state=row.update_state;
  let label=state&&state!=='idle'?(state==='failed'?t.update_failed:t[state]||t.updating):row.status==='failed'?t.failed_state:t[row.status]||t.unknown;
  if(state==='queued'&&Number.isInteger(row.queue_position))label+=' · '+t.queue_position.replace('{position}',row.queue_position);
- return (row.status==='updating'||state&&state!=='idle')&&row.update_progress!==null&&row.update_progress!==undefined?label+' · '+BuschUI.formatNumber(row.update_progress,locale)+' %':label;
+ return (row.status==='updating'||state&&state!=='idle')&&row.update_progress!==null&&row.update_progress!==undefined?label+' · '+unraidFormatNumber(row.update_progress,locale)+' %':label;
 }
 function buschUnraidProgress(parent,row,t){
  const value=row.update_progress;
@@ -1767,7 +1767,7 @@ class BuschUnraidBaseCard extends HTMLElement {
  _schluessel(config=this._config){return 'unraid-cards:'+this._kind+':'+(config?.device_id||'')+':'+(config?.title||'')+(this._kind==='container'?':'+(config?.container_key||''):'');}
  _umschalten(){this._eingeklappt=!this._eingeklappt;try{unraidSpeicher()?.setItem(this._schluessel(),this._eingeklappt?'1':'0');}catch{}this._render();}
  // Kompaktwerte nur aus dem fertigen Modell; gestoppte VM/Container ohne CPU/RAM (Linie von #640).
- _kompakt(m,t){if(!m?.device)return {};const lang=this._hass?.locale?.language,prozent=n=>typeof n==='number'&&Number.isFinite(n)?BuschUI.formatNumber(n,lang,{maximumFractionDigits:1})+' %':null,bytes=n=>typeof n==='number'&&Number.isFinite(n)?unraidBytes(n,lang):null,status=r=>unraidKw(buschUnraidStatusText(r,t,lang),unraidKompaktSemantik(buschUnraidBadgeTone(r)));
+ _kompakt(m,t){if(!m?.device)return {};const lang=this._hass?.locale?.language,prozent=n=>typeof n==='number'&&Number.isFinite(n)?unraidFormatNumber(n,lang,{maximumFractionDigits:1})+' %':null,bytes=n=>typeof n==='number'&&Number.isFinite(n)?unraidBytes(n,lang):null,status=r=>unraidKw(buschUnraidStatusText(r,t,lang),unraidKompaktSemantik(buschUnraidBadgeTone(r)));
   if(this._kind==='stack')return {status:status(m),cpu:unraidKw(prozent(m.cpu)),ram:unraidKw(bytes(m.ram)),containers:m.total?unraidKw(`${m.running}/${m.total}`):null};
   const r=m.selected;if(!r)return {};const laeuft=r.status==='running';return {status:status(r),cpu:laeuft?unraidKw(prozent(r.cpu)):null,ram:laeuft?unraidKw(bytes(r.ram)):null};}
  set hass(hass){const vorher=this._hass;this._hass=hass;if(this.isConnected)this._connect();this._core?.attach(hass);unraidHassRender(this,vorher,hass);}
@@ -2436,7 +2436,14 @@ const UNRAID_TILE_TEXTE={de:{upgrade:'Zusatzdaten: Unraid SSH auf 0.9 oder neuer
 // Gemeinsame Laufzeittexte aller Kacheln; je Kachel per Spread in ein eigenes TEXTE_-Literal übernommen.
 // labels/helpers stehen wörtlich je Kachel (auch device_id/title), weil scripts/ui-regeln-pruefen.py nur Literale liest.
 const UNRAID_SCHWELLEN={warnung:70,kritisch:90};
-function unraidZahl(wert,einheit,locale,stellen=0){if(typeof wert!=='number'||!Number.isFinite(wert))return '–';const text=new Intl.NumberFormat(String(locale||'en').startsWith('de')?'de-DE':'en-US',{maximumFractionDigits:stellen,minimumFractionDigits:stellen}).format(wert);return einheit?text+' '+einheit:text;}
+/* M49 (#1299): Intl formatters are costly to construct (about a third of an update's time before), so each one is built
+ * once per kind, locale and options and then reused. Same output as `new Intl[art](locale,options)`; an invalid time zone
+ * still throws (nothing is cached then). */
+const UNRAID_INTL=new Map();
+function unraidIntl(art,locale,options){let key=art+'|'+locale;for(const k in options)key+='|'+k+'='+options[k];let f=UNRAID_INTL.get(key);if(!f){f=new Intl[art](locale,options);UNRAID_INTL.set(key,f);}return f;}
+// Card-side twin of BuschUI.formatNumber (same result) with a reused formatter.
+function unraidFormatNumber(value,locale,options={maximumFractionDigits:1}){return !['number','string'].includes(typeof value)||(typeof value==='string'&&!value.trim())||!Number.isFinite(Number(value))?null:unraidIntl('NumberFormat',locale||'en',options).format(Number(value));}
+function unraidZahl(wert,einheit,locale,stellen=0){if(typeof wert!=='number'||!Number.isFinite(wert))return '–';const text=unraidIntl('NumberFormat',String(locale||'en').startsWith('de')?'de-DE':'en-US',{maximumFractionDigits:stellen,minimumFractionDigits:stellen}).format(wert);return einheit?text+' '+einheit:text;}
 // Eintrag der Kompaktzeile: nicht verfügbare Werte (null, '–') werden null und fallen dort weg.
 function unraidKw(wert,semantik,label){return wert===null||wert===undefined||wert===''||wert==='–'?null:{wert:String(wert),...(semantik?{semantik}:{}),...(label!==undefined?{label}:{})};}
 function unraidStufe(p,s=UNRAID_SCHWELLEN){return typeof p!=='number'||!Number.isFinite(p)?'':p>=s.kritisch?'crit':p>=s.warnung?'warn':'';}
@@ -2507,8 +2514,8 @@ function unraidListe(daten,key){return Array.isArray(daten?.[key])?daten[key]:[]
 const UNRAID_ZEIT_STUFEN=[['year',31536000],['month',2592000],['day',86400],['hour',3600],['minute',60],['second',1]];
 function unraidZeitpunkt(date,lang,now=Date.now(),timeZone){
  const diff=(date.getTime()-now)/1000,[unit,size]=UNRAID_ZEIT_STUFEN.find(([,size])=>Math.abs(diff)>=size)||UNRAID_ZEIT_STUFEN.at(-1);
- const relativ=new Intl.RelativeTimeFormat(lang||'en',{numeric:'auto',style:'short'}).format(Math.round(diff/size),unit);
- return `${relativ} (${new Intl.DateTimeFormat(lang||'en',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit',timeZone}).format(date)})`;
+ const relativ=unraidIntl('RelativeTimeFormat',lang||'en',{numeric:'auto',style:'short'}).format(Math.round(diff/size),unit);
+ return `${relativ} (${unraidIntl('DateTimeFormat',lang||'en',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit',timeZone}).format(date)})`;
 }
 // M33: the main line carries sample age and details only. Status is a badge, the source a tooltip (unraidSmart).
 function unraidSmartText(e,t,lang,now,timeZone){
@@ -2741,7 +2748,7 @@ class BuschUnraidServerCard extends BuschUnraidTile{
   return {name:s.server.name_by_user||s.server.name,serverId:s.server.id,buttons:unraidServerButtons(s,['server_reboot','server_shutdown','mover_start']),hw,version:s.server.sw_version||'',uptime:Number.isFinite(boot)?Math.floor(Math.max(0,(Date.now()-boot)/1000)/60)*60:null,array:s.wert('array_state')?.state||null,mover:s.wert('mover_active')?.state||null};}
  _kopf(m,t){return {icon:'mdi:server',titel:m.name||t.tile,untertitel:m.version?`${t.version} ${m.version}`:undefined};}
  _inhalt(body,m,t){if(!this._inhaltSichtbar())return;const lang=String(this._hass?.locale?.language||'en'),tz=this._hass?.config?.time_zone;
-  if(this._zeigt('clock')){const now=new Date();body.appendChild(buschUnraidNode('div',new Intl.DateTimeFormat(lang,{hour:'2-digit',minute:'2-digit',timeZone:tz}).format(now),'clock'));body.appendChild(buschUnraidNode('p',new Intl.DateTimeFormat(lang,{weekday:'long',day:'2-digit',month:'2-digit',year:'numeric',timeZoneName:'short',timeZone:tz}).format(now),'detail'));}
+  if(this._zeigt('clock')){const now=new Date();body.appendChild(buschUnraidNode('div',unraidIntl('DateTimeFormat',lang,{hour:'2-digit',minute:'2-digit',timeZone:tz}).format(now),'clock'));body.appendChild(buschUnraidNode('p',unraidIntl('DateTimeFormat',lang,{weekday:'long',day:'2-digit',month:'2-digit',year:'numeric',timeZoneName:'short',timeZone:tz}).format(now),'detail'));}
   const st=UNRAID_ARRAY_STATUS[lang.startsWith('de')?'de':'en'],arr=m.array&&!['unavailable','unknown'].includes(m.array)?m.array:null;
   const zeilen=[['uptime',()=>({k:t.uptime,v:unraidDauer(m.uptime,t)})],['array',()=>({k:t.array,v:unraidPunkt(arr==='started'?'ok':arr?'warning':'unknown',arr?(st[arr]||arr):t.unavailable)})],['mover',()=>({k:t.mover,v:m.mover==='on'?t.mover_on:m.mover==='off'?t.mover_off:t.unavailable})],['model',()=>({k:t.model,v:m.hw.daten.hardware?.product_name||'–'})],['registration',()=>({k:t.registration,v:m.hw.daten.registration||'–'})]].filter(([id])=>this._zeigt(id)).map(([,z])=>z());
   if(zeilen.length)body.appendChild(unraidTabelle([{key:'k',label:''},{key:'v',label:''}],zeilen,{leer:''}));unraidZusatzHinweis(body,[m.hw],t);}

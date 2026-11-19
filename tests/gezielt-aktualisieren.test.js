@@ -5,7 +5,7 @@
 // stylesheet is shared through adoptedStyleSheets (fallback: one <style> per root, kept across updates).
 const test = require('node:test'), assert = require('node:assert/strict');
 const { ladeKarte } = require('./laden.js');
-const { dashboardFixture, inventoryFixture, familienKarte, dockerKarte } = require('./familie-attrappe.js');
+const { dashboardFixture, inventoryFixture, familienKarte, dockerKarte, familienFixture } = require('./familie-attrappe.js');
 const { unraidAttrappe } = require('./attrappe.js');
 
 const icons = k => k.shadowRoot.querySelectorAll('ha-icon');
@@ -150,4 +150,29 @@ test('M49 custom elements: own content and attributes of ha-icon/ha-card survive
   assert.equal(icon.textContent, '◇'); assert.equal(icon.getAttribute('style'), 'display:inline-grid'); assert.equal(karte(k).getAttribute('raised'), '');
   const d = dockerKarte(), card = karte(d); d._busy = true; d._render(); assert.equal(card.getAttribute('aria-busy'), 'true');
   d._busy = false; d._render(); assert.equal(karte(d), card); assert.equal(card.getAttribute('aria-busy'), null, 'aria-busy set by the card is removed');
+});
+
+// M49 step 2 (#1299): Intl formatters are built once and reused; an own update constructs none (before: one per number).
+function zaehlIntl() {
+  const z = { n: 0 }, zaehle = B => class extends B { constructor(...a) { super(...a); z.n++; } };
+  return { z, Intl: { NumberFormat: zaehle(Intl.NumberFormat), DateTimeFormat: zaehle(Intl.DateTimeFormat), RelativeTimeFormat: zaehle(Intl.RelativeTimeFormat) } };
+}
+test('M49 Intl: an own update of every tile builds no new Intl formatter', () => {
+  for (const [name, aendern] of Object.entries(KACHELN)) {
+    const { z, Intl } = zaehlIntl(), core = kachelFixture(), { k } = kachel(name, core, { Intl });
+    const text = karte(k).textContent; aendern(core); const n = z.n; k._render();
+    assert.notEqual(karte(k).textContent, text, name + ': value updated');
+    assert.equal(z.n - n, 0, name + ': Intl formatters built by the update');
+  }
+});
+test('M49 Intl: an own update of stack and container cards builds no new Intl formatter', () => {
+  const cpu = { entity_id: 'sensor.web_cpu', domain: 'sensor', device_id: 'stack', platform: 'unraid_ssh', config_entry_id: 'instance', state: '1.5', registry: {}, attributes: { kind: 'container', role: 'cpu', container_key: 'web', config_entry_id: 'instance' } };
+  for (const [kind, config] of [['BuschUnraidStackCard', { device_id: 'stack', start_expanded: true }], ['BuschUnraidContainerCard', { device_id: 'stack', container_key: 'web' }]]) {
+    const { z, Intl } = zaehlIntl(), l = ladeKarte([kind], { Intl }), k = new l[kind](), core = familienFixture().core, aendern = c => { c.entities.get('sensor.web_cpu').state = '9.5'; };
+    core.entities.set(cpu.entity_id, structuredClone(cpu));
+    k._core = core; k._hass = { locale: { language: 'de' }, config: { time_zone: 'UTC' }, callService: async () => {} }; k.setConfig(config);
+    const text = karte(k).textContent; aendern(core); const n = z.n; k._render();
+    assert.notEqual(karte(k).textContent, text, kind + ': value updated');
+    assert.equal(z.n - n, 0, kind + ': Intl formatters built by the update');
+  }
 });
