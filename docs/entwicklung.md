@@ -21,10 +21,11 @@ Feste Verträge:
 
 - `CARD_VERSION = "0.1.0"` muss zum Tag passen; der Release-Workflow liest
   den Wert per Regex (genau diese Schreibweise mit doppelten Anführungszeichen).
-- Jedes Element wird nur definiert, wenn es noch fehlt
-  (`if(!customElements.get?.(tag))customElements.define(tag,Klasse);`). So
-  laufen Unraid Cards und ältere Busch Cards (≤ 0.21) ohne Absturz
-  nebeneinander; das zuerst geladene Bundle gewinnt.
+- Jedes Element wird über `BuschUI.register(tag,Klasse,karte)` registriert
+  (seit M42, #1317): definiert nur, wenn es noch fehlt, und legt je `type`
+  genau einen `window.customCards`-Eintrag an. So laufen Unraid Cards und
+  ältere Busch Cards (≤ 0.21) ohne Absturz nebeneinander, und ein zweites
+  Laden des Bundles wirft nichts; das zuerst geladene Bundle gewinnt.
 - Je Karte ein Editor-Schema `SCHEMA_<TAG>` und ein Wörterbuch `TEXTE_<TAG>`
   (Tag groß, `-` → `_`, z. B. `SCHEMA_BUSCH_UNRAID_CPU_CARD`). Jedes
   Schemafeld braucht Label und Helper in Deutsch und Englisch; die Texte
@@ -123,6 +124,14 @@ docker run --rm --network none \
 | `tests/teile.test.js` | M49 Nachbesserung: eigenes Update baut nur geänderte Teile (System, Array: Elementzahl; Stack, VM-Liste, Docker: keine `ha-icon` unveränderter Zeilen/Köpfe); Platzhalter ohne lebenden Teil wird gebaut; SMART-Relativzeit in behaltener Tabelle folgt der Uhr; Sprachwechsel baut Teile neu; Docker-Modell mit `core.track` nur für das geänderte Gerät neu, neue Epoche alle |
 | `tests/gezielt-aktualisieren.test.js` | M49: je Kartenart (13 Kacheln, Stack, Container, VM-Liste, Docker) eigenes Update ohne neue `ha-icon`, Wert aktualisiert, Fokus bleibt; Zeile weg/dazu, Stack auf/zu; behaltener Knopf mit neuem Handler; geteiltes `adoptedStyleSheets`-Blatt bzw. ein bleibendes `<style>` |
 | `tests/unraid-update-bench.cjs` | M49-Bank (kein Test): `node tests/unraid-update-bench.cjs [bundle] [läufe] [--profil] [--karte=System,Docker]`, p50/p95 ms je eigenem Update, Knoten, neue Elemente und `ha-icon` je Update, Icons objektgleich; `DockerCard@track` misst die Docker-Karte auf einer Attrappe mit `core.track`/`unchanged` (Weg des echten Kerns); `--profil` zerlegt die mittlere Zeit in Modell, Signatur, Abgleich und Rest |
+| `tests/zustand-baustein.test.js` | M27: Laden/Leer/Fehler/Offline über `BuschUI.stateBlock`, Live-Region (aria-live) in jeder Karte ab dem ersten Render, Offline mit Ursache und „Erneut versuchen“ (genau ein `homeassistant.reload_config_entry`, mit `admin_actions` nur für Admins) |
+| `tests/basis-komponenten.test.js` | M62: jeder Aktionsknopf ist `.busch-btn` mit gemeinsamer Variante, keine eigene Knopfvariante im CSS; Editoren mit `editorStyles`, `fieldText`, `validateConfig` |
+| `tests/tokens.test.js` | M63: keine feste px-Schrift außerhalb von `var()`-Rückfällen, keine Versalien, eine Innenradius-Stufe |
+| `tests/kartenkopf.test.js` | M61: Kartenkopf aller Karten über `BuschUI.header({level:1})`, Abschnitte als `BuschUI.sectionHeading` |
+| `tests/dialog-anatomie.test.js` | M28: kein eigenes `pushState`; Bestätigung und Menü über `BuschUI.dialogHistory`/`focusTrap`, Dialoggerüst `.busch-dialog` |
+| `tests/array-kompakt.test.js` | M64: Laufwerkstabellen mit gleicher `colgroup`, am Handy eine Zeile je Laufwerk mit Aufklapper, Pool-Fakten unter der Überschrift, Hinweise als `.busch-notice` |
+| `tests/registrierung.test.js` | M42: Registrierung nur über `BuschUI.register`, zweites Laden ohne Fehler und ohne doppelte Kartenwähler-Einträge |
+| `tests/kontrast.test.js` | M26: Textfarben von Knöpfen, Badges, Fehlertext und Gefahr-Menüeintrag ≥ 4,5:1 in hell und dunkel (THEMA-Werte der Renderskripte) |
 | `tests/schluss-*.test.js` | Schlussrunde #564: Render-Signatur und `watchDevice`, Lade-/Nicht-verfügbar-Zustände, Tabellen am Handy, Balkenkontrast, Ring, VM-Liste (Einklappen, `show_restart`), Kleinigkeiten |
 
 ## Renderprüfung (Chromium, erfundene Daten)
