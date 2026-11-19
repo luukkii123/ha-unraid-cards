@@ -1,6 +1,14 @@
 """Synthetic UPDATED family gate; no HA access or real service calls."""
 import json,pathlib,sys
 from playwright.sync_api import sync_playwright
+# M79: shared ha-icon stand-in with real MDI glyphs from hacs/docs/render/regeln.py (/work in the runner container).
+for _kandidat in ('/work', str(pathlib.Path(__file__).resolve().parents[3] / 'docs' / 'render')):
+ if pathlib.Path(_kandidat, 'regeln.py').is_file():
+  sys.path.insert(0, _kandidat)
+  break
+else:
+ sys.exit('regeln.py nicht gefunden: der Container braucht -v "<hacs>/docs/render:/work" (hacs/docs/karten.md).')
+import regeln  # noqa: E402
 # Bestaetigungen laufen ueber den eigenen Dialog busch-unraid-confirm (R04), nicht mehr ueber window.confirm:
 # Klick ausloesen, auf den Dialog warten, Abbrechen (erster) oder Bestaetigen (letzter Knopf) druecken.
 def antworte(page,klick,annehmen):
@@ -23,7 +31,7 @@ put('stack','container','web','update','on',{in_progress:false,update_percentage
 window.baseline=JSON.stringify([...core.entities]);
 '''
 with sync_playwright() as p:
- browser=p.chromium.launch(headless=True);page=browser.new_page(viewport={'width':1000,'height':1800});errors=[]
+ browser=p.chromium.launch(headless=True);regeln.ha_icon_attrappe(browser);page=browser.new_page(viewport={'width':1000,'height':1800});errors=[]
  page.on('pageerror',lambda e:errors.append(str(e)))
  page.set_content('''<style>body{margin:0;font-family:Arial}ha-card{display:block;border:1px solid var(--divider-color);border-radius:16px}ha-icon{font-size:24px}html{--primary-color:#0879d0;--error-color:#db4437;--primary-text-color:#212121;--secondary-text-color:#555;--card-background-color:#fff;--secondary-background-color:#eef5fb;--divider-color:#dbe4ed;--success-color:#16864b;--warning-color:#a76900;--disabled-text-color:#777}</style>''')
  page.add_script_tag(content=source);page.add_script_tag(content=fixture);page.evaluate('window.ensureBuschCore=()=>core')
@@ -48,7 +56,7 @@ with sync_playwright() as p:
       assert page.locator('[data-test-card]').get_by_role('button',name='Herunterfahren',exact=True).is_disabled()
       assert page.locator('[data-test-card]').get_by_role('button',name='Sofort ausschalten',exact=True).is_enabled()
      if scenario in ('updating','updating-percent') and kind!='vm':
-      # M3: warning badges carry an ha-icon; the harness icon stub renders a glyph, so read the label without it
+      # M3: warning badges carry an ha-icon; read the label without it (the shared stand-in draws an SVG, older stubs a glyph)
       badge=page.locator('[data-test-card]').locator('.status-badge').first.evaluate("e=>[...e.childNodes].filter(n=>n.nodeName!=='HA-ICON').map(n=>n.textContent).join('').trim()")
       assert page.locator('[data-test-card]').locator('.status-badge').first.locator('ha-icon').count()==1
       assert badge==('Update läuft · 42,5 %' if scenario=='updating-percent' else 'Update läuft'),badge
@@ -61,7 +69,9 @@ with sync_playwright() as p:
        antworte(page,lambda:page.locator('[data-test-card]').get_by_role('button',name='Sofort ausschalten',exact=True).click(),True);assert page.evaluate("calls[1][0]==='button'&&calls[1][1]==='press'&&calls[1][2].entity_id==='button.vm_Guest_force_stop'")
       detail=[];page.evaluate("document.querySelector('[data-test-card]').addEventListener('hass-more-info',e=>window.detail=e.detail)");page.get_by_role('button',name='Details',exact=True).first.click();assert page.evaluate('detail.entityId').startswith('switch.')
      file=f'{kind}-{scenario}-{width}-'+('dark' if dark else 'light')+'.png';page.locator('[data-test-card]').screenshot(path=str(out/file));report.append({'kind':kind,'scenario':scenario,'width':width,'dark':dark,'failures':findings,'screenshot':file})
+ ha_icon=regeln.ha_icon_fehlend(page)  # M79: stand-in active, names without a path
  browser.close()
-(out/'report.json').write_text(json.dumps({'cases':report,'errors':errors},indent=2))
+(out/'report.json').write_text(json.dumps({'cases':report,'errors':errors,'haIcon':ha_icon},indent=2))
 print(json.dumps({'cases':len(report),'failures':sum(len(r['failures']) for r in report),'errors':errors}))
 assert not errors and not any(r['failures'] for r in report)
+assert ha_icon['aktiv'] and not ha_icon['fehlend'],ha_icon

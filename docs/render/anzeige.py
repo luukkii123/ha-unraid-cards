@@ -39,7 +39,7 @@ import sys
 
 sys.path.insert(0, "/work")
 from playwright.sync_api import sync_playwright  # noqa: E402
-from regeln import bewerte, lauf_breiten, messe_kontrast_touch_hier, messe_popup, messe_text, schreibe, selbsttest, zaehle  # noqa: E402
+from regeln import bewerte, ha_icon_attrappe, ha_icon_fehlend, lauf_breiten, messe_kontrast_touch_hier, messe_popup, messe_text, schreibe, selbsttest, zaehle  # noqa: E402
 import kacheln as base  # noqa: E402
 
 BUNDLE = pathlib.Path(sys.argv[1])
@@ -73,13 +73,6 @@ FAELLE = [
 KARTENARTEN = sorted({f[1] for f in FAELLE})
 # 1×1-PNG für die Containerbilder der Docker-Fixture (/api/unraid_ssh/icons/<name>.png).
 PNG = base64.b64decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==")
-# Die ha-icon-Attrappe aus kacheln.SEITE ist im Shadow DOM ungestylt (Dokumentstile wirken dort nicht) und
-# zeichnet nur einen Buchstaben in Fließtextgröße. Hier bekommt sie per Inline-Stil die echte Kastengröße
-# (--mdc-icon-size, wie ha-svg-icon), damit Kopfhöhe und Icon-Ausrichtung realistisch gemessen werden.
-ICON_ALT = "customElements.define('ha-icon',class extends HTMLElement{static get observedAttributes(){return ['icon']}"
-ICON_NEU = ("customElements.define('ha-icon',class extends HTMLElement{connectedCallback(){this.style.cssText+=';display:inline-grid;"
-            "place-items:center;width:var(--mdc-icon-size,24px);height:var(--mdc-icon-size,24px);font-size:calc(var(--mdc-icon-size,24px) * .6);"
-            "line-height:1;flex:none'}static get observedAttributes(){return ['icon']}")
 SERVER = "busch-unraid-server-card"
 MEHR = SERVER + ' [data-focus-key="more"]'
 MENUE = "busch-unraid-docker-menu"
@@ -193,13 +186,16 @@ def main():
 
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
+        # M79: the shared ha-icon of regeln.py draws the real MDI glyph at --mdc-icon-size (like ha-svg-icon), so head
+        # height, icon alignment and the glyph contrast (3:1) are measured on real icons; the letter stub of kacheln.SEITE
+        # is ignored (its define comes after the shared one).
+        ha_icon_attrappe(browser)
         page = browser.new_page(viewport={"width": 960, "height": 1200}, locale="de-DE")
         page.clock.set_fixed_time(base.JETZT)
         page.on("pageerror", lambda e: report["seitenfehler"].append(str(e)))
         page.on("console", lambda m: m.type == "error" and report["seitenfehler"].append(m.text))
         payload = json.dumps(fixtures(), ensure_ascii=False).replace("<", r"<")
-        assert base.SEITE.count(ICON_ALT) == 1
-        html = base.SEITE.replace(ICON_ALT, ICON_NEU).replace("__ATTRAPPE__", payload).replace('<script src="/unraid-cards.js">', FORM + '<script src="/unraid-cards.js">')
+        html = base.SEITE.replace("__ATTRAPPE__", payload).replace('<script src="/unraid-cards.js">', FORM + '<script src="/unraid-cards.js">')
 
         def route(r):
             url = r.request.url
@@ -261,8 +257,7 @@ def main():
                     check(not pg.evaluate(base.JS_HSCROLL), f"horizontaler Scroll {ort}")
                     check(not info["ziele"], f"Touchziel < 44 px {ort}: {info['ziele']}")
                     check(not info["laedt"], f"Ladezustand {ort}")
-                    # Buchstaben der ha-icon-Attrappe sind kein Text (echtes Icon = SVG neben einem Statustext): nur Hinweis.
-                    niedrig = [x for x in info["kontrast_niedrig"] if x["q"] < 2 and x["klasse"] != "ha-icon"]
+                    niedrig = [x for x in info["kontrast_niedrig"] if x["q"] < 2]
                     check(not niedrig, f"Kontrast < 2:1 {ort}: {niedrig}")
                     if info["kontrast_niedrig"]:
                         report["hinweise"].append(f"Kontrast < 4.5:1 {ort}: {info['kontrast_niedrig']}")
@@ -444,6 +439,8 @@ def main():
         state = json.dumps(e2e["history"]["state"] or {})
         # M28: dialogs and menus use BuschUI.dialogHistory (key buschUiDialog); old keys must not come back either.
         check(all(k not in state for k in ("buschUiDialog", "buschUnraidDockerMenu", "buschUnraidConfirm")), f"verwaister Verlaufseintrag: {state}")
+        report["ha_icon"] = ha_icon_fehlend(page)  # M79: stand-in active, names without a path
+        check(report["ha_icon"]["aktiv"] and not report["ha_icon"]["fehlend"], f"ha-icon-Attrappe {report['ha_icon']}")
         browser.close()
 
     report["abgeschlossen"] = True

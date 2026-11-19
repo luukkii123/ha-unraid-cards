@@ -1,5 +1,13 @@
 import json,pathlib,sys
 from playwright.sync_api import sync_playwright
+# M79: shared ha-icon stand-in with real MDI glyphs from hacs/docs/render/regeln.py (/work in the runner container).
+for _kandidat in ('/work', str(pathlib.Path(__file__).resolve().parents[3] / 'docs' / 'render')):
+ if pathlib.Path(_kandidat, 'regeln.py').is_file():
+  sys.path.insert(0, _kandidat)
+  break
+else:
+ sys.exit('regeln.py nicht gefunden: der Container braucht -v "<hacs>/docs/render:/work" (hacs/docs/karten.md).')
+import regeln  # noqa: E402
 # Bestaetigungen laufen ueber den eigenen Dialog busch-unraid-confirm (R04), nicht mehr ueber window.confirm:
 # Klick ausloesen, auf den Dialog warten, Abbrechen (erster) oder Bestaetigen (letzter Knopf) druecken.
 def antworte(page,klick,annehmen):
@@ -19,7 +27,7 @@ for(let i=0;i<3;i++)for(const [domain,role,state] of [['switch','control',i%2?'o
 for(const [domain,role] of [['switch','control'],['button','restart']]){const id=domain+'.stack';core.entities.set(id,{entity_id:id,device_id:'stack',platform:'unraid_ssh',config_entry_id:'demo',domain,state:'on',attributes:{kind:'stack',role,stack_key:'stack'},registry:{}});}
 """
 with sync_playwright() as p:
- browser=p.chromium.launch(headless=True)
+ browser=p.chromium.launch(headless=True);regeln.ha_icon_attrappe(browser)  # M79: real MDI glyphs instead of a diamond
  page=browser.new_page(viewport={'width':1000,'height':1200})
  errors=[];page.on('pageerror',lambda error:errors.append(str(error)))
  page.set_content('<style>body{margin:0;font-family:Arial}ha-card{display:block;border:1px solid var(--divider-color);border-radius:16px}ha-icon{font-size:24px;line-height:1}html{--primary-color:#0879d0;--error-color:#db4437;--primary-text-color:#212121;--secondary-text-color:#555;--card-background-color:#fff;--secondary-background-color:#eef5fb;--divider-color:#dbe4ed;--success-color:#16864b;--warning-color:#a76900;--disabled-text-color:#777}</style>')
@@ -59,7 +67,9 @@ with sync_playwright() as p:
  if not large['focusAfterRefresh']['sameRow'] or not large['focusAfterRefresh']['isButton']:large_failures.append({'state_refresh_focus':large})
  if not large['focusHeaderAfterRefresh'] or large['serviceCalls']!=0:large_failures.append({'header_action_focus_or_service':large})
  report.append({'backend':'metadata','kind':'stack','width':360,'dark':False,'expanded_containers':16,'metrics':large,'failures':large_failures})
+ ha_icon=regeln.ha_icon_fehlend(page)  # M79: stand-in active, names without a path
  browser.close()
-(out/'report.json').write_text(json.dumps({'cases':report,'errors':errors},indent=2))
+(out/'report.json').write_text(json.dumps({'cases':report,'errors':errors,'haIcon':ha_icon},indent=2))
 print(json.dumps({'cases':len(report),'failures':sum(len(r['failures']) for r in report),'errors':errors}))
 assert not errors and not any(r['failures'] for r in report)
+assert ha_icon['aktiv'] and not ha_icon['fehlend'],ha_icon

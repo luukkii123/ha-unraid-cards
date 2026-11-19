@@ -132,7 +132,7 @@ JS_INVENTORY_READABILITY = r"""({tag,kind})=>{
 def main():
     sys.path.insert(0, '/work')
     from playwright.sync_api import sync_playwright
-    from regeln import bewerte, lauf_breiten, messe_text, schreibe, selbsttest, zaehle
+    from regeln import bewerte, ha_icon_attrappe, ha_icon_fehlend, lauf_breiten, messe_text, schreibe, selbsttest, zaehle
     import kacheln as base
     bundle = pathlib.Path(sys.argv[1])
     out = pathlib.Path(sys.argv[2] if len(sys.argv) > 2 else '/tmp/stufe3-out')
@@ -148,6 +148,7 @@ def main():
             failures.append(message)
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
+        ha_icon_attrappe(browser)  # M79: shared ha-icon with the real MDI glyphs (hacs/docs/render/mdi-pfade.json)
         page = browser.new_page(viewport={'width': 960, 'height': 1200}, locale='de-DE')
         page.on('pageerror', lambda e: report['seitenfehler'].append(str(e)))
         page.on('console', lambda m: m.type == 'error' and report['seitenfehler'].append(m.text))
@@ -266,6 +267,8 @@ def main():
             check(pg.evaluate('window.calls.length===0 && window.ws.length===0'), 'Read-only cards sent services or browser polls')
             return results
         report['breiten'] = lauf_breiten(page, breiten=(320, 480, 960), messung=measurement, hoehe=1200)
+        report['ha_icon'] = ha_icon_fehlend(page)  # M79: stand-in active, names without a path
+        check(report['ha_icon']['aktiv'] and not report['ha_icon']['fehlend'], f"ha-icon-Attrappe {report['ha_icon']}")
         browser.close()
     report['abgeschlossen'] = True
     schreibe(out / 'report.json', report, zeige=0)

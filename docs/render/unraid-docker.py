@@ -23,7 +23,7 @@ import zlib
 
 sys.path.insert(0, "/work")
 from playwright.sync_api import sync_playwright  # noqa: E402
-from regeln import bewerte, lauf_breiten, messe_popup, messe_text, schreibe, selbsttest, zaehle  # noqa: E402
+from regeln import bewerte, ha_icon_attrappe, ha_icon_fehlend, lauf_breiten, messe_popup, messe_text, schreibe, selbsttest, zaehle  # noqa: E402
 
 BUNDLE = pathlib.Path(sys.argv[1])
 OUT = pathlib.Path(sys.argv[2] if len(sys.argv) > 2 else "/tmp/docker-out")
@@ -100,6 +100,7 @@ def main():
     fehler = []
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
+        ha_icon_attrappe(browser)  # M79: shared ha-icon with the real MDI glyphs (hacs/docs/render/mdi-pfade.json)
         page = browser.new_page(viewport={"width": 960, "height": 900}, locale="de-DE")
         page.on("pageerror", lambda e: fehler.append("pageerror: " + str(e)))
         page.on("console", lambda m: m.type == "error" and fehler.append("console: " + m.text))
@@ -224,6 +225,7 @@ def main():
         page.wait_for_timeout(500)
         e2e["eingeklappt"] = not page.evaluate("()=>!!document.querySelector('busch-unraid-docker-card').shadowRoot.querySelector('.tile[data-key=\"container:grafana\"]')")
         e2e["history_state_am_ende"] = page.evaluate("history.state")
+        report["ha_icon"] = ha_icon_fehlend(page)  # M79: stand-in active, names without a path
         browser.close()
 
     # ── Urteile, die regeln.py nicht kennt ──────────────────────────────────
@@ -250,6 +252,8 @@ def main():
         eigene.append(f"ausklappen {e['ausgeklappt_reihenfolge']}")
     if e["history_state_am_ende"] and any(k in json.dumps(e["history_state_am_ende"]) for k in ("buschUiDialog", "buschUnraidDockerMenu")):  # M28
         eigene.append("verwaister Verlaufseintrag")
+    if not report["ha_icon"]["aktiv"] or report["ha_icon"]["fehlend"]:  # M79
+        eigene.append(f"ha-icon-Attrappe {report['ha_icon']}")
     fremd = [u for u in report["netz"] if not (u in ("/", "/unraid-cards.js") or u.startswith("/api/unraid_ssh/icons/"))]
     if fremd:
         eigene.append(f"fremde anfragen {fremd}")
