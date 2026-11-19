@@ -132,7 +132,7 @@ docker run --rm --network none \
 | `tests/dialog-anatomie.test.js` | M28: kein eigenes `pushState`; Bestätigung und Menü über `BuschUI.dialogHistory`/`focusTrap`, Dialoggerüst `.busch-dialog` |
 | `tests/array-kompakt.test.js` | M64: Laufwerkstabellen mit gleicher `colgroup`, am Handy eine Zeile je Laufwerk mit Aufklapper, Pool-Fakten unter der Überschrift, Hinweise als `.busch-notice` |
 | `tests/registrierung.test.js` | M42: Registrierung nur über `BuschUI.register`, zweites Laden ohne Fehler und ohne doppelte Kartenwähler-Einträge |
-| `tests/kontrast.test.js` | M26: Textfarben von Knöpfen, Badges, Fehlertext und Gefahr-Menüeintrag ≥ 4,5:1 in hell und dunkel (THEMA-Werte der Renderskripte) |
+| `tests/kontrast.test.js` | M26: Textfarben von Knöpfen, Badges, Fehlertext und Gefahr-Menüeintrag ≥ 4,5:1 in hell und dunkel (THEMA-Werte der Renderskripte); M79: graue Symbole (Menü, neutral, Zustandsbaustein, Hinweis) ≥ 3:1 |
 | `tests/render-ha-icon.test.js` | M79: jedes Renderskript des Runners nutzt die gemeinsame `ha-icon`-Attrappe (`regeln.ha_icon_attrappe`, echte MDI-Glyphen) und meldet sie im Bericht; `kontrast-ausnahmen.json` ohne `ha-icon`-Ausnahme (Symbole mit 3:1 gemessen) |
 | `tests/schluss-*.test.js` | Schlussrunde #564: Render-Signatur und `watchDevice`, Lade-/Nicht-verfügbar-Zustände, Tabellen am Handy, Balkenkontrast, Ring, VM-Liste (Einklappen, `show_restart`), Kleinigkeiten |
 

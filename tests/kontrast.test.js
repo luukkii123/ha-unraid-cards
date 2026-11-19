@@ -61,3 +61,23 @@ test('M26 Docker tile status text reaches 4.5:1 on the open-menu, child and hove
     for (const [f, bg] of Object.entries(flaechen)) { const q = quote(text, bg); assert.ok(q >= 4.5, `tile-status ${f} ${name}: ${q.toFixed(2)}:1`); }
   }
 });
+
+// M79 (#1322): the render runs draw real MDI glyphs now and kontrast_touch measures them as non-text contrast (WCAG
+// 1.4.11, 3:1). Grey icons (secondary text colour) reach 3:1 on every surface they sit on, in light and dark.
+test('M79 grey icons reach 3:1 on their surfaces (menu item and hover, neutral state, state block, notice)', () => {
+  const S = K.BUSCH_UNRAID_STYLE, M = K.BUSCH_UNRAID_DOCKER_MENU_STYLE, D = K.BUSCH_UNRAID_DOCKER_STYLE;
+  const misch = (a, b, p) => a.map((v, i) => v * p + b[i] * (1 - p));
+  for (const [name, t] of Object.entries(THEMA)) {
+    const karte = hex(t['card-background-color']), grau2 = hex(t['secondary-background-color']);
+    const faelle = [
+      [M, '.item ha-icon', { karte, hover: misch(hex(t['primary-text-color']), karte, 0.07) }],
+      [D, '.sem-neutral ha-icon,.sem-unknown ha-icon', { karte }],
+      [S, '.busch-state-icon', { karte }],
+      [S, ':where(.busch-notice-icon)', { notiz: grau2 }],
+    ];
+    for (const [css, sel, flaechen] of faelle) {
+      const fg = farbe(wert(regel(css, sel), 'color'), t, css);
+      for (const [f, bg] of Object.entries(flaechen)) { const q = quote(fg, bg); assert.ok(q >= 3, `${sel} ${f} ${name}: ${q.toFixed(2)}:1`); }
+    }
+  }
+});
