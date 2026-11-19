@@ -39,7 +39,7 @@ import sys
 
 sys.path.insert(0, "/work")
 from playwright.sync_api import sync_playwright  # noqa: E402
-from regeln import bewerte, lauf_breiten, messe_popup, messe_text, schreibe, selbsttest, zaehle  # noqa: E402
+from regeln import bewerte, lauf_breiten, messe_kontrast_touch_hier, messe_popup, messe_text, schreibe, selbsttest, zaehle  # noqa: E402
 import kacheln as base  # noqa: E402
 
 BUNDLE = pathlib.Path(sys.argv[1])
@@ -83,6 +83,8 @@ ICON_NEU = ("customElements.define('ha-icon',class extends HTMLElement{connected
 SERVER = "busch-unraid-server-card"
 MEHR = SERVER + ' [data-focus-key="more"]'
 MENUE = "busch-unraid-docker-menu"
+#: M26 (#1317): exceptions of the contrast/touch measurement, each with a reason (hacs/scripts/kontrast_touch.py).
+AUSNAHMEN = pathlib.Path(__file__).with_name("kontrast-ausnahmen.json")
 
 FORM = """<style>[data-anzeige-editor]{display:block;min-width:0;color:var(--primary-text-color);background:var(--card-background-color);padding:16px;box-sizing:border-box}
 ha-form .feld{display:grid;gap:4px;margin:12px 0;min-width:0;overflow-wrap:anywhere}ha-form .opt{display:flex;align-items:center;gap:8px;min-height:44px;min-width:0}
@@ -231,6 +233,12 @@ def main():
             platziere(tag, variante, cfg, True, kompakt)
             report["selbsttest"][name + "-ein"] = selbsttest(page, tag)
 
+        def kt_sammeln(fall, breite, thema, messung):
+            """M26: contrast and touch of one state into report.json kontrast/touch (ergebnis keeps only messe_text results)."""
+            for bereich in ("kontrast", "touch"):
+                ziel = report.setdefault(bereich, {"ausnahmen_datei": messung[bereich].get("ausnahmen_datei"), "laeufe": []})
+                ziel["laeufe"].append({"fall": fall, "breite": breite, "thema": thema, **{k: v for k, v in messung[bereich].items() if k != "ausnahmen_datei"}})
+
         def messung(pg):
             breite = pg.viewport_size["width"]
             thema = pg.evaluate("document.documentElement.dataset.theme")
@@ -293,6 +301,7 @@ def main():
                             check(kopf["aktionen"] == ["mover_start", "more"], f"Serveraktionen {ort}: {kopf['aktionen']}")
                     report["karten"].append(eintrag)
                     ergebnis[f"{fall}"] = messe_text(pg, tag)
+                    kt_sammeln(fall, breite, thema, messe_kontrast_touch_hier(pg, tag, ausnahmen=AUSNAHMEN))
                 # Ohne Inhalt unter dem Kopf (gestoppte VM) gibt es nichts einzuklappen; die gewählte Kompaktzeile kommt hinzu.
                 if inhalt_aus:
                     check(hoehen["ein"] < hoehen["aus"], f"eingeklappt nicht niedriger {name} {breite} {thema}: {hoehen}")
@@ -321,10 +330,21 @@ def main():
             check(lage["sheet"] == (breite < 450) and lage["innen"] and not lage["klein"], f"Menülage {breite} {thema}: {lage}")
             check(pg.evaluate("()=>document.querySelector('busch-unraid-server-card').shadowRoot.querySelector('[data-focus-key=more]').getAttribute('aria-expanded')") == "true", f"⋮ ohne aria-expanded {breite} {thema}")
             ergebnis["servermenue"] = messe_text(pg, MENUE)
+            kt_sammeln("servermenue", breite, thema, messe_kontrast_touch_hier(pg, MENUE, ausnahmen=AUSNAHMEN))
             pg.keyboard.press("Escape")
             pg.wait_for_timeout(400)
             fokus = pg.evaluate("()=>{const c=document.querySelector('busch-unraid-server-card');return document.activeElement===c&&c.shadowRoot.activeElement?.dataset?.focusKey}")
             check(fokus == "more" and not pg.evaluate("()=>!!document.querySelector('busch-unraid-docker-menu')"), f"Fokus nach Escape {breite} {thema}: {fokus}")
+            # M26: contrast/touch of the confirmation dialog (footer buttons primary/destructive), opened from the menu, closed by Escape.
+            pg.locator(MEHR).click()
+            pg.wait_for_selector(MENUE)
+            pg.locator(f"{MENUE} .item[data-action='server_reboot']").click()
+            pg.wait_for_selector(base.DIALOG)
+            pg.wait_for_timeout(200)
+            kt_sammeln("bestaetigung", breite, thema, messe_kontrast_touch_hier(pg, "busch-unraid-confirm", ausnahmen=AUSNAHMEN))
+            pg.keyboard.press("Escape")
+            pg.wait_for_function("()=>!document.querySelector('busch-unraid-confirm')")
+            pg.wait_for_timeout(300)
             # Editoren aller 17 Karten.
             for name, tag, variante, cfg, kompakt, _ in FAELLE:
                 if name in ("vm-gestoppt", "vm-liste"):
@@ -364,6 +384,14 @@ def main():
             return ergebnis
 
         report["breiten"] = lauf_breiten(page, breiten=BREITEN, messung=messung, hoehe=1200)
+        # M26: exceptions never hit are listed (form of regeln.messe_kontrast_touch).
+        liste = json.loads(AUSNAHMEN.read_text(encoding="utf-8")) if AUSNAHMEN.is_file() else {}
+        for bereich in ("kontrast", "touch"):
+            if bereich in report:
+                benutzt = {a.get("selektor") for l in report[bereich]["laeufe"] for a in l.get("ausnahmen", [])}
+                report[bereich]["ungenutzte_ausnahmen"] = [a["selektor"] for a in liste.get(bereich, []) if a["selektor"] not in benutzt]
+        if "touch" in report:
+            report["touch"]["mindest_px"] = 44
         # M61 (#1317): every card shows its title in the one card header step, at each width in light and dark
         # (Fertig-wenn: same titles at 480 px light and dark; measured at all widths).
         for breite in BREITEN:

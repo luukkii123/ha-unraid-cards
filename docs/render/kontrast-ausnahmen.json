@@ -1,0 +1,10 @@
+{
+  "beschreibung": "Ausnahmen der Kontrast-/Touchmessung (M26, hacs/scripts/kontrast_touch.py) für docs/render/anzeige.py. Jede Ausnahme mit Grund.",
+  "kontrast": [
+    {
+      "selektor": "ha-icon",
+      "grund": "Die ha-icon-Attrappe der Renderseite zeichnet den Anfangsbuchstaben des Iconnamens als Textknoten; das echte ha-icon ist ein SVG ohne Text (Nicht-Text-Kontrast, WCAG 1.4.11), also kein Textkontrast nach 1.4.3. Texte neben den Icons werden weiter gemessen."
+    }
+  ],
+  "touch": []
+}
