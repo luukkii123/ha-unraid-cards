@@ -121,7 +121,9 @@ test('Gestoppte ausblenden: gestoppte Stacks und Container fehlen, Leerzustand',
   card._render();
   assert.equal(tiles(card).length, 1); // nur broken (unavailable) bleibt sichtbar
   core.entities.get('switch.broken').state = 'off'; card._render();
-  assert.equal(card.shadowRoot.querySelector('.message').textContent, 'Alle Container sind gestoppt und ausgeblendet.');
+  // M27: the empty state is the shared state block (role=status), no longer a bare .message line.
+  assert.equal(card.shadowRoot.querySelector('.busch-state-title').textContent, 'Alle Container sind gestoppt und ausgeblendet.');
+  assert.equal(card.shadowRoot.querySelector('.busch-state').getAttribute('data-kind'), 'empty'); assert.equal(card.shadowRoot.querySelector('.busch-state').getAttribute('role'), 'status');
 });
 
 test('Sortierung nach Zustand: laufend vor teilweise vor pausiert vor gestoppt vor nicht verfügbar', () => {
@@ -213,7 +215,8 @@ test('ohne Server: Leerzustand mit nächster Aktion; einziger Server wird automa
   assert.equal(l.buschUnraidDockerModel(core, { device_id: '' }).server.id, 'server');
   core.devices.delete('server');
   const card = karte(l, core, { device_id: '' });
-  assert.equal(card.shadowRoot.querySelector('.message').textContent, 'Kein Unraid-Server gefunden. Bitte im Editor einen Server wählen.');
+  assert.equal(card.shadowRoot.querySelector('.busch-state-title').textContent, 'Kein Unraid-Server gefunden. Bitte im Editor einen Server wählen.');
+  assert.equal(card.shadowRoot.querySelector('.busch-state').getAttribute('data-kind'), 'empty');
 });
 
 test('Unraid SSH 0.8.0: Anzeigename und Stackbild des Backends haben Vorrang', () => {

@@ -174,7 +174,7 @@ def main():
             info = page.evaluate("()=>({hscroll:document.scrollingElement.scrollWidth>innerWidth,"
                                  "karten:[...document.querySelectorAll('#wrap>*')].map(c=>{const b=c.getBoundingClientRect();"
                                  "return {tag:c.localName,w:Math.round(b.width),h:Math.round(b.height),"
-                                 "meldung:[...(c.shadowRoot?.querySelectorAll('.message')||[])].map(m=>m.textContent.trim())}})})")
+                                 "meldung:[...(c.shadowRoot?.querySelectorAll('.message,.busch-state-title')||[])].map(m=>m.textContent.trim())}})})")
             ergebnis.append({"bild": datei, "thema": thema, "breite": breite, "bytes": ziel.stat().st_size, **info})
         fehlend = page.evaluate("[...window.fehlend]")
         browser.close()

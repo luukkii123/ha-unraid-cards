@@ -161,7 +161,7 @@ JS_KOPF = r"""(sel)=>{const host=document.querySelector(sel),r=host.shadowRoot,c
   aktionen:knoepfe.map(b=>b.dataset.focusKey),aktion_zeilen:zeilen.length,aktion_breite_noetig:noetig,aktion_breite_da:da,badge_in_titelzeile:!!badge,
   ikon_titel_abstand:ikon&&titel?Math.round(Math.abs(mitte(ikon)-mitte(titel))):null,ikon:rc(ikon),titel_rect:rc(titel),
   ikon_im_textblock:(()=>{const tb=head?[...head.children].find(k=>k.matches('.tile-text,.header-main')):null;if(!ikon||!tb)return null;const b=tb.getBoundingClientRect(),m=mitte(ikon);return m>=b.top-1&&m<=b.bottom+1;})(),
-  inhalt:sichtbar.filter(k=>k!==head&&!k.matches('.compact-line,.message')).length,
+  inhalt:sichtbar.filter(k=>k!==head&&!k.matches('.compact-line,.message,.live-region')).length,
   rest_unten:Math.round(cb.bottom-unten),hoehe:Math.round(cb.height)};}"""
 
 JS_GPU = r"""(sel)=>{const r=document.querySelector(sel).shadowRoot;return [...r.querySelectorAll('.gpu-values .gpu-value')].map(c=>{const g=document.createRange();g.selectNodeContents(c);const b=g.getBoundingClientRect();return {wert:c.textContent,rechts:Math.round(b.right),zellen:c.parentElement.querySelectorAll(':scope>[role=cell]').length}});}"""

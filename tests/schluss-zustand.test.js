@@ -16,7 +16,8 @@ test('Server nicht verfügbar: Kopf bleibt, Inhalt „Nicht verfügbar“', () =
   const { unraidServer, BuschUnraidSystemCard, BuschUnraidGpuCard } = ladeKarte(['unraidServer', 'BuschUnraidSystemCard', 'BuschUnraidGpuCard']);
   assert.equal(unraidServer(unraidAttrappe(), {}).verfuegbar, true); assert.equal(unraidServer(unraidAttrappe({ ausfall: true }), {}).verfuegbar, true, 'nur CPU weg: noch verfügbar');
   assert.equal(unraidServer(ausgefallen(), {}).verfuegbar, false);
-  for (const K of [BuschUnraidSystemCard, BuschUnraidGpuCard]) { const k = rendere(K, ausgefallen()); assert.ok(k.shadowRoot.querySelector('.tile-title').textContent); assert.equal(k.shadowRoot.querySelector('.tile-body').textContent, 'Nicht verfügbar'); }
+  for (const K of [BuschUnraidSystemCard, BuschUnraidGpuCard]) { const k = rendere(K, ausgefallen()); assert.ok(k.shadowRoot.querySelector('.tile-title').textContent); // M27: offline state block: title „Nicht verfügbar“, cause in the hint, retry button.
+    const b = k.shadowRoot.querySelector('.tile-body').querySelector('.busch-state'); assert.equal(b.getAttribute('data-kind'), 'offline'); assert.equal(b.querySelector('.busch-state-title').textContent, 'Nicht verfügbar'); assert.match(b.querySelector('.busch-state-hint').textContent, /Unraid antwortet nicht/); }
 });
 test('Parität: parity_running nicht verfügbar → „Unbekannt“, nicht „Keine Prüfung aktiv“', () => {
   const { BuschUnraidParityCard } = ladeKarte(['BuschUnraidParityCard']); const c = unraidAttrappe({ parity: true }); c.entities.get('binary_sensor.tower_parity_running').state = 'unavailable';

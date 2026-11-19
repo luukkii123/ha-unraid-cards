@@ -244,7 +244,8 @@ JS_KARTE = r"""(sel)=>{const host=document.querySelector(sel);const r=host.shado
  const alle=[];const gehe=w=>{for(const el of w.querySelectorAll('*')){alle.push(el);if(el.shadowRoot)gehe(el.shadowRoot);}};gehe(r);
  const sichtbar=el=>{const s=getComputedStyle(el),b=el.getBoundingClientRect();return s.display!=='none'&&s.visibility!=='hidden'&&b.width>0&&b.height>0;};
  const ziele=alle.filter(el=>el.tagName==='BUTTON'&&sichtbar(el)).map(b=>{const x=b.getBoundingClientRect();return {label:b.getAttribute('aria-label')||b.textContent.trim(),w:Math.round(x.width),h:Math.round(x.height)}}).filter(x=>x.w<44||x.h<44);
- const meldungen=[...r.querySelectorAll('.message')].map(m=>m.textContent.trim());
+ // M27: whole-card states are the shared state block (.busch-state); its title counts as a message like .message.
+ const meldungen=[...r.querySelectorAll('.message,.busch-state-title')].map(m=>m.textContent.trim());
  const rgba=s=>{const m=String(s).match(/rgba?\(([^)]+)\)/);if(!m)return null;const t=m[1].split(/[ ,/]+/).filter(Boolean).map(Number);return [t[0],t[1],t[2],t.length>3?t[3]:1];};
  const hoch=el=>el.parentElement||(el.parentNode&&el.parentNode.host)||null;
  const grund=el=>{const lagen=[];let n=el;while(n&&n.nodeType===1){const c=rgba(getComputedStyle(n).backgroundColor);if(c&&c[3]>0){lagen.push(c);if(c[3]>=1)break;}n=hoch(n);}
@@ -255,7 +256,7 @@ JS_KARTE = r"""(sel)=>{const host=document.querySelector(sel);const r=host.shado
   const fg=rgba(getComputedStyle(el).color),bg=grund(el);if(!fg)continue;const f=[0,1,2].map(k=>fg[k]*fg[3]+bg[k]*(1-fg[3]));const a=lum(f),b=lum(bg);const q=(Math.max(a,b)+0.05)/(Math.min(a,b)+0.05);
   kontrast.push({text:el.textContent.trim().slice(0,40),klasse:el.className&&typeof el.className==='string'?el.className:el.localName,q:Math.round(q*100)/100});}
  kontrast.sort((x,y)=>x.q-y.q);
- return {ziele,meldungen,laedt:meldungen.some(m=>/lädt|loading/i.test(m)),kontrast_min:kontrast[0]||null,kontrast_niedrig:kontrast.filter(k=>k.q<4.5),hoehe:Math.round(host.getBoundingClientRect().height)};}"""
+ return {ziele,meldungen,laedt:meldungen.some(m=>/lädt|loading|wird geladen/i.test(m))||!!r.querySelector('.busch-state[data-kind=loading]'),kontrast_min:kontrast[0]||null,kontrast_niedrig:kontrast.filter(k=>k.q<4.5),hoehe:Math.round(host.getBoundingClientRect().height)};}"""
 
 # Header buttons of the server tile apart from the collapse toggle (M16: none for a non-admin with admin_actions).
 JS_AKTIONEN = "(sel)=>[...document.querySelector(sel).shadowRoot.querySelectorAll('button')].map(b=>b.dataset.focusKey).filter(k=>k&&k!=='toggle')"
