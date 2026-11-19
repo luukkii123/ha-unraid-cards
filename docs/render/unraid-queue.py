@@ -16,6 +16,23 @@ for(const key of ['web','db','proxy']){put('switch',key,'container','control','o
 window.baseline=JSON.stringify([...__queueCore.entities]);
 window.calls=[];
 '''
+def rgb(css):
+ """Parse a computed colour: rgb()/rgba() in 0..255 or color(srgb r g b) in 0..1; returns 0..1 floats."""
+ werte=[float(x) for x in re.findall(r'[-\d.]+',css)[:3]]
+ return werte if css.startswith('color(') else [x/255 for x in werte]
+def ton(c):
+ r,g,b=c;mx,mn=max(c),min(c)
+ if mx==mn:return None
+ h=(g-b)/(mx-mn)%6 if mx==r else (b-r)/(mx-mn)+2 if mx==g else (r-g)/(mx-mn)+4
+ return h*60
+def roter_ton(farbe,fehler):
+ """Same hue family as --error-color (within 15 degrees) and red is the dominant channel."""
+ a,b=ton(rgb(farbe)),ton(rgb(fehler))
+ return a is not None and b is not None and min(abs(a-b),360-abs(a-b))<=15 and rgb(farbe)[0]==max(rgb(farbe))
+def kontrast(vorne,hinten):
+ def l(c):
+  c=[x/12.92 if x<=0.04045 else ((x+0.055)/1.055)**2.4 for x in rgb(c)];return 0.2126*c[0]+0.7152*c[1]+0.0722*c[2]
+ a,b=sorted([l(vorne),l(hinten)],reverse=True);return (a+0.05)/(b+0.05)
 with sync_playwright() as p:
  browser=p.chromium.launch(headless=True);context=browser.new_context(ignore_https_errors=True,viewport={'width':1100,'height':1800});page=context.new_page();errors=[]
  page.on('pageerror',lambda e:errors.append({'type':type(e).__name__,'locations':re.findall(r'/([A-Za-z0-9_.-]+\.js):(\d+):(\d+)',e.stack or ''),'candidate':'queue-candidate-busch' in (e.stack or '')}))
@@ -45,7 +62,7 @@ with sync_playwright() as p:
       for(const key of ['web','db','proxy']){const update=__queueCore.entities.get('update.'+key+'_update');update.attributes={...update.attributes,in_progress:false,update_state:scenario==='completed'?'completed':key==='web'?scenario==='percent'?'updating':['blocked','offline'].includes(scenario)?'pulling':scenario:scenario==='failed'&&key==='db'?'pulling':'queued',queue_position:scenario==='queued'?(key==='web'?1:key==='db'?2:3):key==='db'?1:key==='proxy'?scenario==='failed'?1:2:null,progress_percent:scenario==='percent'&&key==='web'?42:null,stack_update_queue:q,last_error:scenario==='failed'?'Update fehlgeschlagen. Weitere Aufträge laufen weiter. Unraid prüfen und erneut starten.':scenario==='blocked'?'Backendstatus unklar. Verbindung prüfen; Auftrag bleibt aktiv.':null};if(scenario==='offline')update.state='unavailable';if(scenario==='completed')update.state='off';}
       const card=document.createElement(prefix+'unraid-'+kind+'-card');card.setConfig({device_id:'stack',container_key:'web'});card.hass={locale:{language:'de'},callService:async(...args)=>calls.push(args)};card.addEventListener('hass-more-info',event=>{event.stopPropagation();window.lastDetail=event.detail.entityId});host.append(card);window.card=card;}''',{'prefix':prefix,'width':width,'kind':kind,'scenario':scenario})
      page.wait_for_timeout(20)
-     result=page.evaluate('''()=>{const r=card.shadowRoot,b=card.getBoundingClientRect(),issues=[];for(const e of r.querySelectorAll('*')){const x=e.getBoundingClientRect(),s=getComputedStyle(e);if(!x.width||!x.height||s.display==='none')continue;if(x.right>b.right+1||x.left<b.left-1)issues.push('horizontal overflow');if(e.tagName==='BUTTON'&&(x.width<44||x.height<44))issues.push('touch target');if([...e.childNodes].some(n=>n.nodeType===3&&n.textContent.trim())&&!(s.overflow==='hidden'&&s.textOverflow==='ellipsis')&&(e.scrollWidth>e.clientWidth+1||e.scrollHeight>e.clientHeight+1))issues.push('text overflow');}return {issues,text:r.querySelector('ha-card').innerText,progress:[...r.querySelectorAll('progress')].map(e=>Number(e.value)),buttons:[...r.querySelectorAll('button')].map(e=>({text:e.innerText,disabled:e.disabled})),badges:[...r.querySelectorAll('.status-badge')].map(e=>{const probe=document.createElement('span');probe.style.color='var(--error-color)';e.parentNode.appendChild(probe);const error=getComputedStyle(probe).color;probe.remove();return {cls:e.className,text:e.innerText,color:getComputedStyle(e).color,error,icon:!!e.querySelector('ha-icon')}})}}''')
+     result=page.evaluate('''()=>{const r=card.shadowRoot,b=card.getBoundingClientRect(),issues=[];for(const e of r.querySelectorAll('*')){const x=e.getBoundingClientRect(),s=getComputedStyle(e);if(!x.width||!x.height||s.display==='none')continue;if(x.right>b.right+1||x.left<b.left-1)issues.push('horizontal overflow');if(e.tagName==='BUTTON'&&(x.width<44||x.height<44))issues.push('touch target');if([...e.childNodes].some(n=>n.nodeType===3&&n.textContent.trim())&&!(s.overflow==='hidden'&&s.textOverflow==='ellipsis')&&(e.scrollWidth>e.clientWidth+1||e.scrollHeight>e.clientHeight+1))issues.push('text overflow');}return {issues,text:r.querySelector('ha-card').innerText,progress:[...r.querySelectorAll('progress')].map(e=>Number(e.value)),buttons:[...r.querySelectorAll('button')].map(e=>({text:e.innerText,disabled:e.disabled})),badges:[...r.querySelectorAll('.status-badge')].map(e=>{const probe=document.createElement('span');probe.style.color='var(--error-color)';e.parentNode.appendChild(probe);const error=getComputedStyle(probe).color;probe.remove();return {cls:e.className,text:e.innerText,color:getComputedStyle(e).color,background:getComputedStyle(e).backgroundColor,error,icon:!!e.querySelector('ha-icon')}})}}''')
      if scenario=='queued':assert 'In Warteschlange · Position' in result['text']
      if scenario=='percent' and kind=='container':assert 42 in result['progress'] and '42 %' in result['text']
      if scenario=='pulling':
@@ -56,7 +73,8 @@ with sync_playwright() as p:
      if kind=='container':
       # M3: badge tone follows update_state; failed is red with a symbol, never a green pill.
       badge=result['badges'][0]
-      if scenario=='failed':assert 'status-error' in badge['cls'] and badge['icon'] and badge['color']==badge['error'],badge
+      # M26 mixes the error text with the text colour for 4.5:1, so the tone is checked by hue, not by the exact token value.
+      if scenario=='failed':assert 'status-error' in badge['cls'] and badge['icon'] and roter_ton(badge['color'],badge['error']) and kontrast(badge['color'],badge['background'])>=4.5,badge
       if scenario in ['queued','pulling','recreating','verifying']:assert 'status-warning' in badge['cls'] and badge['icon'],badge
       if scenario=='completed':assert 'status-success' in badge['cls'] and not badge['icon'],badge
      if scenario=='blocked':assert 'Verbindung prüfen' in result['text']
