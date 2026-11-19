@@ -1,7 +1,7 @@
 'use strict';
 // M49 (#1299, P10/F13) Node bench: ms per own update (a value the card shows changes, then one render) for every
-// card kind, plus ha-icon elements created per update and whether the live ha-icon objects survive.
-// Usage: node tests/unraid-update-bench.cjs [bundle.js] [runs] [--profil]   (default: dist/unraid-cards.js, 300 runs, 50 warm-up)
+// card kind, plus elements and ha-icon elements created per update and whether the live ha-icon objects survive.
+// Usage: node tests/unraid-update-bench.cjs [bundle.js] [runs] [--profil] [--karte=System,Docker]   (default: dist/unraid-cards.js, 300 runs, 50 warm-up)
 // --profil: mean ms per update split into model (core/Unraid model), signature (JSON.stringify called by the render
 // itself), merge (unraidAnwenden: DOM patch) and rest (building the fresh tree, dictionaries, focus, other). Exclusive
 // times through wrapped bundle functions; the wrappers cost a little, so the profile run is not the p95 run.
@@ -14,12 +14,12 @@ const { unraidAttrappe } = require('./attrappe.js');
 
 const ARGS = process.argv.slice(2).filter(a => !a.startsWith('--')), PROFIL = process.argv.includes('--profil');
 const BUNDLE = path.resolve(ARGS[0] || path.join(__dirname, '../dist/unraid-cards.js'));
-const LAEUFE = Number(ARGS[1]) || 300, WARM = 50;
+const LAEUFE = Number(ARGS[1]) || 300, WARM = 50, NUR = (process.argv.find(a => a.startsWith('--karte=')) || '').slice(8).split(',').filter(Boolean);
 const KLASSEN = ['BuschUnraidServerCard', 'BuschUnraidSystemCard', 'BuschUnraidCpuCard', 'BuschUnraidGpuCard', 'BuschUnraidArrayCard', 'BuschUnraidParityCard', 'BuschUnraidAirflowCard', 'BuschUnraidSharesCard', 'BuschUnraidVmUsageCard', 'BuschUnraidInterfaceCard', 'BuschUnraidUsersCard', 'BuschUnraidUsbCard', 'BuschUnraidCoralCard', 'BuschUnraidStackCard', 'BuschUnraidContainerCard', 'BuschUnraidVmCard', 'BuschUnraidDockerCard'];
 
 function lade() {
-  const registered = new Map(), document = dokument(registered), zaehler = { icons: 0 }, erzeuge = document.createElement;
-  document.createElement = tag => { if (tag === 'ha-icon') zaehler.icons++; return erzeuge(tag); };
+  const registered = new Map(), document = dokument(registered), zaehler = { icons: 0, elemente: 0 }, erzeuge = document.createElement;
+  document.createElement = tag => { zaehler.elemente++; if (tag === 'ha-icon') zaehler.icons++; return erzeuge(tag); };
   const window = { customCards: [], innerWidth: 1000, innerHeight: 800, scrollX: 0, scrollY: 0, addEventListener() {}, removeEventListener() {}, scrollTo() {} };
   const kontext = { performance, setTimeout, clearTimeout, HTMLElement: Element, customElements: { define: (k, v) => registered.set(k, v), get: k => registered.get(k) }, window, history: { state: null, pushState() {}, back() {} }, navigator: { language: 'de' }, console: { info() {}, warn() {}, error() {}, log() {} }, CustomEvent: class { constructor(type, init) { this.type = type; Object.assign(this, init); } }, document };
   kontext.globalThis = kontext; vm.createContext(kontext);
@@ -65,26 +65,37 @@ const FAELLE = {
   BuschUnraidVmCard: [() => unraidAttrappe({ zweiteVm: true }), (c, i) => { c.entities.get('sensor.win_cpu').state = wechsel(i, '36', '37'); }, { device_id: 'srv' }],
   BuschUnraidDockerCard: [() => dockerFixture(), (c, i) => { const e = c.entities.get('switch.webserver-mit-einem-sehr-langen-namen-der-abgeschnitten-werden-muss'); e.state = wechsel(i, 'off', 'on'); e.attributes.container_state = e.state === 'on' ? 'running' : 'exited'; }, { device_id: 'server' }],
 };
+// Docker card on a core with track/unchanged like Busch Core (#641): versions per device, bumped by the own update. The
+// plain fixtures have no track, so this case shows the kept device models (unraidGeraeteModell) of the real core path.
+FAELLE['BuschUnraidDockerCard@track'] = [() => verfolgt(dockerFixture()), (c, i) => { FAELLE.BuschUnraidDockerCard[1](c, i); c.stoss('switch.webserver-mit-einem-sehr-langen-namen-der-abgeschnitten-werden-muss'); }, { device_id: 'server' }];
+function verfolgt(core) {
+  const versionen = new Map(); let lesen = null; const lies = core.getDeviceEntities.bind(core);
+  core.getDeviceEntities = id => { lesen?.add(id); return lies(id); };
+  core.track = fn => { const aussen = lesen, r = new Set(); lesen = r; try { fn(); } finally { lesen = aussen; if (aussen) for (const key of r) aussen.add(key); } return { v: [...r].map(key => [key, versionen.get(key) || 0]) }; };
+  core.unchanged = d => !!d && d.v.length > 0 && d.v.every(([key, v]) => (versionen.get(key) || 0) === v);
+  core.stoss = id => { const d = core.entities.get(id).device_id; versionen.set(d, (versionen.get(d) || 0) + 1); };
+  return core;
+}
 function kachelKern() { const core = inventoryFixture(); core.add('fan_cpu_rpm', 1200); return core; }
 
 function p(werte, q) { const s = [...werte].sort((a, b) => a - b); return s[Math.min(s.length - 1, Math.floor(q * s.length))]; }
 
 const { klassen, zaehler, profil } = lade(), ergebnis = {};
-for (const name of KLASSEN) {
-  const [kern, aendern, config = { device_id: 'demo', show_clock: false, show_history: false }] = FAELLE[name], core = kern(), k = new klassen[name]();
+for (const name of Object.keys(FAELLE).filter(n => !NUR.length || NUR.some(x => n.split('@')[0] === 'BuschUnraid' + x + 'Card'))) {
+  const [kern, aendern, config = { device_id: 'demo', show_clock: false, show_history: false }] = FAELLE[name], core = kern(), k = new klassen[name.split('@')[0]]();
   k._core = core; k._hass = { locale: { language: 'de' }, config: { time_zone: 'UTC' }, states: {}, callService: async () => {} }; k.setConfig(config); k._render();
-  const zeiten = [], icons = []; let behalten = true;
+  const zeiten = [], icons = [], elemente = []; let behalten = true;
   for (let i = 0; i < WARM + LAEUFE; i++) {
     const vorher = k.shadowRoot.querySelectorAll('ha-icon').filter(n => !String(n.parentNode?.className).includes('status-badge'));
-    aendern(core, i); const n = zaehler.icons; if (profil && i === WARM) profil.leeren(); profil?.an(i >= WARM);
+    aendern(core, i); const n = zaehler.icons, e = zaehler.elemente; if (profil && i === WARM) profil.leeren(); profil?.an(i >= WARM);
     const t0 = performance.now(); k._render(); const dt = performance.now() - t0; profil?.an(false);
     if (i < WARM) continue;
-    zeiten.push(dt); icons.push(zaehler.icons - n);
+    zeiten.push(dt); icons.push(zaehler.icons - n); elemente.push(zaehler.elemente - e);
     const jetzt = new Set(k.shadowRoot.querySelectorAll('ha-icon')); if (!vorher.every(n => jetzt.has(n))) behalten = false;
   }
   if (profil) { const z = zeiten.reduce((a, b) => a + b, 0) / zeiten.length, s = profil.summe, f = x => +(x / zeiten.length).toFixed(4);
     ergebnis[name] = { gesamt_ms: +z.toFixed(4), modell_ms: f(s.modell), signatur_ms: f(s.signatur), abgleich_ms: f(s.abgleich), rest_ms: +(z - (s.modell + s.signatur + s.abgleich) / zeiten.length).toFixed(4) }; continue; }
-  ergebnis[name] = { p50_ms: +p(zeiten, 0.5).toFixed(4), p95_ms: +p(zeiten, 0.95).toFixed(4), knoten: k.shadowRoot.all().length - 1, ha_icon_neu_je_update: +(icons.reduce((a, b) => a + b, 0) / icons.length).toFixed(1), icons_objektgleich: behalten };
+  ergebnis[name] = { p50_ms: +p(zeiten, 0.5).toFixed(4), p95_ms: +p(zeiten, 0.95).toFixed(4), knoten: k.shadowRoot.all().length - 1, elemente_neu_je_update: +(elemente.reduce((a, b) => a + b, 0) / elemente.length).toFixed(1), ha_icon_neu_je_update: +(icons.reduce((a, b) => a + b, 0) / icons.length).toFixed(1), icons_objektgleich: behalten };
 }
 console.log(JSON.stringify({ bundle: path.basename(BUNDLE), laeufe: LAEUFE, node: process.version, profil: PROFIL }));
 for (const [name, werte] of Object.entries(ergebnis)) console.log(JSON.stringify({ karte: name.replace('BuschUnraid', ''), ...werte }));
