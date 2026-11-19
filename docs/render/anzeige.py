@@ -153,6 +153,8 @@ JS_KOPF = r"""(sel)=>{const host=document.querySelector(sel),r=host.shadowRoot,c
  const cb=card.getBoundingClientRect(),unten=sichtbar.length?Math.max(...sichtbar.map(k=>k.getBoundingClientRect().bottom)):cb.top;
  const badge=r.querySelector('.title-row .badge, .title-row [class*="badge"]');
  return {titel:titel?.textContent||null,titel_transform:titel?getComputedStyle(titel).textTransform:null,
+  // M61: card title typography (BuschUI.header level 1) — the same size and weight on every card.
+  titel_schrift:titel?(()=>{const s=getComputedStyle(titel);return {groesse:s.fontSize,gewicht:s.fontWeight,farbe:s.color,stufe:titel.getAttribute('data-level')};})():null,
   toggle:!!toggle,toggle_im_kopf:!!toggle&&toggle.parentElement===head,toggle_in_aktionen:!!toggle?.closest('.tile-actions,.actions'),
   toggle_expanded:toggle?.getAttribute('aria-expanded')??null,toggle_rect:rc(toggle),kopf:rc(head),karte:rc(card),
   toggle_ganz_rechts:!!toggle&&kinder.every(k=>k===toggle||k.getBoundingClientRect().right<=toggle.getBoundingClientRect().right+1),
@@ -362,6 +364,16 @@ def main():
             return ergebnis
 
         report["breiten"] = lauf_breiten(page, breiten=BREITEN, messung=messung, hoehe=1200)
+        # M61 (#1317): every card shows its title in the one card header step, at each width in light and dark
+        # (Fertig-wenn: same titles at 480 px light and dark; measured at all widths).
+        for breite in BREITEN:
+            for thema in ("light", "dark"):
+                schriften = {k["fall"]: k["kopf"].get("titel_schrift") for k in report["karten"]
+                             if k.get("breite") == breite and k.get("thema") == thema and k.get("kopf") and k["fall"].endswith("-aus")}
+                varianten = {json.dumps(v, sort_keys=True) for v in schriften.values()}
+                report.setdefault("titel_schrift", {})[f"{breite}-{thema}"] = {"varianten": sorted(varianten), "karten": len(schriften)}
+                check(len(schriften) >= 17 and len(varianten) == 1 and all(v and v["stufe"] == "1" for v in schriften.values()),
+                      f"Kartentitel uneinheitlich {breite} {thema}: {sorted(varianten)}")
         schreibe(OUT / "report.json", report, zeige=0)
 
         # Regel 2 am Servermenü je Breite (flüchtig: Scrim schließt, kein Verlaufsrest).
