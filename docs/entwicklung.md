@@ -50,6 +50,16 @@ Feste Verträge:
   Docker-Kacheln werden nur bei geänderter Teil-Signatur gebaut (`unraidBehalten`); Signaturen serialisieren nur
   das Modell, Konfiguration und Wörterbuch werden per Identität verglichen. Fremde Attribute und eigener Inhalt
   von `ha-card`/`ha-icon` bleiben unangetastet.
+- Teile (M49 Nachbesserung): `unraidTeil`/`unraidTeilVon` bauen einen Knoten nur, wenn seine Signatur sich
+  geändert hat; sonst hält ein Platzhalter den lebenden Knoten. Die Signatur ist JSON der Eingaben des Teils plus
+  eine Epoche der Karte (`unraidTeilEpoche`: neu, sobald `fest` – Konfiguration, Wörterbuch, Sprache, Einklappen,
+  Busy, Fehler, Rechte – sich ändert). Teile paaren über ihren Schlüssel; fehlt der lebende Teil, wird der
+  Platzhalter doch gebaut. Teile sind: Ringe/Raster/Temperaturen der Systemkarte, Werte-Tabelle und Lastbalken
+  der CPU-Karte, Pool-Raster und Gerätetabellen der Array-Karte (Signatur enthält, was die SMART-Relativzeit
+  gerade zeigt), Containerzeilen der Stack-Karte, VM-Zeilen und Kopf der VM-Liste, Kopf-Icon und Einklappknopf
+  von Familien- und Docker-Karte, Medien der Docker-Kacheln. Wer einen Teil ergänzt, nimmt alles, was der Knoten
+  zeigt, in die Eingaben auf (auch Zeitabhängiges). `Intl`-Formatierer entstehen einmal je Art, Sprache und
+  Optionen (`unraidIntl`, `unraidFormatNumber`).
 
 ### Anzeige und Einklappen (0.4.0, #642/#643)
 
@@ -106,6 +116,7 @@ docker run --rm --network none \
 | `tests/editor-versorgung.test.js` | M48: alle 17 Editoren setzen bei fremdem Update kein `schema`/`data`/`computeLabel`/`computeHelper` am `ha-form` (nur `hass`); Sprache, Konfiguration und Geräteliste versorgen weiter |
 | `tests/rechte.test.js` | Option `admin_actions` (M16): Nicht-Admin ohne Aktionsknöpfe und ohne `callService` in Server-, Array-, Paritäts-, Stack-, Container-, VM- und Docker-Karte, veraltete Knöpfe nach dem Wechsel Admin → Nicht-Admin, Admin unverändert; Option `confirm_update_all` |
 | `tests/xss.test.js` | M19: alle 17 Karten samt Servermenü, Bestätigungsdialog und Docker-Menü mit jedem Eintrag aus `XSS_PAYLOADS` in jedem angezeigten Textfeld; `activeMarkup` leer außer den benannten Elementen (Bild aus `BuschUI.media`, Ring-/Linien-SVG) |
+| `tests/teile.test.js` | M49 Nachbesserung: eigenes Update baut nur geänderte Teile (System, Array: Elementzahl; Stack, VM-Liste, Docker: keine `ha-icon` unveränderter Zeilen/Köpfe); Platzhalter ohne lebenden Teil wird gebaut; SMART-Relativzeit in behaltener Tabelle folgt der Uhr; Sprachwechsel baut Teile neu |
 | `tests/gezielt-aktualisieren.test.js` | M49: je Kartenart (13 Kacheln, Stack, Container, VM-Liste, Docker) eigenes Update ohne neue `ha-icon`, Wert aktualisiert, Fokus bleibt; Zeile weg/dazu, Stack auf/zu; behaltener Knopf mit neuem Handler; geteiltes `adoptedStyleSheets`-Blatt bzw. ein bleibendes `<style>` |
 | `tests/unraid-update-bench.cjs` | M49-Bank (kein Test): `node tests/unraid-update-bench.cjs [bundle] [läufe]`, p50/p95 ms je eigenem Update, neue `ha-icon` je Update, Icons objektgleich |
 | `tests/schluss-*.test.js` | Schlussrunde #564: Render-Signatur und `watchDevice`, Lade-/Nicht-verfügbar-Zustände, Tabellen am Handy, Balkenkontrast, Ring, VM-Liste (Einklappen, `show_restart`), Kleinigkeiten |
