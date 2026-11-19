@@ -258,6 +258,17 @@ JS_KARTE = r"""(sel)=>{const host=document.querySelector(sel);const r=host.shado
  kontrast.sort((x,y)=>x.q-y.q);
  return {ziele,meldungen,laedt:meldungen.some(m=>/lädt|loading|wird geladen/i.test(m))||!!r.querySelector('.busch-state[data-kind=loading]'),kontrast_min:kontrast[0]||null,kontrast_niedrig:kontrast.filter(k=>k.q<4.5),hoehe:Math.round(host.getBoundingClientRect().height)};}"""
 
+# M64 (#1317): disk tables of the array card. Per table the visible column widths (desktop: the same colgroup in every
+# group) and per row whether name, status, temperature and usage sit on one line (phone) and the row height.
+JS_LAUFWERKE = r"""(sel)=>{const r=document.querySelector(sel).shadowRoot;const tabellen=[...r.querySelectorAll('table.disks')];
+ const mitte=e=>{const b=e.getBoundingClientRect();return b.top+b.height/2};
+ return tabellen.map(t=>({spalten:[...t.querySelectorAll('thead th')].filter(th=>th.getBoundingClientRect().width>0).map(th=>Math.round(th.getBoundingClientRect().width)),
+  zeilen:[...t.querySelectorAll('tbody tr')].map(tr=>{const z=['c-n','c-s','c-t','c-u'].map(c=>tr.querySelector('td.'+c)).filter(Boolean),m=z.map(mitte);
+   return {name:tr.querySelector('td.c-n')?.textContent,hoehe:Math.round(tr.getBoundingClientRect().height),eine_zeile:m.length===4&&Math.max(...m)-Math.min(...m)<=4};})}));}"""
+#: Height of "Array voll" at 320 px light before M64 (run karten-20261119-114355-b75c2d, 49-kacheln/report.json, 1050 px);
+#: Fertig-wenn M64: at least 30 % shorter.
+ARRAY_VOLL_320_VORHER = 1050
+
 # Header buttons of the server tile apart from the collapse toggle (M16: none for a non-admin with admin_actions).
 JS_AKTIONEN = "(sel)=>[...document.querySelector(sel).shadowRoot.querySelectorAll('button')].map(b=>b.dataset.focusKey).filter(k=>k&&k!=='toggle')"
 
@@ -319,6 +330,8 @@ def main():
                     report["hscroll"].append(f"{fall} {breite} {t}")
                 if name.startswith("server"):
                     info["aktionsknoepfe"] = pg.evaluate(JS_AKTIONEN, tag)
+                if name == "array":
+                    info["laufwerke"] = pg.evaluate(JS_LAUFWERKE, tag)
                 report["karten"].append({"fall": fall, "breite": breite, "thema": t, "bild": datei, **info})
                 ergebnis[fall] = messe_text(pg, tag)
             return ergebnis
@@ -387,6 +400,19 @@ def main():
             eigene.append(f"nicht-admin sieht Serveraktionen {tag}: {k.get('aktionsknoepfe')}")
         if k["fall"] == "server-voll" and "more" not in (k.get("aktionsknoepfe") or []):
             eigene.append(f"admin ohne Menüknopf {tag}: {k.get('aktionsknoepfe')}")
+        if k["fall"] == "array-voll":
+            tabellen = k.get("laufwerke") or []
+            if not tabellen:
+                eigene.append(f"array ohne Laufwerkstabellen {tag}")
+            elif k["breite"] < 421:
+                # Phone: one line per disk, at most one touch target high plus padding.
+                schlecht = [z for t in tabellen for z in t["zeilen"] if not z["eine_zeile"] or z["hoehe"] > 56]
+                if schlecht:
+                    eigene.append(f"array {tag}: Laufwerk nicht einzeilig: {schlecht}")
+            elif len({tuple(t["spalten"]) for t in tabellen}) != 1:
+                eigene.append(f"array {tag}: Spaltenbreiten je Gruppe verschieden: {[t['spalten'] for t in tabellen]}")
+            if k["breite"] == 320 and k["thema"] == "light" and k["hoehe"] > 0.7 * ARRAY_VOLL_320_VORHER:
+                eigene.append(f"array-voll 320 nicht >= 30 % kürzer: {k['hoehe']} px (vorher {ARRAY_VOLL_320_VORHER} px)")
         if k["fall"].endswith("-leer") and not k["meldungen"]:
             eigene.append(f"kein leerzustand {tag}")
         niedrig = [x for x in k["kontrast_niedrig"] if x["q"] < 2]

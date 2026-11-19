@@ -15,7 +15,8 @@ const aktionsKnoepfe = k => k.shadowRoot.querySelectorAll('button').filter(b => 
 const tick = () => new Promise(r => setImmediate(r));
 // Values from the vm sandbox come from another realm: compare as JSON.
 const same = (a, b, msg) => assert.deepEqual(JSON.parse(JSON.stringify(a)), JSON.parse(JSON.stringify(b)), msg);
-const kachelKnoepfe = k => k.shadowRoot.querySelectorAll('button').filter(b => b.dataset.focusKey && b.dataset.focusKey !== 'toggle');
+// M64: the per-disk details toggle (focus key disk:…) only shows the SMART line, like toggle.
+const kachelKnoepfe = k => k.shadowRoot.querySelectorAll('button').filter(b => b.dataset.focusKey && b.dataset.focusKey !== 'toggle' && !b.dataset.focusKey.startsWith('disk:'));
 
 function familie(kind, config, admin) {
   const l = ladeFamilie(), { core } = familienFixture(), calls = [];
