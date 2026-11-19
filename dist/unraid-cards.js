@@ -1197,6 +1197,27 @@ class BuschSmartQueries {
 /* END BUSCH SHARED CORE */
 
 
+/* === Cards in this bundle (one window.customCards entry each, registration order; tests/kopfkommentar.test.js
+ * compares this list with customCards, so a new card needs a line here) ===
+ * busch-unraid-stack-card       Compose stack with its containers (family)
+ * busch-unraid-container-card   single container (family)
+ * busch-unraid-vm-card          virtual machines, list or single VM (family)
+ * busch-unraid-docker-card      Docker overview with tile grid and action menu
+ * busch-unraid-server-card      name, clock, uptime and array state of a server (tile)
+ * busch-unraid-system-card      RAM usage and temperatures (tile)
+ * busch-unraid-cpu-card         CPU load, temperature and load history (tile)
+ * busch-unraid-gpu-card         graphics card load, memory, temperature, power (tile)
+ * busch-unraid-array-card       array, pool and boot disks (tile)
+ * busch-unraid-parity-card      parity check state, progress and errors (tile)
+ * busch-unraid-airflow-card     server fans with speed and level (tile)
+ * busch-unraid-shares-card      shares with used and free space (tile)
+ * busch-unraid-vm-usage-card    CPU and RAM of running VMs (tile)
+ * busch-unraid-interface-card   network interfaces with state and throughput (tile)
+ * busch-unraid-users-card       users and their SMB share permissions (tile)
+ * busch-unraid-usb-card         USB devices and their assignments (tile)
+ * busch-unraid-coral-card       Coral TPUs with PCI status and temperature (tile)
+ */
+
 /* === Version und Sprache === */
 const CARD_VERSION = "0.8.0";
 
@@ -1208,7 +1229,7 @@ console.info(
 
 
 /* ────────────────────────────────────────────────────────────────────────────
- * Sprache und Wörterbücher — gemeinsam für alle drei Karten
+ * Sprache und Wörterbücher — gemeinsam für alle Karten des Bundles
  *
  * `docs/ui-regeln.md`, Regel 3: jede Karte hat EIN Wörterbuch mit beiden
  * Sprachen für Labels, Helper, Knöpfe, Fehlermeldungen und Leerzustände. Kein

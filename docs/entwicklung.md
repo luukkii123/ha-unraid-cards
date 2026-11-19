@@ -11,11 +11,12 @@ nie. Die Datei gliedert sich in Abschnitte (Kommentarköpfe im Code):
 | --- | --- |
 | `BEGIN/END BUSCH SHARED UI` | gemeinsame UI-Bausteine aller Busch-Kartenrepos (Editorbasis, Medien, Status, Sprache). Wortgleich mit Versions- und Hashkopf; nie von Hand ändern, sondern zentral abgleichen. |
 | `BEGIN/END BUSCH SHARED CORE` | `BuschCardsCore`, `ensureBuschCore`, Registercache, Entitätsindex, Abfrage-Engine und die Smart-Abfragen (`BuschSmartQueries`, `buschSmart*`, auto-entities-Attribution mit MIT-Hinweis). Zur Laufzeit gibt es den Kern nur einmal (`globalThis[Symbol.for("busch.cards.core")]`, API 1): wer zuerst lädt, legt ihn an — auch für Busch-Cards-Karten wie Gerät und Smart. Deshalb ist der Block **byte-gleich** zu `busch-cards/dist/busch-cards.js`. Quelle ist `hacs/shared-core/busch-core.js`; nie von Hand im Block ändern, sondern die Quelle ändern und mit `python3 scripts/sync-shared-ui.py --write …` (im hacs-Ordner) in beide Bundles schreiben. Der Hash im Kopf deckt den Blockinhalt; `tests/kern.test.js` und das CI prüfen ihn, der Prüfmodus des Sync-Skripts bzw. `scripts/kern-gleich-pruefen.py` den Vergleich beider Repos. `ensureBuschCore` bleibt eine globale Funktion und wird als `ensureBuschCore(1)` aufgerufen. |
+| Kartenliste | Kopfkommentar „Cards in this bundle“: alle 17 Kartentypen in Registrierreihenfolge; `tests/kopfkommentar.test.js` vergleicht ihn mit `window.customCards` (M73). |
 | Version und Sprache | `CARD_VERSION`, Konsolenbanner, Sprachwahl nach `hass.locale.language` (im Kartenwähler nach `navigator.language`). |
 | Unraid-Familie | Stack-, Container- und VM-Karte samt Modell (`buschUnraidModel`), Editoren und gemeinsamen Vorgaben (`BUSCH_UNRAID_DEFAULTS`). |
 | Unraid-Docker-Übersicht | `busch-unraid-docker-card` mit Kachelraster und Aktionsmenü. |
 | Kachel-Basis | `BuschUnraidTile` (Kopf, Einklappen mit `localStorage`; `_umschalten` und `_connect` kommen wie bei der Familienkarte aus den Mixins `unraidEinklappbar`/`unraidKernAnbindung` über die Basis `BuschUnraidKartenBasis`, die Editoren über `BuschUnraidEditorBasis`), Bausteine Balken, Ring, Tabelle, Raster, Statuspunkt, das Servermodell und der zentrale Bestätigungsdialog `busch-unraid-confirm`. |
-| Kacheln | die neun Kacheln Server, System, Prozessor, GPU, Array, Parität, Airflow, Shares, VM-Nutzung mit gemeinsamem Editor `BuschUnraidTileEditor`. |
+| Kacheln | die dreizehn Kacheln Server, System, Prozessor, GPU, Array, Parität, Airflow, Shares, VM-Nutzung, Netzwerk, Benutzer, USB, Coral mit gemeinsamem Editor `BuschUnraidTileEditor`. |
 
 Feste Verträge:
 
