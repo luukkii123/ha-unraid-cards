@@ -5,7 +5,7 @@
 const test = require('node:test'), assert = require('node:assert/strict');
 const { ladeKarte } = require('./laden.js');
 
-const K = ladeKarte(['BUSCH_UNRAID_STYLE', 'UNRAID_CONFIRM_STYLE', 'BUSCH_UNRAID_DOCKER_MENU_STYLE', 'BUSCH_UNRAID_DOCKER_STYLE', 'BuschUI']);
+const K = ladeKarte(['BUSCH_UNRAID_STYLE', 'UNRAID_CONFIRM_STYLE', 'BUSCH_UNRAID_DOCKER_MENU_STYLE', 'BUSCH_UNRAID_DOCKER_STYLE', 'UNRAID_TILE_STYLE', 'BuschUI']);
 const THEMA = {
   light: { 'primary-color': '#03a9f4', 'primary-text-color': '#212121', 'secondary-text-color': '#727272', 'card-background-color': '#ffffff', 'secondary-background-color': '#e5e5e5', 'error-color': '#db4437', 'success-color': '#43a047', 'warning-color': '#ffa600', 'text-primary-color': '#ffffff' },
   dark: { 'primary-color': '#03a9f4', 'primary-text-color': '#e1e1e1', 'secondary-text-color': '#9b9b9b', 'card-background-color': '#1c1c1c', 'secondary-background-color': '#202020', 'error-color': '#db4437', 'success-color': '#43a047', 'warning-color': '#ffa600', 'text-primary-color': '#212121' },
@@ -80,4 +80,33 @@ test('M79 grey icons reach 3:1 on their surfaces (menu item and hover, neutral s
       for (const [f, bg] of Object.entries(flaechen)) { const q = quote(fg, bg); assert.ok(q >= 3, `${sel} ${f} ${name}: ${q.toFixed(2)}:1`); }
     }
   }
+});
+
+// M79 (#1320, user decision 19.11.): coloured icons are non-text graphics too and reach 3:1 on every surface they sit on,
+// light and dark, also next to a text. Status/theme colour mixed with the text colour like the texts (60 %).
+test('M79 coloured icons reach 3:1 on their surfaces (card/row/tile icon, badge, Docker status, danger menu item, status dots)', () => {
+  const S = K.BUSCH_UNRAID_STYLE, M = K.BUSCH_UNRAID_DOCKER_MENU_STYLE, D = K.BUSCH_UNRAID_DOCKER_STYLE, T = K.UNRAID_TILE_STYLE;
+  const misch = (a, b, p) => a.map((v, i) => v * p + b[i] * (1 - p));
+  const faelle = [];
+  for (const [name, t] of Object.entries(THEMA)) {
+    const karte = hex(t['card-background-color']), blau = hex(t['primary-color']), text = hex(t['primary-text-color']);
+    const kachel = { karte, offen: misch(blau, karte, 0.12), kind: misch(blau, karte, 0.06), kind_offen: misch(blau, misch(blau, karte, 0.06), 0.12), hover: misch(text, karte, 0.05) };
+    const liste = [
+      [S, '.card-icon,.row-icon', { grau: hex(t['secondary-background-color']) }],
+      [D, '.tile-main .tile-icon', { grau: hex(t['secondary-background-color']) }],
+      [S, '.status-warning>ha-icon', { badge: farbe(wert(regel(S, '.status-warning'), 'background'), t, S) }],
+      [D, '.sem-success ha-icon', kachel], [D, '.sem-warning ha-icon', kachel], [D, '.sem-error ha-icon,.sem-unavailable ha-icon', kachel],
+      [M, '.item.danger ha-icon', { karte, hover: misch(text, karte, 0.07) }],
+      // Status dots (aria-hidden next to the status text): the badge dot and the value-grid dot.
+      [S, '.status-success::before', { badge: farbe(wert(regel(S, '.status-success'), 'background'), t, S) }, 'background'],
+      [S, '.status-warning::before', { badge: farbe(wert(regel(S, '.status-warning'), 'background'), t, S) }, 'background'],
+      [S, '.status-error::before,.status-unavailable::before', { badge: farbe(wert(regel(S, '.status-error,.status-unavailable'), 'background'), t, S) }, 'background'],
+      [T, '.dot.sem-ok', { karte }, 'background'], [T, '.dot.sem-warning', { karte }, 'background'], [T, '.dot.sem-error', { karte }, 'background'],
+    ];
+    for (const [css, sel, flaechen, prop = 'color'] of liste) {
+      const fg = farbe(wert(regel(css, sel), prop), t, css);
+      for (const [f, bg] of Object.entries(flaechen)) { const q = quote(fg, bg); faelle.push(`${sel} ${f} ${name}: ${q.toFixed(2)}:1`); assert.ok(q >= 3, faelle.at(-1)); }
+    }
+  }
+  assert.equal(faelle.length, 52);
 });
