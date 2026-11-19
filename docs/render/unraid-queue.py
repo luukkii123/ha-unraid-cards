@@ -5,13 +5,20 @@ import json,pathlib,sys,re
 from playwright.sync_api import sync_playwright
 from readonly_guard import install_readonly_guard
 # M79: shared ha-icon stand-in with real MDI glyphs from hacs/docs/render/regeln.py (/work in the runner container).
+# M45: the repo CI job `contracts` has no regeln.py. Without it the script keeps its own simple ha-icon and skips
+# only the stand-in check (haIcon.kein_urteil in report.json). Where /work exists (runner) regeln.py stays mandatory.
 for _kandidat in ('/work', str(pathlib.Path(__file__).resolve().parents[3] / 'docs' / 'render')):
  if pathlib.Path(_kandidat, 'regeln.py').is_file():
   sys.path.insert(0, _kandidat)
   break
-else:
- sys.exit('regeln.py nicht gefunden: der Container braucht -v "<hacs>/docs/render:/work" (hacs/docs/karten.md).')
-import regeln  # noqa: E402
+try:
+ import regeln  # noqa: E402
+except ImportError:
+ if pathlib.Path('/work').is_symlink() or pathlib.Path('/work').exists():
+  sys.exit('regeln.py nicht gefunden: der Container braucht -v "<hacs>/docs/render:/work" (hacs/docs/karten.md).')
+ regeln = None
+ print('ha-icon-Attrappe: NICHT geprueft - regeln.py fehlt (Repo-CI ohne /work)')
+KEIN_URTEIL = {'kein_urteil': 'regeln.py nicht gefunden - ha-icon-Attrappe nicht geprueft'}
 source=pathlib.Path(sys.argv[1]).read_text();out=pathlib.Path(sys.argv[2]);out.mkdir(parents=True,exist_ok=True)
 native=len(sys.argv)>3
 prefix='queue-candidate-busch-' if native else 'busch-'
@@ -52,7 +59,7 @@ with sync_playwright() as p:
   page.goto(base+'/lovelace/0',wait_until='domcontentloaded',timeout=45000)
   page.wait_for_function("!!document.querySelector('home-assistant')?.hass && !!customElements.get('ha-card')",timeout=45000)
  else:
-  regeln.ha_icon_attrappe(page)  # M79: real MDI glyphs instead of a diamond (synthetic page only; native HA keeps its own ha-icon)
+  if regeln:regeln.ha_icon_attrappe(page)  # M79: real MDI glyphs instead of a diamond (synthetic page only; native HA keeps its own ha-icon)
   page.set_content('''<style>body{margin:0;font-family:Arial}html{--primary-color:#0879d0;--error-color:#db4437;--primary-text-color:#212121;--secondary-text-color:#555;--card-background-color:#fff;--secondary-background-color:#eef5fb;--divider-color:#dbe4ed;--success-color:#16864b;--warning-color:#a76900;--disabled-text-color:#777}</style>''')
   page.add_script_tag(content="customElements.define('ha-icon',class extends HTMLElement{connectedCallback(){this.textContent='◇'}})")
  page.add_script_tag(content='(function(){'+source+'})();' if native else source)
@@ -102,8 +109,8 @@ with sync_playwright() as p:
  assert page.evaluate("card.shadowRoot.querySelector('ha-card').innerText.includes('Wird geprüft')")
  assert page.evaluate('calls.length')==0
  guard_report={**guard_counts,'websocketWritesBlocked':page.evaluate("(window.__blocked||[]).reduce((counts,type)=>{counts[type]=(counts[type]||0)+1;return counts},{})")} if native else {}
- ha_icon=regeln.ha_icon_fehlend(page) if not native else None  # M79: stand-in active, names without a path
+ ha_icon=(regeln.ha_icon_fehlend(page) if regeln else KEIN_URTEIL) if not native else None  # M79: stand-in active, names without a path
  browser.close()
 summary={'haIcon':ha_icon,'guard':guard_report,'native':native,'cases':len(report),'failures':sum(len(r['issues']) for r in report),'page_errors':errors,'service_calls':0,'cases_detail':report}
 (out/'report.json').write_text(json.dumps(summary,indent=2));print(json.dumps({k:v for k,v in summary.items() if k!='cases_detail'}));assert not summary['failures'] and not errors
-assert native or (ha_icon['aktiv'] and not ha_icon['fehlend']),ha_icon
+assert native or not regeln or (ha_icon['aktiv'] and not ha_icon['fehlend']),ha_icon

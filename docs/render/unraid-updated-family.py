@@ -2,13 +2,20 @@
 import json,pathlib,sys
 from playwright.sync_api import sync_playwright
 # M79: shared ha-icon stand-in with real MDI glyphs from hacs/docs/render/regeln.py (/work in the runner container).
+# M45: the repo CI job `contracts` has no regeln.py. Without it the script keeps its own simple ha-icon and skips
+# only the stand-in check (haIcon.kein_urteil in report.json). Where /work exists (runner) regeln.py stays mandatory.
 for _kandidat in ('/work', str(pathlib.Path(__file__).resolve().parents[3] / 'docs' / 'render')):
  if pathlib.Path(_kandidat, 'regeln.py').is_file():
   sys.path.insert(0, _kandidat)
   break
-else:
- sys.exit('regeln.py nicht gefunden: der Container braucht -v "<hacs>/docs/render:/work" (hacs/docs/karten.md).')
-import regeln  # noqa: E402
+try:
+ import regeln  # noqa: E402
+except ImportError:
+ if pathlib.Path('/work').is_symlink() or pathlib.Path('/work').exists():
+  sys.exit('regeln.py nicht gefunden: der Container braucht -v "<hacs>/docs/render:/work" (hacs/docs/karten.md).')
+ regeln = None
+ print('ha-icon-Attrappe: NICHT geprueft - regeln.py fehlt (Repo-CI ohne /work)')
+KEIN_URTEIL = {'kein_urteil': 'regeln.py nicht gefunden - ha-icon-Attrappe nicht geprueft'}
 # Bestaetigungen laufen ueber den eigenen Dialog busch-unraid-confirm (R04), nicht mehr ueber window.confirm:
 # Klick ausloesen, auf den Dialog warten, Abbrechen (erster) oder Bestaetigen (letzter Knopf) druecken.
 def antworte(page,klick,annehmen):
@@ -31,7 +38,9 @@ put('stack','container','web','update','on',{in_progress:false,update_percentage
 window.baseline=JSON.stringify([...core.entities]);
 '''
 with sync_playwright() as p:
- browser=p.chromium.launch(headless=True);regeln.ha_icon_attrappe(browser);page=browser.new_page(viewport={'width':1000,'height':1800});errors=[]
+ browser=p.chromium.launch(headless=True)
+ if regeln:regeln.ha_icon_attrappe(browser)  # M79: real MDI glyphs instead of a diamond
+ page=browser.new_page(viewport={'width':1000,'height':1800});errors=[]
  page.on('pageerror',lambda e:errors.append(str(e)))
  page.set_content('''<style>body{margin:0;font-family:Arial}ha-card{display:block;border:1px solid var(--divider-color);border-radius:16px}ha-icon{font-size:24px}html{--primary-color:#0879d0;--error-color:#db4437;--primary-text-color:#212121;--secondary-text-color:#555;--card-background-color:#fff;--secondary-background-color:#eef5fb;--divider-color:#dbe4ed;--success-color:#16864b;--warning-color:#a76900;--disabled-text-color:#777}</style>''')
  page.add_script_tag(content=source);page.add_script_tag(content=fixture);page.evaluate('window.ensureBuschCore=()=>core')
@@ -69,9 +78,9 @@ with sync_playwright() as p:
        antworte(page,lambda:page.locator('[data-test-card]').get_by_role('button',name='Sofort ausschalten',exact=True).click(),True);assert page.evaluate("calls[1][0]==='button'&&calls[1][1]==='press'&&calls[1][2].entity_id==='button.vm_Guest_force_stop'")
       detail=[];page.evaluate("document.querySelector('[data-test-card]').addEventListener('hass-more-info',e=>window.detail=e.detail)");page.get_by_role('button',name='Details',exact=True).first.click();assert page.evaluate('detail.entityId').startswith('switch.')
      file=f'{kind}-{scenario}-{width}-'+('dark' if dark else 'light')+'.png';page.locator('[data-test-card]').screenshot(path=str(out/file));report.append({'kind':kind,'scenario':scenario,'width':width,'dark':dark,'failures':findings,'screenshot':file})
- ha_icon=regeln.ha_icon_fehlend(page)  # M79: stand-in active, names without a path
+ ha_icon=regeln.ha_icon_fehlend(page) if regeln else KEIN_URTEIL  # M79: stand-in active, names without a path
  browser.close()
 (out/'report.json').write_text(json.dumps({'cases':report,'errors':errors,'haIcon':ha_icon},indent=2))
 print(json.dumps({'cases':len(report),'failures':sum(len(r['failures']) for r in report),'errors':errors}))
 assert not errors and not any(r['failures'] for r in report)
-assert ha_icon['aktiv'] and not ha_icon['fehlend'],ha_icon
+assert not regeln or (ha_icon['aktiv'] and not ha_icon['fehlend']),ha_icon
