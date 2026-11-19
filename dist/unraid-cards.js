@@ -1694,10 +1694,6 @@ p,.detail,.message{margin:0;overflow-wrap:anywhere;font-size:var(--ha-font-size-
 .status-badge::before{content:'';width:8px;height:8px;flex:none;border-radius:50%;background:currentColor}/* M26 (#1317, E6): status text mixed toward the text colour (≥ 4.5:1 light and dark), the dot keeps the full status colour. */
 .status-success{color:color-mix(in srgb,var(--success-color,#16864b) 50%,var(--primary-text-color));background:color-mix(in srgb,var(--success-color,#16864b) 12%,var(--card-background-color))}.status-success::before{background:var(--success-color,#16864b)}.status-neutral,.status-unknown{color:color-mix(in srgb,var(--secondary-text-color) 60%,var(--primary-text-color))}.status-warning{color:color-mix(in srgb,var(--warning-color,#a76900) 50%,var(--primary-text-color,#212121));background:color-mix(in srgb,var(--warning-color,#a76900) 12%,var(--card-background-color))}.status-warning::before{background:var(--warning-color,#a76900)}.status-badge:has(>ha-icon)::before{display:none}.status-badge>ha-icon{order:-1;flex:none;--mdc-icon-size:16px}.status-warning>ha-icon{color:var(--warning-color,#a76900)}.status-error,.status-unavailable{color:color-mix(in srgb,var(--error-color) 50%,var(--primary-text-color));background:color-mix(in srgb,var(--error-color) 10%,var(--card-background-color))}.status-error::before,.status-unavailable::before{background:var(--error-color)}
 .actions{display:flex;flex-wrap:wrap;gap:var(--unraid-small)}.header>.actions{grid-column:2/-1;justify-content:flex-end}
-/* M26 (#1317, E6): measured/computed contrast of the shared button variants in HA's default theme (white on #03a9f4 2.6:1,
- * red on white 4.3:1): primary and filled destructive become a tonal fill with the text colour, destructive text is mixed
- * toward the text colour. ≥ 4.5:1 in light and dark (tests/kontrast.test.js); HA blue and red stay as surface and border. */
-.busch-btn[data-variant=primary]{background:color-mix(in srgb,var(--primary-color) 50%,var(--card-background-color));color:var(--primary-text-color)}.busch-btn[data-variant=danger],.busch-btn[data-variant=destructive]{color:var(--unraid-error-text);border-color:var(--error-color)}.busch-btn[data-variant=destructive][data-filled]{background:color-mix(in srgb,var(--error-color) 50%,var(--card-background-color));color:var(--primary-text-color)}
 /* M62: action buttons look like .busch-btn (BuschUI.styles); this rule only resets native buttons, Docker tiles paint their own surface. */
 button{font:inherit;cursor:pointer;overflow-wrap:anywhere;max-width:100%}button:disabled{cursor:default}button:focus-visible{outline:2px solid var(--primary-color);outline-offset:2px}
 .disclosure{display:flex;align-items:center;justify-content:space-between;width:100%;margin-top:var(--unraid-small);text-align:start;color:var(--primary-text-color);background:var(--secondary-background-color)}.disclosure::after{content:'⌄';font-size:1.25em;line-height:1}.disclosure[aria-expanded=false]::after{transform:rotate(-90deg)}
@@ -1761,9 +1757,9 @@ function unraidBehalten(tag,key){const node=document.createElement(tag);node._un
 /* Button whose click always runs the handler of the latest render (see above). */
 function unraidKnopf(optionen,fn){const node=document.createElement('button');node._unraidAct=fn;BuschUI.action({...optionen,node,onClick:event=>node._unraidAct?.(event,node)});return unraidBtn(node);}
 /* M62 (#1317, W12): the one button look is .busch-btn (BuschUI.styles, variant from data-variant). BuschUI.action() also adds
- * .busch-ui-action, whose base rule follows in cardStyles with the same zero specificity and would cover .busch-btn, so the
- * class is taken off again (name, keyboard and tooltip of action() stay). */
-function unraidBtn(node){node.className=('busch-btn '+String(node.className||'')).split(/\s+/).filter((c,i,a)=>c&&c!=='busch-ui-action'&&a.indexOf(c)===i).join(' ');return node;}
+ * .busch-ui-action; since Shared UI 0.5.0 (#1312) its base rules come first in cardStyles, so .busch-btn wins on the same element
+ * (name, keyboard and tooltip of action() stay). */
+function unraidBtn(node){node.className=('busch-btn '+String(node.className||'')).split(/\s+/).filter((c,i,a)=>c&&a.indexOf(c)===i).join(' ');return node;}
 function unraidKlick(node,fn){node._unraidAct=fn;node.addEventListener('click',event=>node._unraidAct?.(event,node));return node;}
 /* M27 (#1317, W3): the one state block of the family (BuschUI.stateBlock) for loading, empty, error and offline. data-key
  * pairs it across renders, so it stays the same live region and a change of kind is announced. `aktion` {label,fn,disabled}
@@ -2934,10 +2930,8 @@ class BuschUnraidTile extends HTMLElement {
 }
 // M28 (#1317, W4): shared dialog anatomy (BuschUI.styles .busch-dialog, data-size=confirm 320 px, bottom sheet under 450 px
 // width or 500 px height). Own rules: the fixed host above HA dialogs, the scrim and the icon-only close X.
-const UNRAID_CONFIRM_STYLE=`:host{position:fixed;inset:0;z-index:10000;display:grid;place-items:center;--unraid-error-text:color-mix(in srgb,var(--error-color) 70%,var(--primary-text-color))}
+const UNRAID_CONFIRM_STYLE=`:host{position:fixed;inset:0;z-index:10000;display:grid;place-items:center}
 ${BuschUI.styles}
-/* M26: contrast of the footer buttons as in the cards (BUSCH_UNRAID_STYLE). */
-.busch-btn[data-variant=primary]{background:color-mix(in srgb,var(--primary-color) 50%,var(--card-background-color));color:var(--primary-text-color)}.busch-btn[data-variant=danger],.busch-btn[data-variant=destructive]{color:var(--unraid-error-text);border-color:var(--error-color)}.busch-btn[data-variant=destructive][data-filled]{background:color-mix(in srgb,var(--error-color) 50%,var(--card-background-color));color:var(--primary-text-color)}
 .scrim{position:absolute;inset:0;background:var(--mdc-dialog-scrim-color,rgba(0,0,0,.32))}
 .dialog{position:relative;box-shadow:var(--ha-card-box-shadow,0 8px 24px rgba(0,0,0,.3))}
 .busch-dialog-content p{margin:0;overflow-wrap:anywhere}

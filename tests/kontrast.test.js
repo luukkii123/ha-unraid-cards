@@ -26,13 +26,13 @@ const regel = (css, sel) => { const i = css.indexOf(sel + '{'); assert.ok(i >= 0
 const wert = (block, prop) => block.match(new RegExp('(?:^|;)' + prop + ':((?:color-mix\\([^;]*\\)\\))|[^;]*)'))?.[1];
 
 test('M26 Unraid text colours reach 4.5:1 in light and dark (buttons, badges, error text, danger menu item)', () => {
-  const S = K.BUSCH_UNRAID_STYLE, C = K.UNRAID_CONFIRM_STYLE, M = K.BUSCH_UNRAID_DOCKER_MENU_STYLE;
+  const S = K.BUSCH_UNRAID_STYLE, M = K.BUSCH_UNRAID_DOCKER_MENU_STYLE, B = K.BuschUI.styles;
   const faelle = [
     // [css, rule, background (rule property or token)]
-    [S, '.busch-btn[data-variant=primary]', 'background'], [C, '.busch-btn[data-variant=primary]', 'background'],
-    [S, '.busch-btn[data-variant=destructive][data-filled]', 'background'], [C, '.busch-btn[data-variant=destructive][data-filled]', 'background'],
-    [S, '.busch-btn[data-variant=danger],.busch-btn[data-variant=destructive]', 'var(--card-background-color)'],
-    [C, '.busch-btn[data-variant=danger],.busch-btn[data-variant=destructive]', 'var(--card-background-color)'],
+    // Button variants come from Shared UI 0.5.0 (BuschUI.styles, in the cards and the confirmation dialog).
+    [B, ':where(.busch-btn[data-variant=primary])', 'background'],
+    [B, ':where(.busch-btn[data-variant=destructive][data-filled]),:where(.busch-btn[data-variant=danger][data-filled])', 'background'],
+    [B, ':where(.busch-btn[data-variant=destructive]),:where(.busch-btn[data-variant=danger])', 'var(--card-background-color)'],
     [S, '.status-success', 'background'], [S, '.status-error,.status-unavailable', 'background'], [S, '.status-neutral,.status-unknown', 'var(--secondary-background-color)'],
     [S, '.error', 'var(--card-background-color)'], [M, '.item.danger', 'var(--card-background-color)'],
   ];
@@ -42,6 +42,10 @@ test('M26 Unraid text colours reach 4.5:1 in light and dark (buttons, badges, er
   }
 });
 
-test('M26 the shared button variants are overridden only by Unraid rules (shared UI source unchanged)', () => {
-  assert.match(K.BuschUI.styles, /:where\(\.busch-btn\[data-variant=primary\]\)\{background:var\(--primary-color,#03a9f4\);color:var\(--text-primary-color,#ffffff\)\}/);
+test('M26 the button colours come from Shared UI only: no own busch-btn variant rule in the cards or the confirmation dialog', () => {
+  for (const [name, css] of [['BUSCH_UNRAID_STYLE', K.BUSCH_UNRAID_STYLE], ['UNRAID_CONFIRM_STYLE', K.UNRAID_CONFIRM_STYLE]]) {
+    const eigen = css.replace(K.BuschUI.cardStyles, '').replace(K.BuschUI.styles, '');
+    assert.doesNotMatch(eigen, /\.busch-btn\[data-variant=(primary|destructive|danger)\][^{]*\{/, name + ': own button variant rule');
+  }
+  assert.ok(K.UNRAID_CONFIRM_STYLE.includes(K.BuschUI.styles), 'confirmation dialog carries the shared button styles');
 });

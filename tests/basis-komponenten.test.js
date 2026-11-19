@@ -11,6 +11,8 @@ const KACHELN = ['BuschUnraidServerCard', 'BuschUnraidArrayCard', 'BuschUnraidPa
 const K = ladeKarte([...KACHELN, 'BUSCH_UNRAID_STYLE', 'UNRAID_TILE_STYLE', 'BuschUI', 'BuschUnraidArrayCardEditor', 'BuschUnraidStackEditor', 'BuschUnraidVmEditor', 'BuschUnraidDockerEditor']);
 function kachel(name, core, config = {}) { const k = new K[name](); k._core = core; k._hass = { locale: { language: 'de' }, user: { is_admin: true }, callService: async () => {} }; k.setConfig({ device_id: 'demo', show_clock: false, ...config }); k._render(); return k; }
 // Docker tiles (.tile-main/.tile-toggle) are list surfaces, not buttons in the sense of M62.
+// #1312: in the shared card styles every .busch-ui-action rule comes before the first .busch-btn rule (same zero specificity).
+const K_STYLES_ORDER = K.BuschUI.cardStyles.lastIndexOf(':where(.busch-ui-action') < K.BuschUI.cardStyles.indexOf(':where(.busch-btn){');
 const knoepfe = k => k.shadowRoot.querySelectorAll('button').filter(b => !/\btile-(main|toggle)\b/.test(b.className));
 
 test('M62 every action button of tiles, VM list, family and Docker cards is a .busch-btn with a shared variant', () => {
@@ -22,7 +24,9 @@ test('M62 every action button of tiles, VM list, family and Docker cards is a .b
   for (const k of karten) for (const b of knoepfe(k)) {
     n++;
     assert.match(b.className, /\bbusch-btn\b/, `${b.textContent || b.getAttribute('aria-label')}: busch-btn`);
-    assert.doesNotMatch(b.className, /\b(busch-ui-action|danger|quiet)\b/, `${b.className}: no second button look`);
+    assert.doesNotMatch(b.className, /\b(danger|quiet)\b/, `${b.className}: no second button look`);
+    // .busch-ui-action may stay on the node: Shared UI 0.5.0 puts the .busch-btn rules after it (#1312, shared-ui design-system test).
+    if (/\bbusch-ui-action\b/.test(b.className)) assert.ok(K_STYLES_ORDER, 'shared action base precedes .busch-btn');
     assert.ok(['primary', 'secondary', 'text', 'destructive', 'danger'].includes(b.getAttribute('data-variant')), `${b.className}: variant ${b.getAttribute('data-variant')}`);
   }
   assert.ok(n >= 20, `buttons checked: ${n}`);
