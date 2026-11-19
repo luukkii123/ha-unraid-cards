@@ -5,7 +5,7 @@
 const test = require('node:test'), assert = require('node:assert/strict');
 const { ladeKarte } = require('./laden.js');
 
-const K = ladeKarte(['BUSCH_UNRAID_STYLE', 'UNRAID_CONFIRM_STYLE', 'BUSCH_UNRAID_DOCKER_MENU_STYLE', 'BuschUI']);
+const K = ladeKarte(['BUSCH_UNRAID_STYLE', 'UNRAID_CONFIRM_STYLE', 'BUSCH_UNRAID_DOCKER_MENU_STYLE', 'BUSCH_UNRAID_DOCKER_STYLE', 'BuschUI']);
 const THEMA = {
   light: { 'primary-color': '#03a9f4', 'primary-text-color': '#212121', 'secondary-text-color': '#727272', 'card-background-color': '#ffffff', 'secondary-background-color': '#e5e5e5', 'error-color': '#db4437', 'success-color': '#43a047', 'warning-color': '#ffa600', 'text-primary-color': '#ffffff' },
   dark: { 'primary-color': '#03a9f4', 'primary-text-color': '#e1e1e1', 'secondary-text-color': '#9b9b9b', 'card-background-color': '#1c1c1c', 'secondary-background-color': '#202020', 'error-color': '#db4437', 'success-color': '#43a047', 'warning-color': '#ffa600', 'text-primary-color': '#212121' },
@@ -48,4 +48,16 @@ test('M26 the button colours come from Shared UI only: no own busch-btn variant 
     assert.doesNotMatch(eigen, /\.busch-btn\[data-variant=(primary|destructive|danger)\][^{]*\{/, name + ': own button variant rule');
   }
   assert.ok(K.UNRAID_CONFIRM_STYLE.includes(K.BuschUI.styles), 'confirmation dialog carries the shared button styles');
+});
+
+// Etappe H follow-up (#1312): the status line of a Docker tile with its menu open (12 % primary over the card, also on a
+// child tile with 6 %) and on hover (5 % text colour) reaches 4.5:1; it was 4.29:1 in light.
+test('M26 Docker tile status text reaches 4.5:1 on the open-menu, child and hover surfaces', () => {
+  const D = K.BUSCH_UNRAID_DOCKER_STYLE, fg = wert(regel(D, '.tile-status'), 'color');
+  const misch = (a, b, p) => a.map((v, i) => v * p + b[i] * (1 - p));
+  for (const [name, t] of Object.entries(THEMA)) {
+    const text = farbe(fg, t, D), karte = hex(t['card-background-color']), blau = hex(t['primary-color']);
+    const flaechen = { offen: misch(blau, karte, 0.12), kind_offen: misch(blau, misch(blau, karte, 0.06), 0.12), hover: misch(hex(t['primary-text-color']), karte, 0.05), karte };
+    for (const [f, bg] of Object.entries(flaechen)) { const q = quote(text, bg); assert.ok(q >= 4.5, `tile-status ${f} ${name}: ${q.toFixed(2)}:1`); }
+  }
 });

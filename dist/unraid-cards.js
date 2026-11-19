@@ -2260,7 +2260,8 @@ const BUSCH_UNRAID_DOCKER_STYLE = `
 .tile-main .tile-icon img{display:block;width:100%;height:100%;object-fit:contain;padding:var(--ha-space-1,4px);box-sizing:border-box}
 .tile-text{display:grid;gap:2px;min-width:0;flex:1 1 auto}
 .tile-name{display:block;margin:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;font-size:var(--ha-font-size-m,14px);font-weight:var(--ha-font-weight-medium,500)}
-.tile-status{display:flex;align-items:flex-start;gap:var(--ha-space-1,4px);min-width:0;color:var(--secondary-text-color);font-size:var(--ha-font-size-s,12px)}
+/* M26 (#1312): secondary text mixed toward the text colour, ≥ 4.5:1 also on the open-menu (12 % primary), child and hover surfaces. */
+.tile-status{display:flex;align-items:flex-start;gap:var(--ha-space-1,4px);min-width:0;color:color-mix(in srgb,var(--secondary-text-color) 75%,var(--primary-text-color));font-size:var(--ha-font-size-s,12px)}
 .tile-status ha-icon{--mdc-icon-size:16px;flex:none;margin-top:1px}
 .tile-status-text{min-width:0;overflow-wrap:anywhere}
 .sem-success ha-icon{color:var(--success-color,#16864b)}.sem-warning ha-icon{color:var(--warning-color,#a76900)}.sem-error ha-icon,.sem-unavailable ha-icon{color:var(--error-color,#db4437)}.sem-neutral ha-icon,.sem-unknown ha-icon{color:var(--secondary-text-color)}
