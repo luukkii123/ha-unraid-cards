@@ -2938,7 +2938,6 @@ ${BuschUI.styles}
 .scrim{position:absolute;inset:0;background:var(--mdc-dialog-scrim-color,rgba(0,0,0,.32))}
 .dialog{position:relative;box-shadow:var(--ha-card-box-shadow,0 8px 24px rgba(0,0,0,.3))}
 .busch-dialog-content p{margin:0;overflow-wrap:anywhere}
-.busch-dialog-foot>.busch-btn:last-child{margin-inline-end:0}
 .close{display:inline-grid;place-items:center;width:44px;height:44px;min-width:44px;min-height:44px;padding:0;border:0;border-radius:50%;background:transparent;color:var(--secondary-text-color);cursor:pointer;font:inherit}
 button:focus-visible{outline:2px solid var(--primary-color);outline-offset:2px}
 @media (max-width:449px),(max-height:499px){:host{place-items:end stretch}}`;

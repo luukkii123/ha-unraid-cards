@@ -25,10 +25,12 @@ test('M28 confirmation: shared anatomy, shared history entry, Cancel before the 
     assert.match(d._abbr.className, /\bbusch-btn\b/); assert.equal(d._abbr.getAttribute('data-variant'), 'secondary');
     assert.match(d._ok.className, /\bbusch-btn\b/); assert.equal(d._ok.getAttribute('data-variant'), gefahr ? 'destructive' : 'primary');
     assert.equal(d._ok.getAttribute('data-filled') !== null, gefahr, 'destructive is filled red');
-    // ui-regeln Regel 2: the primary action stays right even when it is destructive; the shared rule
-    // `[data-variant=destructive]{margin-inline-end:auto}` is meant for a separate third Delete action and must be reset here.
-    const css = r.querySelector('style').textContent, nachShared = css.slice(css.lastIndexOf('busch-dialog-foot) :where([data-variant=destructive])'));
-    assert.match(nachShared, /\.busch-dialog-foot>\.busch-btn:last-child\{margin-inline-end:0\}/, 'confirm action keeps the right edge');
+    // ui-regeln Regel 2: the primary action stays right even when it is destructive. The shared rule pushes only a
+    // destructive button that is not the last one (a separate third Delete); the confirm action is the last child.
+    const css = r.querySelector('style').textContent;
+    assert.match(css, /:where\(\.busch-dialog-foot\) :where\(\[data-variant=destructive\]:not\(:last-child\)\)\{margin-inline-end:auto\}/, 'confirm action keeps the right edge');
+    assert.equal(fuss[fuss.length - 1], d._ok, 'confirm action is the last child');
+    assert.doesNotMatch(css, /busch-dialog-foot>\.busch-btn:last-child/, 'no local reset of the shared rule');
     assert.equal(env.history.state.buschUiDialog.name, 'busch-unraid-confirm'); assert.equal(env.history.state.dialog, undefined);
     d._abbr.click(); assert.equal(await p, false); assert.equal(env.history.length, 1);
     await new Promise(r => setTimeout(r));
