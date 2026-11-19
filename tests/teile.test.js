@@ -94,3 +94,34 @@ test('M49 Docker model: with core.track only the changed device is modelled agai
   gebaut = []; core.epoch++; core.aendern(web.entity_id, e => { e.state = 'on'; e.attributes.container_state = 'running'; }); k._render();
   assert.equal(gebaut.length, alle, 'new epoch: every device again'); assert.equal(status(), vorher);
 });
+
+// M49 follow-up (#1299): an inventory update that changes only the count (entity state, head) while the list (attributes)
+// stays the same rebuilds no list node and does not merge the list; ha-icon objects and focus stay, the head count follows.
+for (const [kind, name] of [['users', 'BuschUnraidUsersCard'], ['usb', 'BuschUnraidUsbCard'], ['coral', 'BuschUnraidCoralCard']]) test(`M49 inventory ${kind}: a count-only update keeps the list without rebuilding or merging it`, () => {
+  const { d } = zaehlDokument(), tags = new Map(), erzeuge = d.createElement; d.createElement = tag => { tags.set(tag, (tags.get(tag) || 0) + 1); return erzeuge(tag); };
+  const l = ladeKarte([name], { document: d }), k = new l[name](), core = inventoryFixture(), e = core.entities.get('sensor.demo_dashboard_' + kind);
+  k._core = core; k._hass = { locale: { language: 'de' }, config: { time_zone: 'UTC' }, callService: async () => {} }; k.setConfig({ device_id: 'demo' });
+  const root = k.shadowRoot, table = root.querySelector('table'), zeilen = root.querySelectorAll('tr'), icons = root.querySelectorAll('ha-icon'), toggle = root.querySelector('[data-focus-key="toggle"]');
+  assert.ok(table && zeilen.length > 1, kind + ': table rendered'); toggle.focus();
+  // Reads of the table's children by the card (the test DOM's own queries, Element.all, do not count).
+  let kinder = table.childNodes, zugriffe = 0, an = false;
+  Object.defineProperty(table, 'childNodes', { configurable: true, get() { if (an && !/Element\.all/.test(new Error().stack)) zugriffe++; return kinder; }, set(v) { kinder = v; } });
+  const vorher = Number(e.state); e.state = String(vorher + 7); tags.clear();
+  an = true; k._render(); an = false;
+  assert.match(root.querySelector('.tile-sub').textContent, new RegExp(String(vorher + 7)), kind + ': head count follows');
+  assert.equal(root.querySelector('table'), table, kind + ': table kept'); assert.deepEqual(root.querySelectorAll('tr'), zeilen, kind + ': rows kept');
+  // One empty <table> is the part placeholder (unraidTeil); it never goes live.
+  assert.ok((tags.get('table') || 0) <= 1, `${kind}: <table> built ${tags.get('table')}`);
+  for (const tag of ['thead', 'tbody', 'tr', 'td', 'th', 'span', 'ha-icon']) assert.equal(tags.get(tag) || 0, 0, `${kind}: <${tag}> built ${tags.get(tag) || 0}`);
+  assert.equal(zugriffe, 0, kind + ': list merged (' + zugriffe + ' child reads)');
+  const jetzt = root.querySelectorAll('ha-icon'); assert.equal(jetzt.length, icons.length); icons.forEach((n, i) => assert.equal(jetzt[i], n, `${kind}: ha-icon ${i} kept`));
+  assert.equal(root.activeElement, toggle, kind + ': focused toggle stays focused');
+  // The list itself still follows (new attributes as HA sends them): only the changed row is built again, the table and
+  // the other rows stay the same objects, also after the count-only update above kept the table.
+  const feld = kind === 'users' ? 'users' : 'devices', [i, key, wert] = { users: [0, 'description', 'Changed entry'], usb: [1, 'name', 'Changed entry'], coral: [0, 'name', 'Coral TPU 1 Changed entry'] }[kind];
+  const liste = e.attributes[feld].map((x, j) => (j === i ? { ...x, [key]: wert } : x)); e.attributes = { ...e.attributes, [feld]: liste }; tags.clear(); k._render();
+  assert.match(root.querySelector('table').textContent, /Changed entry/, kind + ': changed row rendered'); assert.equal(root.querySelector('table'), table, kind + ': table kept');
+  assert.deepEqual(root.querySelectorAll('tr'), zeilen, kind + ': rows kept (the changed one patched in place)');
+  const spalten = root.querySelectorAll('th').length; assert.equal(tags.get('td'), spalten, `${kind}: <td> built ${tags.get('td')}, one row has ${spalten}`);
+  assert.equal(tags.get('th') || 0, 0, kind + ': header kept');
+});

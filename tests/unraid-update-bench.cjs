@@ -1,7 +1,7 @@
 'use strict';
 // M49 (#1299, P10/F13) Node bench: ms per own update (a value the card shows changes, then one render) for every
 // card kind, plus elements and ha-icon elements created per update and whether the live ha-icon objects survive.
-// Usage: node tests/unraid-update-bench.cjs [bundle.js] [runs] [--profil] [--karte=System,Docker]   (default: dist/unraid-cards.js, 300 runs, 50 warm-up)
+// Usage: node tests/unraid-update-bench.cjs [bundle.js] [runs] [--profil] [--karte=System,Docker]   (--karte=Users also runs Users@kopf; default: dist/unraid-cards.js, 300 runs, 50 warm-up)
 // --profil: mean ms per update split into model (core/Unraid model), signature (JSON.stringify called by the render
 // itself), merge (unraidAnwenden: DOM patch) and rest (building the fresh tree, dictionaries, focus, other). Exclusive
 // times through wrapped bundle functions; the wrappers cost a little, so the profile run is not the p95 run.
@@ -65,6 +65,9 @@ const FAELLE = {
   BuschUnraidVmCard: [() => unraidAttrappe({ zweiteVm: true }), (c, i) => { c.entities.get('sensor.win_cpu').state = wechsel(i, '36', '37'); }, { device_id: 'srv' }],
   BuschUnraidDockerCard: [() => dockerFixture(), (c, i) => { const e = c.entities.get('switch.webserver-mit-einem-sehr-langen-namen-der-abgeschnitten-werden-muss'); e.state = wechsel(i, 'off', 'on'); e.attributes.container_state = e.state === 'on' ? 'running' : 'exited'; }, { device_id: 'server' }],
 };
+// Inventory cards, count-only update (M6 browser case): only the count in the state of sensor.<server>_dashboard_<kind>
+// changes (head), the list (attributes) stays the same object.
+for (const [art, k] of [['users', 'Users'], ['usb', 'Usb'], ['coral', 'Coral']]) FAELLE[`BuschUnraid${k}Card@kopf`] = [() => kachelKern(), (c, i) => { c.entities.get(`sensor.demo_dashboard_${art}`).state = wechsel(i, '7', '8'); }];
 // Docker card on a core with track/unchanged like Busch Core (#641): versions per device, bumped by the own update. The
 // plain fixtures have no track, so this case shows the kept device models (unraidGeraeteModell) of the real core path.
 FAELLE['BuschUnraidDockerCard@track'] = [() => verfolgt(dockerFixture()), (c, i) => { FAELLE.BuschUnraidDockerCard[1](c, i); c.stoss('switch.webserver-mit-einem-sehr-langen-namen-der-abgeschnitten-werden-muss'); }, { device_id: 'server' }];

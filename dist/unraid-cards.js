@@ -1591,19 +1591,21 @@ function unraidStil(root,css){
 /* Puts `card` (built off-document) into the shadow root: patches the live card when there is one, else inserts it.
  * Returns the live card. */
 function unraidAnwenden(root,css,card){
- const teile=new Map();unraidTeileNeu=teile;
+ const teile=new Map();unraidTeileNeu=teile;unraidTeileAlt=root._unraidTeile||null;
  try{
  const style=unraidStil(root,css),live=root._unraidCard;
  if(live&&live.parentNode===root&&live.tagName===card.tagName&&typeof root.insertBefore==='function'){
   unraidAbgleich(live,card);if(style&&root.childNodes[0]!==style)root.insertBefore(style,live);return live;}
  unraidStempeln(card);if(style)root.replaceChildren(style,card);else root.replaceChildren(card);root._unraidCard=card;return card;
- }finally{unraidTeileNeu=null;root._unraidTeile=teile;}}
+ }finally{unraidTeileNeu=null;unraidTeileAlt=null;root._unraidTeile=teile;}}
 /* M49 step 2 (#1299): a part is one node of a card built only when its signature changed. `sig` covers everything the
  * node shows (the caller adds an epoch that changes with configuration, language, dictionary and card state); while the
  * live card holds part `key` with the same signature, unraidTeil returns a placeholder and the live node stays as it is.
  * Parts pair by their key; a placeholder without its live part (structure changed) is built after all. `sig` null builds
  * always. The parts of a shadow root are collected while unraidAnwenden merges (root._unraidTeile, key → live node). */
-let unraidTeileNeu=null;
+let unraidTeileNeu=null,unraidTeileAlt=null;
+// A kept part whose key ends in '/' holds parts keyed with that prefix (inventory table rows): they stay registered.
+function unraidInnenBehalten(key){if(!key.endsWith('/')||!unraidTeileAlt||!unraidTeileNeu)return;for(const [k,n] of unraidTeileAlt)if(k.startsWith(key))unraidTeileNeu.set(k,n);}
 function unraidTeil(root,key,sig,bauen){
  const live=sig===null?null:root?._unraidTeile?.get(key);
  if(live&&live._unraidTeil?.sig===sig&&live._unraidTeil.key===key){const p=document.createElement(live.localName||String(live.tagName).toLowerCase());p._unraidBehalten=true;p._unraidTeil=live._unraidTeil;p._unraidBauen=bauen;return p;}
@@ -1659,7 +1661,7 @@ function unraidAttributeAbgleich(alt,neu,eigen,details){
  const ad=alt.dataset,nd=neu.dataset;if(nd&&ad){for(const k in ad)if(!(k in nd))delete ad[k];for(const k in nd)if(ad[k]!==nd[k])ad[k]=nd[k];}
  const as=alt.style,ns=neu.style;if(ns&&as&&typeof ns.cssText!=='string')for(const k in ns)if(as[k]!==ns[k])as[k]=ns[k];}
 function unraidAbgleich(alt,neu){
- if(neu._unraidBehalten){if(!neu._unraidTeil)return;if(alt._unraidTeil?.key===neu._unraidTeil.key){unraidTeileNeu?.set(neu._unraidTeil.key,alt);return;}neu=unraidTeilBauen(neu);}
+ if(neu._unraidBehalten){if(!neu._unraidTeil)return;if(alt._unraidTeil?.key===neu._unraidTeil.key){unraidTeileNeu?.set(neu._unraidTeil.key,alt);unraidInnenBehalten(neu._unraidTeil.key);return;}neu=unraidTeilBauen(neu);}
  if(neu._unraidTeil){alt._unraidTeil=neu._unraidTeil;unraidTeileNeu?.set(neu._unraidTeil.key,alt);}
  if(neu.nodeType!==1){if(alt.nodeValue!==neu.nodeValue)alt.nodeValue=neu.nodeValue;return;}
  const eigen=unraidIstEigen(alt);unraidAttributeAbgleich(alt,neu,eigen,alt.tagName==='DETAILS');
@@ -2501,7 +2503,9 @@ function unraidKw(wert,semantik,label){return wert===null||wert===undefined||wer
 function unraidStufe(p,s=UNRAID_SCHWELLEN){return typeof p!=='number'||!Number.isFinite(p)?'':p>=s.kritisch?'crit':p>=s.warnung?'warn':'';}
 function unraidBalken(prozent,text,{warnung=70,kritisch=90,ohneText=false}={}){const bar=buschUnraidNode('div',undefined,('bar '+unraidStufe(prozent,{warnung,kritisch})).trim());bar.setAttribute('role','meter');bar.setAttribute('aria-valuemin','0');bar.setAttribute('aria-valuemax','100');const bekannt=typeof prozent==='number'&&Number.isFinite(prozent);if(bekannt)bar.setAttribute('aria-valuenow',String(Math.round(prozent)));const anzeige=bekannt?text:'–';bar.setAttribute('aria-valuetext',anzeige);const spur=buschUnraidNode('span',undefined,'bar-track'),fill=buschUnraidNode('span',undefined,'bar-fill');fill.style.width=(bekannt?Math.max(0,Math.min(100,prozent)):0)+'%';spur.appendChild(fill);bar.appendChild(spur);if(!ohneText)bar.appendChild(buschUnraidNode('span',anzeige,'bar-text'));return bar;}
 function unraidRing(prozent,label){const bekannt=typeof prozent==='number'&&Number.isFinite(prozent);const box=buschUnraidNode('figure',undefined,('ring '+unraidStufe(prozent)).trim());const ns='http://www.w3.org/2000/svg',svg=document.createElementNS(ns,'svg');svg.setAttribute('viewBox','0 0 36 36');svg.setAttribute('aria-hidden','true');for(const [cls,len] of [['ring-bg',100],['ring-fg',bekannt?Math.max(0,Math.min(100,prozent)):0]]){const c=document.createElementNS(ns,'circle');c.setAttribute('class',cls);c.setAttribute('cx','18');c.setAttribute('cy','18');c.setAttribute('r','15.915');c.setAttribute('pathLength','100');c.setAttribute('stroke-dasharray',len+' 100');svg.appendChild(c);}box.appendChild(svg);box.appendChild(buschUnraidNode('span',bekannt?Math.round(prozent)+' %':'–','ring-value'));box.appendChild(buschUnraidNode('figcaption',label,'ring-label'));return box;}
-function unraidTabelle(spalten,zeilen,{leer}={}){if(!zeilen||!zeilen.length)return buschUnraidNode('p',leer,'message');const table=document.createElement('table');table.className='table';const head=document.createElement('tr');for(const s of spalten){const th=document.createElement('th');th.setAttribute('scope','col');th.textContent=s.label;head.appendChild(th);}if(spalten.some(s=>s.label)){const thead=document.createElement('thead');thead.appendChild(head);table.appendChild(thead);}const body=document.createElement('tbody');for(const z of zeilen){const tr=document.createElement('tr');for(const s of spalten){const td=document.createElement('td');td.setAttribute('data-label',s.label);const v=z[s.key];if(v&&typeof v==='object'&&v.nodeType)td.appendChild(v);else td.textContent=v??'–';tr.appendChild(td);}body.appendChild(tr);}table.appendChild(body);return table;}
+function unraidTabelle(spalten,zeilen,{leer}={}){if(!zeilen||!zeilen.length)return buschUnraidNode('p',leer,'message');const table=document.createElement('table');table.className='table';if(spalten.some(s=>s.label))table.appendChild(unraidTabellenKopf(spalten));const body=document.createElement('tbody');for(const z of zeilen)body.appendChild(unraidTabellenZeile(spalten,z));table.appendChild(body);return table;}
+function unraidTabellenKopf(spalten){const head=document.createElement('tr');for(const s of spalten){const th=document.createElement('th');th.setAttribute('scope','col');th.textContent=s.label;head.appendChild(th);}const thead=document.createElement('thead');thead.appendChild(head);return thead;}
+function unraidTabellenZeile(spalten,z){const tr=document.createElement('tr');for(const s of spalten){const td=document.createElement('td');td.setAttribute('data-label',s.label);const v=z[s.key];if(v&&typeof v==='object'&&v.nodeType)td.appendChild(v);else td.textContent=v??'–';tr.appendChild(td);}return tr;}
 // M49 step 2: a raster of text values as a part (the values are its signature).
 function unraidRasterTeil(karte,key,eintraege){return unraidTeilVon(karte,key,eintraege,()=>unraidRaster(eintraege));}
 function unraidRaster(eintraege){const grid=buschUnraidNode('div',undefined,'grid');for(const e of eintraege){const cell=buschUnraidNode('div',undefined,'cell');const name=buschUnraidNode('span',e.name,'cell-name');if(e.name!=null&&e.name!=='')name.title=String(e.name);cell.appendChild(name);if(e.wert&&typeof e.wert==='object'&&e.wert.nodeType){const wert=buschUnraidNode('span',undefined,'cell-value');wert.appendChild(e.wert);cell.appendChild(wert);}else cell.appendChild(buschUnraidNode('span',e.wert,'cell-value'));grid.appendChild(cell);}return grid;}
@@ -2654,6 +2658,8 @@ ha-card:not(.tile)>.header.tile-head{display:grid;align-items:center}
 .header-main.tile-text{display:grid;gap:var(--ha-space-1,4px)}.header-main .tile-sub{margin:0}
 /* #643/6: Badge neben dem Titel, umbrechend nur bei Platzmangel (R06); Aktionen bilden die zweite Kopfzeile. */
 .title-row{display:flex;flex-wrap:wrap;align-items:center;gap:var(--ha-space-1,4px) var(--ha-space-2,8px);min-width:0}.title-row>.tile-title{flex:0 1 auto;min-width:0}.title-row>.status-badge{flex:none;justify-self:auto}`;
+// M49 follow-up (#1299): subtitle of a kept tile head; only its text changes, the head and its ha-icon objects stay.
+function unraidUntertitel(head,text){const box=unraidKind(head,'tile-text');if(!box)return;let sub=unraidKind(box,'tile-sub');if(!text){if(sub)box.removeChild(sub);return;}if(!sub){sub=buschUnraidNode('p',undefined,'tile-sub');box.appendChild(sub);}if(sub.textContent!==text)sub.textContent=text;}
 class BuschUnraidTile extends HTMLElement {
  constructor(){super();this.attachShadow({mode:'open'});this._config={};this._eingeklappt=false;this._busy=false;this._error=null;this._notice=null;this._actionGeneration=0;}
  static get kachel(){return 'tile';}
@@ -2696,8 +2702,9 @@ class BuschUnraidTile extends HTMLElement {
   // placeholder keeps the live head. Action buttons look their action up by key at click time, so a kept head never runs
   // an action of an older model.
   const k=this._kopf(m,t)||{},liste=m.laedt||m.fehler||!darf?[]:this._aktionen(m,t)||[];this._aktionsListe=new Map(liste.map(a=>[a.key,a]));
-  const kopfSig=JSON.stringify([this._config.title,k,liste.map(a=>[a.key,a.label,a.icon,a.text,!!a.menu,!!a.deaktiviert,!!a.gefahr]),this._eingeklappt,this._menuOffen||null,!!this._busy,lang]),liveKopf=this.shadowRoot._unraidCard?.childNodes?.[0];
-  if(liveKopf?._unraidSig===kopfSig&&liveKopf.parentNode===this.shadowRoot._unraidCard&&this.shadowRoot._unraidCard.parentNode===this.shadowRoot)card.appendChild(unraidBehalten('div'));else{
+  // M49 follow-up: the subtitle (counts) is not part of the head signature; a kept head only gets its subtitle text.
+  const kopfSig=JSON.stringify([this._config.title,{...k,untertitel:undefined},liste.map(a=>[a.key,a.label,a.icon,a.text,!!a.menu,!!a.deaktiviert,!!a.gefahr]),this._eingeklappt,this._menuOffen||null,!!this._busy,lang]),liveKopf=this.shadowRoot._unraidCard?.childNodes?.[0];
+  const kopfBehalten=liveKopf?._unraidSig===kopfSig&&liveKopf.parentNode===this.shadowRoot._unraidCard&&this.shadowRoot._unraidCard.parentNode===this.shadowRoot;if(kopfBehalten)card.appendChild(unraidBehalten('div'));else{
   const head=buschUnraidNode('div',undefined,'tile-head'),icon=BuschUI.ha.icon(k.icon||'mdi:server'),text=buschUnraidNode('div',undefined,'tile-text');icon.className='tile-icon';icon.setAttribute('aria-hidden','true');
   const titel=buschUnraidNode('h2',this._config.title||k.titel||'','tile-title');titel.title=titel.textContent;text.appendChild(titel);if(k.untertitel)text.appendChild(buschUnraidNode('p',k.untertitel,'tile-sub'));head.appendChild(icon);head.appendChild(text);
   // Während `_busy` sperrt `aria-disabled` statt `disabled`: der fokussierte Knopf bleibt fokussierbar, der Fokus überlebt die Renders; Klicks verwirft `_ausfuehren`.
@@ -2711,7 +2718,7 @@ class BuschUnraidTile extends HTMLElement {
   else{const body=buschUnraidNode('div',undefined,'tile-body');if(m.laedt)body.appendChild(buschUnraidNode('p',t.loading,'message'));else if(m.fehler)body.appendChild(buschUnraidNode('p',t[m.fehler]||m.fehler,'message'));else this._inhalt(body,m,t);card.appendChild(body);}
   if(this._notice){const n=buschUnraidNode('p',this._notice,'message');n.setAttribute('role','status');card.appendChild(n);}
   if(this._error){const e=buschUnraidNode('p',this._error,'message error');e.setAttribute('role','alert');card.appendChild(e);}
-  const fokus=this.shadowRoot.activeElement?.dataset?.focusKey;unraidAnwenden(this.shadowRoot,UNRAID_TILE_STYLE,card).childNodes[0]._unraidSig=kopfSig;if(fokus&&this.shadowRoot.activeElement?.dataset?.focusKey!==fokus)this.shadowRoot.querySelector(`[data-focus-key="${fokus}"]`)?.focus({preventScroll:true});
+  const fokus=this.shadowRoot.activeElement?.dataset?.focusKey,kopf=unraidAnwenden(this.shadowRoot,UNRAID_TILE_STYLE,card).childNodes[0];kopf._unraidSig=kopfSig;if(kopfBehalten)unraidUntertitel(kopf,k.untertitel);if(fokus&&this.shadowRoot.activeElement?.dataset?.focusKey!==fokus)this.shadowRoot.querySelector(`[data-focus-key="${fokus}"]`)?.focus({preventScroll:true});
  }
  // Ruling R2: `_busy` wird synchron VOR dem ersten `await` gesetzt (Doppelklick-Schutz) und bei abgelehnter Bestätigung zurückgenommen.
  async _ausfuehren(a,t){
@@ -3115,18 +3122,34 @@ const UNRAID_INVENTAR_SPALTEN_STYLE=`
 .table.inventory-usb th:nth-child(1){width:15%}.table.inventory-usb th:nth-child(2){width:31%}.table.inventory-usb th:nth-child(3){width:27%}.table.inventory-usb th:nth-child(4){width:27%}
 .table.inventory-coral th:nth-child(1){width:35%}.table.inventory-coral th:nth-child(2){width:38%}.table.inventory-coral th:nth-child(3){width:27%}
 }`;
-function unraidInventarTabelle(body,typ,spalten,zeilen,optionen){
- const table=unraidTabelle(spalten,zeilen,optionen);
- if(zeilen.length){table.className+=' inventory-'+typ;const style=document.createElement('style');style.textContent=UNRAID_INVENTAR_SPALTEN_STYLE;body.appendChild(style);}
- body.appendChild(table);
+/* M49 follow-up (#1299): the table (or its empty message) is a part, and inside it the header and every row. Signatures:
+ * the card's epoch, `zusatz` (state, card flags) and the list signature `q.sig` or a row's signature `q.zeilen` (appended
+ * as they are, not serialised again). `bauen` returns {spalten,eintraege,zeile,optionen}; it runs only when the list
+ * signature changed, and `zeile(x)` only for a changed row. A kept part is neither built nor merged. The column style
+ * is its own part next to a table. Same DOM as unraidTabelle. */
+function unraidInventarTabelle(karte,body,typ,q,zusatz,bauen){
+ const root=karte.shadowRoot,basis=karte._teilEpoche+'|'+zusatz+'|',key='inventar:'+typ+'/';
+ const teil=unraidTeil(root,key,basis+q.sig,()=>{const {spalten,eintraege,zeile,optionen}=bauen();if(!eintraege.length)return buschUnraidNode('p',optionen.leer,'message');
+  const table=document.createElement('table'),tbody=document.createElement('tbody');table.className='table inventory-'+typ;
+  if(spalten.some(s=>s.label))table.appendChild(unraidTeil(root,key+'kopf',basis,()=>unraidTabellenKopf(spalten)));
+  eintraege.forEach((x,i)=>tbody.appendChild(unraidTeil(root,key+i,basis+q.zeilen.get(x),()=>unraidTabellenZeile(spalten,zeile(x)))));table.appendChild(tbody);return table;});
+ if(String(teil.tagName).toLowerCase()==='table')body.appendChild(unraidTeilVon(karte,'inventar-stil',[],()=>{const style=document.createElement('style');style.textContent=UNRAID_INVENTAR_SPALTEN_STYLE;return style;}));
+ body.appendChild(teil);
 }
+/* Signature of an inventory list from the rows' own values (type, length and text of every field), so an unchanged list
+ * is recognised without JSON over the whole list per update. Rows are flat; a nested value is serialised on its own.
+ * Every key and value carries its length, so the plain separators cannot make two lists look alike. Returns the list
+ * signature and, per row object, the row's signature. */
+function unraidListenSignatur(liste){const zeilen=new Map();let s=String(liste.length);for(const x of liste){let z='';for(const k in x){const v=x[k],w=typeof v==='string'?v:v!==null&&typeof v==='object'?JSON.stringify(v):String(v);z+=k.length+':'+k+(typeof v)[0]+w.length+':'+w;}zeilen.set(x,z);s+=';'+z;}return {sig:s,zeilen};}
 /* Stage 3 inventory uses numeric count states (including 0), not ok/partial. */
 function unraidInventar(server,key){
  const e=server.wert('dashboard_'+key);if(!e)return {zustand:'legacy',daten:{},liste:null,count:null};
  const a=e.attributes||{};if(a.schema_version!==1)return {zustand:'legacy',daten:{},liste:null,count:null};
- const count=unraidNum(e),liste=a[key==='users'?'users':'devices'];
+ const feld=key==='users'?'users':'devices',count=unraidNum(e),liste=a[feld];
  if(count===null||count<0||!Number.isInteger(count)||!Array.isArray(liste)||!Array.isArray(a.failed_sections))return {zustand:'unavailable',daten:{},liste:null,count:null};
- return {zustand:a.failed_sections.length?'partial':'ok',daten:a,liste:liste.filter(x=>x&&typeof x==='object'),count};
+ const rows=liste.filter(x=>x&&typeof x==='object'),{sig,zeilen}=unraidListenSignatur(rows);
+ // M49 follow-up: the render signature carries the list as `sig`, the other attributes as they are (no list twice).
+ return {zustand:a.failed_sections.length?'partial':'ok',daten:a,liste:rows,count,sig,zeilen,toJSON(){const rest={};for(const k in a)if(k!==feld)rest[k]=a[k];return {zustand:this.zustand,count,sig,daten:rest};}};
 }
 function unraidInventarModell(core,config,key){const s=unraidServer(core,config),z=unraidZustand(s);return z||{name:s.server.name_by_user||s.server.name,inventory:unraidInventar(s,key)};}
 function unraidInventarHinweis(body,m,t){const q=m.inventory;if(q.zustand==='legacy')body.appendChild(buschUnraidNode('p',t.inventory_upgrade,'message'));else if(q.zustand==='unavailable')body.appendChild(buschUnraidNode('p',t.inventory_unavailable,'message'));else if(q.zustand==='partial')body.appendChild(buschUnraidNode('p',t.inventory_partial,'message'));return q.liste!==null;}
@@ -3141,8 +3164,8 @@ class BuschUnraidUsersCard extends BuschUnraidTile{
  _inhalt(body,m,t){if(!this._inhaltSichtbar()||!unraidInventarHinweis(body,m,t))return;const q=m.inventory,lang=this._hass?.locale?.language;
   if(q.daten.smb_enabled!==true)body.appendChild(buschUnraidNode('p',q.daten.smb_enabled===false?t.smb_disabled:t.smb_unknown,'message'));
   if(this._zeigt('permission_help'))body.appendChild(buschUnraidNode('p',t.permission_help,'message'));if(!this._zeigt('users'))return;
-  const rows=[...q.liste].sort((a,b)=>String(a.name).localeCompare(String(b.name),undefined,{numeric:true})).map(x=>{const user=buschUnraidNode('div');user.appendChild(buschUnraidNode('span',x.name));user.appendChild(buschUnraidNode('p',x.protected===false?t.password_missing:x.protected===true?t.password_set:t.unknown,'message'));const allowed=q.daten.smb_enabled===true&&x.name!=='root';return {user,description:x.description,write:unraidZahl(allowed?x.write_shares:null,'',lang),read:unraidZahl(allowed?x.read_shares:null,'',lang)};});
-  unraidInventarTabelle(body,'users',[{key:'user',label:t.col_user},...(this._zeigt('description')?[{key:'description',label:t.col_description}]:[]),{key:'write',label:t.col_write},{key:'read',label:t.col_read}],rows,{leer:q.zustand==='partial'?t.inventory_empty_partial:t.none});}
+  unraidInventarTabelle(this,body,'users',q,q.zustand+(q.daten.smb_enabled===true),()=>{const eintraege=[...q.liste].sort((a,b)=>String(a.name).localeCompare(String(b.name),undefined,{numeric:true})),zeile=x=>{const user=buschUnraidNode('div');user.appendChild(buschUnraidNode('span',x.name));user.appendChild(buschUnraidNode('p',x.protected===false?t.password_missing:x.protected===true?t.password_set:t.unknown,'message'));const allowed=q.daten.smb_enabled===true&&x.name!=='root';return {user,description:x.description,write:unraidZahl(allowed?x.write_shares:null,'',lang),read:unraidZahl(allowed?x.read_shares:null,'',lang)};};
+  return {spalten:[{key:'user',label:t.col_user},...(this._zeigt('description')?[{key:'description',label:t.col_description}]:[]),{key:'write',label:t.col_write},{key:'read',label:t.col_read}],eintraege,zeile,optionen:{leer:q.zustand==='partial'?t.inventory_empty_partial:t.none}};});}
  static getConfigElement(){return document.createElement('busch-unraid-users-card-editor');}static getStubConfig(){return {type:'custom:busch-unraid-users-card'};}
 }
 class BuschUnraidUsersCardEditor extends BuschUnraidTileEditor{get _schema(){return SCHEMA_BUSCH_UNRAID_USERS_CARD;}get _texte(){return TEXTE_BUSCH_UNRAID_USERS_CARD;}get _defaults(){return new BuschUnraidUsersCard()._vorgaben;}}
@@ -3154,8 +3177,8 @@ class BuschUnraidUsbCard extends BuschUnraidTile{
  _kompakt(m){if(m.laedt||m.fehler)return {};const q=m.inventory;return {summary:unraidKw(q?.liste!==null&&q?.count!=null?unraidZahl(q.count,'',this._hass?.locale?.language):null)};}
  _kopf(m,t){return {icon:'mdi:usb',titel:t.tile,untertitel:[m.name,this._zeigt('summary')&&m.inventory?.count!=null?`${m.inventory.count} ${t.count}`:null].filter(Boolean).join(' · ')};}
  _inhalt(body,m,t){if(!this._inhaltSichtbar()||!unraidInventarHinweis(body,m,t))return;const q=m.inventory,lang=this._hass?.locale?.language;if(this._zeigt('limits'))body.appendChild(buschUnraidNode('p',t.limits,'message'));if(q.daten.mapping_status!=='ok')body.appendChild(buschUnraidNode('p',t.mapping_missing,'message'));if(!this._zeigt('devices'))return;
-  const rows=q.liste.filter(x=>this._config.show_hubs||!x.is_hub).sort((a,b)=>String(a.port).localeCompare(String(b.port),undefined,{numeric:true})).map(x=>{const name=buschUnraidNode('div');name.appendChild(buschUnraidNode('span',x.name));if(typeof x.speed_mbps==='number'&&Number.isFinite(x.speed_mbps))name.appendChild(buschUnraidNode('p',unraidZahl(x.speed_mbps,t.speed_unit,lang),'message'));return {port:x.port,name,state:['host','vm','remote','usbip_bound','unauthorized'].includes(x.state)?t[x.state]:t.unknown,assignment:x.state==='vm'?x.assigned_vm||t.vm_unknown:x.state==='remote'?x.remote_host||t.remote_unknown:'–'};});
-  unraidInventarTabelle(body,'usb',[{key:'port',label:t.col_port},{key:'name',label:t.col_name},{key:'state',label:t.col_state},{key:'assignment',label:t.col_assignment}],rows,{leer:q.liste.length?t.filtered_empty:q.zustand==='partial'?t.inventory_empty_partial:t.none});}
+  unraidInventarTabelle(this,body,'usb',q,q.zustand,()=>{const eintraege=q.liste.filter(x=>this._config.show_hubs||!x.is_hub).sort((a,b)=>String(a.port).localeCompare(String(b.port),undefined,{numeric:true})),zeile=x=>{const name=buschUnraidNode('div');name.appendChild(buschUnraidNode('span',x.name));if(typeof x.speed_mbps==='number'&&Number.isFinite(x.speed_mbps))name.appendChild(buschUnraidNode('p',unraidZahl(x.speed_mbps,t.speed_unit,lang),'message'));return {port:x.port,name,state:['host','vm','remote','usbip_bound','unauthorized'].includes(x.state)?t[x.state]:t.unknown,assignment:x.state==='vm'?x.assigned_vm||t.vm_unknown:x.state==='remote'?x.remote_host||t.remote_unknown:'–'};};
+  return {spalten:[{key:'port',label:t.col_port},{key:'name',label:t.col_name},{key:'state',label:t.col_state},{key:'assignment',label:t.col_assignment}],eintraege,zeile,optionen:{leer:q.liste.length?t.filtered_empty:q.zustand==='partial'?t.inventory_empty_partial:t.none}};});}
  static getConfigElement(){return document.createElement('busch-unraid-usb-card-editor');}static getStubConfig(){return {type:'custom:busch-unraid-usb-card'};}
 }
 class BuschUnraidUsbCardEditor extends BuschUnraidTileEditor{get _schema(){return SCHEMA_BUSCH_UNRAID_USB_CARD;}get _texte(){return TEXTE_BUSCH_UNRAID_USB_CARD;}get _defaults(){return new BuschUnraidUsbCard()._vorgaben;}}
@@ -3166,7 +3189,7 @@ class BuschUnraidCoralCard extends BuschUnraidTile{
  _modell(core,config){return unraidInventarModell(core,config,'coral');}
  _kompakt(m){if(m.laedt||m.fehler)return {};const q=m.inventory;return {summary:unraidKw(q?.liste!==null&&q?.count!=null?unraidZahl(q.count,'',this._hass?.locale?.language):null)};}
  _kopf(m,t){return {icon:'mdi:chip',titel:t.tile,untertitel:[m.name,this._zeigt('summary')&&m.inventory?.count!=null?`${m.inventory.count} ${t.count}`:null].filter(Boolean).join(' · ')};}
- _inhalt(body,m,t){if(!this._inhaltSichtbar()||!unraidInventarHinweis(body,m,t))return;if(!this._zeigt('tpus'))return;const lang=this._hass?.locale?.language,rows=[...m.inventory.liste].sort((a,b)=>String(a.name).localeCompare(String(b.name),undefined,{numeric:true})).map(x=>{const usb=x.transport==='usb',temp=x.temperature_c;return {name:x.name,state:usb?t.usb_notice:['ready','error'].includes(x.state)?t[x.state]:t.unknown,temp:!usb&&typeof temp==='number'&&Number.isFinite(temp)&&temp>-50&&temp<=150?unraidZahl(temp,'°C',lang,1):t.temperature_missing};});unraidInventarTabelle(body,'coral',[{key:'name',label:t.col_name},{key:'state',label:t.col_state},{key:'temp',label:t.col_temp}],rows,{leer:m.inventory.zustand==='partial'?t.inventory_empty_partial:t.none});}
+ _inhalt(body,m,t){if(!this._inhaltSichtbar()||!unraidInventarHinweis(body,m,t))return;if(!this._zeigt('tpus'))return;const lang=this._hass?.locale?.language,q=m.inventory;unraidInventarTabelle(this,body,'coral',q,q.zustand,()=>{const eintraege=[...q.liste].sort((a,b)=>String(a.name).localeCompare(String(b.name),undefined,{numeric:true})),zeile=x=>{const usb=x.transport==='usb',temp=x.temperature_c;return {name:x.name,state:usb?t.usb_notice:['ready','error'].includes(x.state)?t[x.state]:t.unknown,temp:!usb&&typeof temp==='number'&&Number.isFinite(temp)&&temp>-50&&temp<=150?unraidZahl(temp,'°C',lang,1):t.temperature_missing};};return {spalten:[{key:'name',label:t.col_name},{key:'state',label:t.col_state},{key:'temp',label:t.col_temp}],eintraege,zeile,optionen:{leer:q.zustand==='partial'?t.inventory_empty_partial:t.none}};});}
  static getConfigElement(){return document.createElement('busch-unraid-coral-card-editor');}static getStubConfig(){return {type:'custom:busch-unraid-coral-card'};}
 }
 class BuschUnraidCoralCardEditor extends BuschUnraidTileEditor{get _schema(){return SCHEMA_BUSCH_UNRAID_CORAL_CARD;}get _texte(){return TEXTE_BUSCH_UNRAID_CORAL_CARD;}get _defaults(){return new BuschUnraidCoralCard()._vorgaben;}}
