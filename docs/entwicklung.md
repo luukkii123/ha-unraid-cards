@@ -60,6 +60,10 @@ Feste Verträge:
   von Familien- und Docker-Karte, Medien der Docker-Kacheln. Wer einen Teil ergänzt, nimmt alles, was der Knoten
   zeigt, in die Eingaben auf (auch Zeitabhängiges). `Intl`-Formatierer entstehen einmal je Art, Sprache und
   Optionen (`unraidIntl`, `unraidFormatNumber`).
+- Modelle (M49 Nachbesserung): Die Docker-Karte behält je Stack-/Containergerät das Gerätemodell, solange der Kern
+  die Entitäten des Geräts unverändert meldet (`unraidGeraeteModell` über `core.track`/`unchanged`; ohne `track`
+  wie bisher jedes Mal). `buschUnraidModel` sucht das Gerät per id (`buschUnraidDevice`) statt alle Geräte zu
+  sortieren; im Servermodell entsteht der Index eines Kindgeräts einmal je Modell (`s.von`).
 
 ### Anzeige und Einklappen (0.4.0, #642/#643)
 
@@ -116,7 +120,7 @@ docker run --rm --network none \
 | `tests/editor-versorgung.test.js` | M48: alle 17 Editoren setzen bei fremdem Update kein `schema`/`data`/`computeLabel`/`computeHelper` am `ha-form` (nur `hass`); Sprache, Konfiguration und Geräteliste versorgen weiter |
 | `tests/rechte.test.js` | Option `admin_actions` (M16): Nicht-Admin ohne Aktionsknöpfe und ohne `callService` in Server-, Array-, Paritäts-, Stack-, Container-, VM- und Docker-Karte, veraltete Knöpfe nach dem Wechsel Admin → Nicht-Admin, Admin unverändert; Option `confirm_update_all` |
 | `tests/xss.test.js` | M19: alle 17 Karten samt Servermenü, Bestätigungsdialog und Docker-Menü mit jedem Eintrag aus `XSS_PAYLOADS` in jedem angezeigten Textfeld; `activeMarkup` leer außer den benannten Elementen (Bild aus `BuschUI.media`, Ring-/Linien-SVG) |
-| `tests/teile.test.js` | M49 Nachbesserung: eigenes Update baut nur geänderte Teile (System, Array: Elementzahl; Stack, VM-Liste, Docker: keine `ha-icon` unveränderter Zeilen/Köpfe); Platzhalter ohne lebenden Teil wird gebaut; SMART-Relativzeit in behaltener Tabelle folgt der Uhr; Sprachwechsel baut Teile neu |
+| `tests/teile.test.js` | M49 Nachbesserung: eigenes Update baut nur geänderte Teile (System, Array: Elementzahl; Stack, VM-Liste, Docker: keine `ha-icon` unveränderter Zeilen/Köpfe); Platzhalter ohne lebenden Teil wird gebaut; SMART-Relativzeit in behaltener Tabelle folgt der Uhr; Sprachwechsel baut Teile neu; Docker-Modell mit `core.track` nur für das geänderte Gerät neu, neue Epoche alle |
 | `tests/gezielt-aktualisieren.test.js` | M49: je Kartenart (13 Kacheln, Stack, Container, VM-Liste, Docker) eigenes Update ohne neue `ha-icon`, Wert aktualisiert, Fokus bleibt; Zeile weg/dazu, Stack auf/zu; behaltener Knopf mit neuem Handler; geteiltes `adoptedStyleSheets`-Blatt bzw. ein bleibendes `<style>` |
 | `tests/unraid-update-bench.cjs` | M49-Bank (kein Test): `node tests/unraid-update-bench.cjs [bundle] [läufe]`, p50/p95 ms je eigenem Update, neue `ha-icon` je Update, Icons objektgleich |
 | `tests/schluss-*.test.js` | Schlussrunde #564: Render-Signatur und `watchDevice`, Lade-/Nicht-verfügbar-Zustände, Tabellen am Handy, Balkenkontrast, Ring, VM-Liste (Einklappen, `show_restart`), Kleinigkeiten |

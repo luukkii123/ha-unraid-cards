@@ -1333,8 +1333,9 @@ function buschUnraidLegacy(entries){
   return e;
  });
 }
-function buschUnraidModel(core,config,kind) {
- const device=config.device_id?buschUnraidDevice(core,kind,config.device_id):null;
+// `geraet` (optional): the device of config.device_id, already known to pass the filter of `kind` (Docker card).
+function buschUnraidModel(core,config,kind,geraet) {
+ const device=geraet!==undefined?geraet:config.device_id?buschUnraidDevice(core,kind,config.device_id):null;
  const model={device:device||null,containers:[],selected:null,switch:null,restart:null,force_stop:null,status:'unknown',update_progress:null,running:0,total:0};
  if(!device)return model;
  const deviceEntries=new Set(device.config_entries||[]);
@@ -2043,6 +2044,16 @@ function buschUnraidDockerSort(rows,sort){return [...rows].sort((a,b)=>(sort==='
  * (entity_picture). Unraid SSH 0.8.0 gives the stack switch the picture of its
  * first pictured service and the Compose Manager name (stack_display_name);
  * older backends: borrow the main container's picture, else the first one. */
+/* M49 step 2 (#1299): per stack/container device the Docker card keeps the device model while the core reports the
+ * device's entities unchanged (core.track/unchanged, #641; new epoch or version → built again). Without track (older
+ * core, test fixtures) it is built every time. The caller reads the device's entities right before (entry check), so the
+ * card's own track keeps seeing the device. The kept model is only read, never changed. */
+const UNRAID_GERAETEMODELLE=new WeakMap();
+function unraidGeraeteModell(core,device,kind){
+ if(typeof core?.track!=='function'||typeof core.unchanged!=='function')return buschUnraidModel(core,{device_id:device.id},kind,device);
+ let cache=UNRAID_GERAETEMODELLE.get(core);if(!cache){cache=new Map();UNRAID_GERAETEMODELLE.set(core,cache);}
+ const alt=cache.get(device.id);if(alt&&alt.kind===kind&&alt.device===device&&core.unchanged(alt.deps))return alt.m;
+ let m;const deps=core.track(()=>{m=buschUnraidModel(core,{device_id:device.id},kind,device);});cache.set(device.id,{kind,device,deps,m});return m;}
 function buschUnraidDockerModel(core,config){
  const servers=buschUnraidServers(core),server=config.device_id?servers.find(d=>d.id===config.device_id)||null:servers.length===1?servers[0]:null;
  const model={server,tiles:[],running:0,total:0,ambiguous:false};
@@ -2053,13 +2064,13 @@ function buschUnraidDockerModel(core,config){
  for(const device of buschUnraidDevices(core,'container')){
   if(!core.getDeviceEntities(device.id).some(e=>e.platform==='unraid_ssh'&&e.config_entry_id===entry))continue;
   if(device.model==='Compose stack'){
-   const m=buschUnraidModel(core,{device_id:device.id},'stack');if(!m.switch&&!m.containers.length)continue;
+   const m=unraidGeraeteModell(core,device,'stack');if(!m.switch&&!m.containers.length)continue;
    const name=m.switch?.attributes?.stack_display_name||m.switch?.attributes?.stack_name||m.containers.find(c=>c.switch?.attributes?.stack_display_name)?.switch.attributes.stack_display_name||m.containers.find(c=>c.stack)?.stack||device.name_by_user||device.name||device.id,key='stack:'+device.id;
    const pictured=buschUnraidDockerSort(m.containers,'name').filter(c=>c.entity_picture),main=pictured.find(c=>c.name===name)||pictured[0];
    model.tiles.push({type:'stack',key,name,status:m.status,running:m.running,total:m.total,switch:m.switch,restart:m.restart,update_all:m.update_all,update_queue:m.update_queue,update_progress:m.update_progress,has_update:m.containers.some(c=>c.update?.state==='on'),entity_picture:m.switch?.attributes?.entity_picture||main?.entity_picture,containers:m.containers.map(c=>({...c,type:'container',key:'container:'+c.key,parent:key,parent_name:name}))});
    model.running+=m.running;model.total+=m.total;
   }else{
-   const m=buschUnraidModel(core,{device_id:device.id},'container');
+   const m=unraidGeraeteModell(core,device,'container');
    for(const c of m.containers){model.tiles.push({...c,type:'container',key:'container:'+c.key});model.total++;if(c.status==='running'||(c.status==='updating'&&c.switch?.state==='on'))model.running++;}
   }
  }
@@ -2531,10 +2542,11 @@ function unraidServer(core,config){
  const hauptwerte=['cpu_percent','array_state'].map(x=>haupt.get(x)).filter(Boolean),verfuegbar=!hauptwerte.length||hauptwerte.some(buschUnraidAvailable);
  // Ohne Eintrag (Entitätsregister noch nicht geladen: hass.entities hat weder config_entry_id noch unique_id) im Zweifel laden,
  // statt falsche Leerzustände zu zeigen; nur ein gemeldeter Registerfehler beendet das Warten.
- const laedt=!entry&&!core.lastErrors?.has?.('entity');
+ const laedt=!entry&&!core.lastErrors?.has?.('entity'),kinderIndex=new Map();
  return {server:gewaehlt,entry,verfuegbar,laedt,wert:s=>haupt.get(s)||null,alle:p=>[...haupt].filter(([s])=>s.startsWith(p)).map(([suffix,entity])=>({suffix,entity})),
   geraete:modell=>kinder.filter(d=>d.model===modell).map(d=>({...d,roh:unraidRohname(d,core.getDeviceEntities(d.id).filter(e=>e?.platform==='unraid_ssh'&&e.config_entry_id===entry))})).sort((a,b)=>a.roh.localeCompare(b.roh,undefined,{numeric:true})),
-  von:(d,s)=>d?index(core.getDeviceEntities(d.id)).get(s)||null:null,ids:[gewaehlt.id,...kinder.map(d=>d.id)]};
+  // M49 step 2: the index of a child device is built once per model (unraidGruppen asks up to seven times per disk).
+  von:(d,s)=>{if(!d)return null;let i=kinderIndex.get(d.id);if(!i){i=index(core.getDeviceEntities(d.id));kinderIndex.set(d.id,i);}return i.get(s)||null;},ids:[gewaehlt.id,...kinder.map(d=>d.id)]};
 }
 // Geräte, deren Stream-Updates eine Kachel neu rendern sollen (Server und Kindgeräte desselben Eintrags).
 // Gemeinsamer Vorspann der Kachelmodelle: Fehler, Ladezustand oder Nicht verfügbar; null = Daten zeigen.

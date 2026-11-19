@@ -5,7 +5,7 @@
 const test = require('node:test'), assert = require('node:assert/strict');
 const { ladeKarte } = require('./laden.js');
 const { Element, dokument } = require('./dom-attrappe.js');
-const { inventoryFixture, familienKarte, dockerKarte, ladeFamilie } = require('./familie-attrappe.js');
+const { inventoryFixture, familienKarte, dockerKarte, ladeFamilie, dockerFixture } = require('./familie-attrappe.js');
 const { unraidAttrappe } = require('./attrappe.js');
 
 // Document whose createElement counts elements and ha-icon elements.
@@ -71,4 +71,26 @@ test('M49 parts: a kept SMART table follows the clock, a language change rebuild
   const s = kachel('BuschUnraidSystemCard'), speicher = () => s.k.shadowRoot.querySelectorAll('.grid')[1].textContent, de = speicher();
   s.k._hass = { ...s.k._hass, locale: { language: 'en' } }; s.k._render();
   assert.notEqual(speicher(), de, 'memory raster rebuilt in English');
+});
+
+// A core with track/unchanged like Busch Core (#641): versions per device, an epoch per registry rebuild.
+function verfolgterKern(core) {
+  const versionen = new Map(); let lesen = null; const lies = core.getDeviceEntities.bind(core);
+  core.epoch = 0; core.getDeviceEntities = id => { lesen?.add(id); return lies(id); };
+  core.track = fn => { const aussen = lesen, r = new Set(); lesen = r; try { fn(); } finally { lesen = aussen; if (aussen) for (const key of r) aussen.add(key); } return { epoch: core.epoch, v: [...r].map(key => [key, versionen.get(key) || 0]) }; };
+  core.unchanged = d => !!d && d.v.length > 0 && d.epoch === core.epoch && d.v.every(([key, v]) => (versionen.get(key) || 0) === v);
+  core.aendern = (id, fn) => { const e = core.entities.get(id); fn(e); versionen.set(e.device_id, (versionen.get(e.device_id) || 0) + 1); };
+  return core;
+}
+test('M49 Docker model: with core.track only the changed device is modelled again; a new epoch models all', () => {
+  const l = ladeFamilie(), core = verfolgterKern(dockerFixture()), orig = l.context.buschUnraidModel; let gebaut = [];
+  l.context.buschUnraidModel = (c, cfg, kind, g) => { gebaut.push(cfg.device_id); return orig(c, cfg, kind, g); };
+  const k = dockerKarte({}, { l, core }), alle = gebaut.length, web = [...core.entities.values()].find(e => e.entity_id.startsWith('switch.webserver'));
+  const status = () => k.shadowRoot.querySelectorAll('.tile-main').find(b => b.dataset.key === 'container:' + web.attributes.container_key).querySelector('.tile-status-text').textContent, vorher = status();
+  assert.ok(alle > 2, 'first render models every device: ' + alle);
+  gebaut = []; core.aendern(web.entity_id, e => { e.state = 'off'; e.attributes.container_state = 'exited'; }); k._render();
+  assert.deepEqual(gebaut, [web.device_id], 'only the changed device'); assert.notEqual(status(), vorher, 'tile follows');
+  const deps = core.track(() => k._render()); assert.ok(deps.v.length >= alle, 'the card still tracks every device: ' + deps.v.length);
+  gebaut = []; core.epoch++; core.aendern(web.entity_id, e => { e.state = 'on'; e.attributes.container_state = 'running'; }); k._render();
+  assert.equal(gebaut.length, alle, 'new epoch: every device again'); assert.equal(status(), vorher);
 });
