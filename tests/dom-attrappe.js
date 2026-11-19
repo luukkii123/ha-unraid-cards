@@ -33,6 +33,8 @@ class Element {
   getBoundingClientRect() { return { left: 10, top: 10, right: 110, bottom: 74, width: 100, height: 64 }; }
   all() { return [this, ...this.childNodes.flatMap((c) => c.all())]; }
   matches(sel) {
+    // Selector lists (`a,b`) as used by BuschUI.focusTrap (M28).
+    if (sel.includes(',')) return sel.split(',').some((s) => this.matches(s.trim()));
     const attr = sel.match(/^\[([\w-]+)(?:="([^"]*)")?\]$/);
     if (attr) {
       const key = attr[1], data = key.startsWith('data-') ? key.slice(5).replace(/-(\w)/g, (_, c) => c.toUpperCase()) : null;
@@ -43,6 +45,9 @@ class Element {
     const cls = sel.replace(/^\./, '').split(':')[0];
     return String(this.className).split(/\s+/).includes(cls);
   }
+  // Root of the tree (shadow root or detached top), as Node.getRootNode(); and Node.contains().
+  getRootNode() { let w = this; while (w.parentNode) w = w.parentNode; return w; }
+  contains(n) { return this.all().includes(n); }
   querySelectorAll(sel) { return this.all().slice(1).filter((n) => n.matches(sel)); }
   querySelector(sel) { return this.querySelectorAll(sel)[0] || null; }
   click() { for (const fn of this.listeners.click || []) fn({ stopPropagation() {} }); }
@@ -52,7 +57,10 @@ class Element {
 function dokument(registered) {
   const body = new Element('body');
   const createElement = (tag) => { if (!registered || !registered.has(tag)) return new Element(tag); const n = new (registered.get(tag))(); n.tagName = tag.toUpperCase(); return n; };
-  return { createElement, createElementNS: (_ns, tag) => new Element(tag), body, querySelectorAll: (sel) => body.all().filter((n) => n.tagName === sel.toUpperCase()) };
+  // document listeners (M28: BuschUI.focusTrap listens on document).
+  const listeners = {};
+  return { createElement, createElementNS: (_ns, tag) => new Element(tag), body, querySelectorAll: (sel) => body.all().filter((n) => n.tagName === sel.toUpperCase()),
+    listeners, addEventListener(type, fn) { (listeners[type] ||= []).push(fn); }, removeEventListener(type, fn) { listeners[type] = (listeners[type] || []).filter((f) => f !== fn); } };
 }
 
 /**
@@ -85,6 +93,7 @@ function domMitHistory() {
     get length() { return this.stack.length; },
     pushState(s) { this.stack.push(structuredClone(s)); },
     back() { this.backs++; if (this.stack.length > 1) this.stack.pop(); setTimeout(() => fenster.dispatchEvent(new Event('popstate'))); } };
+  fenster.history = history; // like the browser: window.history (BuschUI.dialogHistory reads it, M28)
   document.activeElement = null;
   // document-Listener (Capture-Flag wird ignoriert, alle laufen vor den Element-Listenern).
   document.listeners = {};

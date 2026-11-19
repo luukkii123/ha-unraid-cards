@@ -2283,7 +2283,6 @@ button:focus-visible{outline:2px solid var(--primary-color);outline-offset:-2px}
 .item.danger,.item.danger ha-icon{color:var(--error-color)}
 .label{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
 `;
-let buschUnraidDockerMenuSerial=0;
 /** Small flüchtiges Menü (R04: Außenklick erlaubt). Hängt an document.body, weil
  * container-type an :host einen festen Bezugsrahmen bilden würde. Eigener
  * Verlaufseintrag: Zurück schließt nur das Menü (ui-regeln Regel 2). */
@@ -2291,7 +2290,7 @@ class BuschUnraidDockerMenu extends HTMLElement {
  constructor(){super();this.attachShadow({mode:'open'});}
  static open(options){for(const old of document.querySelectorAll('busch-unraid-docker-menu'))old._finish();const menu=document.createElement('busch-unraid-docker-menu');document.body.appendChild(menu);menu._show(options);return menu;}
  _show({anchor,title,label,closeLabel,items,onClose}){
-  this._onClose=onClose;this._id='busch-unraid-docker-menu-'+(++buschUnraidDockerMenuSerial);
+  this._onClose=onClose;
   const style=document.createElement('style');style.textContent=BUSCH_UNRAID_DOCKER_MENU_STYLE;
   const scrim=document.createElement('div');scrim.className='menu-scrim';scrim.addEventListener('click',()=>this.close());
   const panel=document.createElement('div');panel.className='menu-panel';
@@ -2302,10 +2301,10 @@ class BuschUnraidDockerMenu extends HTMLElement {
   for(const item of items){const button=document.createElement('button');button.type='button';button.className='item'+(item.danger?' danger':'');button.setAttribute('role','menuitem');button.dataset.action=item.key;button.disabled=!!item.disabled;const icon=BuschUI.ha.icon(item.icon);icon.setAttribute('aria-hidden','true');const text=document.createElement('span');text.className='label';text.textContent=item.label;button.append(icon,text);button.addEventListener('click',async event=>{event.stopPropagation();if(button.disabled)return;await this.close();item.run();});list.appendChild(button);}
   panel.append(head,list);this.shadowRoot.replaceChildren(style,scrim,panel);
   this.addEventListener('keydown',event=>this._key(event));
-  history.pushState({buschUnraidDockerMenu:this._id},'');
-  this._pop=()=>{if(history.state?.buschUnraidDockerMenu!==this._id)this._finish();};window.addEventListener('popstate',this._pop);
+  // M28 (#1317): history entry and focus trap from shared UI (Back closes only the menu, Regel 2; Tab stays in the menu).
+  this._verlauf=BuschUI.dialogHistory({name:'busch-unraid-docker-menu',onClose:()=>this._finish()});
   this._place(anchor,panel);
-  this._items()[0]?.focus({preventScroll:true});
+  this._falle=BuschUI.focusTrap(panel,{initial:this._items()[0]});
  }
  _place(anchor,panel){
   const vw=window.innerWidth,vh=window.innerHeight,sheet=vw<450;this.toggleAttribute('sheet',sheet);
@@ -2318,21 +2317,22 @@ class BuschUnraidDockerMenu extends HTMLElement {
  }
  _items(){return [...this.shadowRoot.querySelectorAll('.item:not(:disabled)')];}
  _key(event){
-  const items=this._items(),focusable=[...this.shadowRoot.querySelectorAll('button:not(:disabled)')],active=this.shadowRoot.activeElement,index=items.indexOf(active);
+  const items=this._items(),active=this.shadowRoot.activeElement,index=items.indexOf(active);
   if(event.key==='Escape'){event.preventDefault();event.stopPropagation();this.close();return;}
   const move=to=>{event.preventDefault();items[(to+items.length)%items.length]?.focus();};
   if(event.key==='ArrowDown')move(index+1);else if(event.key==='ArrowUp')move(index<0?items.length-1:index-1);else if(event.key==='Home')move(0);else if(event.key==='End')move(items.length-1);
-  else if(event.key==='Tab'&&focusable.length){const at=focusable.indexOf(active),next=event.shiftKey?at-1:at+1;event.preventDefault();focusable[(next+focusable.length)%focusable.length].focus();}
   event.stopPropagation();
  }
  close(){
   if(this._closing)return this._closing;
-  this.style.display='none';window.removeEventListener('popstate',this._pop);
-  const own=history.state?.buschUnraidDockerMenu===this._id;
-  this._closing=new Promise(resolve=>{if(!own){this._finish();resolve();return;}let done=false;const finish=()=>{if(done)return;done=true;window.removeEventListener('popstate',finish);this._finish();resolve();};window.addEventListener('popstate',finish);setTimeout(finish,300);history.back();});
+  this.style.display='none';this._falle?.release({returnFocus:false});
+  // Own entry on top: dialogHistory.close() goes back; wait for that popstate (at most 300 ms) before the caller runs the
+  // item, so a confirmation opened next does not lose its own entry to this back().
+  const own=!!this._verlauf?.pushed&&window.history?.state?.buschUiDialog?.id===this._verlauf.id;this._verlauf?.close();
+  this._closing=new Promise(resolve=>{if(!own){this._finish();resolve();return;}let done=false;const finish=()=>{if(done)return;done=true;window.removeEventListener('popstate',finish);this._finish();resolve();};window.addEventListener('popstate',finish);setTimeout(finish,300);});
   return this._closing;
  }
- _finish(){if(this._done)return;this._done=true;window.removeEventListener('popstate',this._pop);this.remove();this._onClose?.();}
+ _finish(){if(this._done)return;this._done=true;this._falle?.release({returnFocus:false});this._verlauf?.close();this.remove();this._onClose?.();}
 }
 class BuschUnraidDockerCard extends BuschUnraidBaseCard {
  constructor(){super();this._config={...BUSCH_UNRAID_DOCKER_DEFAULTS};this._toggled=new Map();this._menuKey=null;this._eingeklappt=false;this.addEventListener('keydown',event=>this._shortcut(event));}
@@ -2894,43 +2894,46 @@ class BuschUnraidTile extends HTMLElement {
   this._menu=BuschUnraidDockerMenu.open({anchor:anker,title:a.titel||this._config.title||a.label,label:t.actions,closeLabel:t.close,items:a.menu.map(x=>({key:x.key,label:x.label,icon:x.icon,danger:!!x.gefahr,disabled:!!this._busy||!!x.deaktiviert,run:()=>this._ausfuehren(x,t)})),
    onClose:()=>{this._menu=null;this._menuOffen=null;if(!this.shadowRoot)return;this._render();this.shadowRoot.querySelector(`[data-focus-key="${a.key}"]`)?.focus({preventScroll:true});}});}
 }
+// M28 (#1317, W4): shared dialog anatomy (BuschUI.styles .busch-dialog, data-size=confirm 320 px, bottom sheet under 450 px
+// width or 500 px height). Own rules: the fixed host above HA dialogs, the scrim and the icon-only close X.
 const UNRAID_CONFIRM_STYLE=`:host{position:fixed;inset:0;z-index:10000;display:grid;place-items:center}
+${BuschUI.styles}
 .scrim{position:absolute;inset:0;background:var(--mdc-dialog-scrim-color,rgba(0,0,0,.32))}
-.dialog{position:relative;width:min(320px,calc(100vw - 32px));background:var(--card-background-color,#fff);color:var(--primary-text-color);border-radius:var(--ha-card-border-radius,12px);padding:var(--ha-space-6,24px);box-shadow:var(--ha-card-box-shadow,0 8px 24px rgba(0,0,0,.3))}
-h2{margin:0 0 var(--ha-space-3,12px);font-size:var(--ha-font-size-l,16px);overflow-wrap:anywhere}p{margin:0 0 var(--ha-space-5,20px);overflow-wrap:anywhere}
-.dialog-head{display:flex;align-items:flex-start;gap:var(--ha-space-3,12px);margin-bottom:var(--ha-space-3,12px)}.dialog-head h2{flex:1;min-width:0;align-self:center;margin:0}.close{display:flex;align-items:center;justify-content:center;flex:0 0 44px;width:44px;height:44px;padding:0;border:0}
-.buttons{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:var(--ha-space-2,8px)}.buttons button{flex:0 0 auto;max-width:100%;box-sizing:border-box;overflow-wrap:anywhere;padding:var(--ha-space-2,8px) var(--ha-space-4,16px)}button{min-height:44px;min-width:44px;padding:0 var(--ha-space-4,16px);border-radius:var(--busch-radius-inner,var(--ha-border-radius-md,8px));border:1px solid var(--divider-color);background:transparent;color:var(--primary-color);font:inherit}
-button.danger{background:var(--error-color);color:var(--text-primary-color,#fff);border-color:var(--error-color)}button:focus-visible{outline:2px solid var(--primary-color);outline-offset:2px}
-@media (max-width:449px),(max-height:499px){:host{place-items:end stretch}.dialog{width:auto;min-height:90vh;border-radius:var(--ha-card-border-radius,12px) var(--ha-card-border-radius,12px) 0 0;display:flex;flex-direction:column}.buttons{margin-top:auto}}`;
-// Zentraler Bestätigungsdialog (R04): Escape, Abbrechen und Zurück liefern false, Bestätigen true, genau einmal.
-// `history.state` ist im Browser eine Kopie: der eigene Eintrag wird deshalb über seine id erkannt, nie per Identität.
-// Schlüssel `buschUnraidConfirm`, nicht `dialog`: HA wertet `history.state.dialog` selbst aus.
-// Tasten hängen am document (Capture): nach einem Klick ins Leere liegt der Fokus sonst auf body und Escape/Tab erreichen den Dialog nicht.
+.dialog{position:relative;box-shadow:var(--ha-card-box-shadow,0 8px 24px rgba(0,0,0,.3))}
+.busch-dialog-content p{margin:0;overflow-wrap:anywhere}
+.close{display:inline-grid;place-items:center;width:44px;height:44px;min-width:44px;min-height:44px;padding:0;border:0;border-radius:50%;background:transparent;color:var(--secondary-text-color);cursor:pointer;font:inherit}
+button:focus-visible{outline:2px solid var(--primary-color);outline-offset:2px}
+@media (max-width:449px),(max-height:499px){:host{place-items:end stretch}}`;
+// Central confirmation dialog (R04): Escape, Cancel, the close X and Back give false, Confirm true, exactly once.
+// M28: history entry and focus trap come from shared UI (BuschUI.dialogHistory: own entry under buschUiDialog, never `dialog`,
+// which HA reads; back() only when the own entry is on top. BuschUI.focusTrap: Tab/Shift+Tab cycle, stray focus returns).
+// Escape is caught on document (capture): after a click into the void the focus sits on body.
 class BuschUnraidConfirm extends HTMLElement {
  static frage(o){const d=document.createElement('busch-unraid-confirm');document.body.appendChild(d);return d._zeigen(o);}
  _zeigen({titel,text,aktion,gefahr}){
-  // document.activeElement meldet nur den äußersten Shadow-Host; bis zum wirklich fokussierten Element absteigen.
+  // document.activeElement only reports the outermost shadow host; descend to the element that really has focus.
   let vorher=document.activeElement;while(vorher?.shadowRoot?.activeElement)vorher=vorher.shadowRoot.activeElement;this._vorher=vorher;
   const root=this.attachShadow({mode:'open'}),style=document.createElement('style');style.textContent=UNRAID_CONFIRM_STYLE;
   this._scrim=document.createElement('div');this._scrim.className='scrim';
-  const box=document.createElement('div');box.className='dialog';box.setAttribute('role','alertdialog');box.setAttribute('aria-modal','true');
-  const h=document.createElement('h2');h.id='t';h.textContent=titel;const p=document.createElement('p');p.id='d';p.textContent=text;box.setAttribute('aria-labelledby','t');box.setAttribute('aria-describedby','d');
-  const t=buschTexte(UNRAID_TILE_TEXTE,document.querySelector('home-assistant')?.hass),head=document.createElement('div');head.className='dialog-head';
-  this._close=document.createElement('button');this._close.className='close';this._close.setAttribute('type','button');this._close.setAttribute('aria-label',t.close);this._close.title=t.close;const icon=BuschUI.ha.icon('mdi:close');icon.setAttribute('aria-hidden','true');this._close.appendChild(icon);head.append(this._close,h);
-  const row=document.createElement('div');row.className='buttons';this._abbr=document.createElement('button');this._abbr.textContent=t.cancel;
-  this._ok=document.createElement('button');this._ok.textContent=aktion;if(gefahr)this._ok.className='danger';row.append(this._abbr,this._ok);box.append(head,p,row);root.append(style,this._scrim,box);
-  const id=Math.random().toString(36).slice(2);this._eintrag={buschUnraidConfirm:id};history.pushState(this._eintrag,'');
-  const obenEigener=()=>{const s=history.state;return !!s&&s.buschUnraidConfirm===id;};
+  const box=document.createElement('div');box.className='dialog busch-dialog';box.setAttribute('data-size','confirm');box.setAttribute('role','alertdialog');box.setAttribute('aria-modal','true');
+  const h=document.createElement('h2');h.id='t';h.className='busch-dialog-title';h.textContent=titel;h.title=titel;const p=document.createElement('p');p.id='d';p.textContent=text;box.setAttribute('aria-labelledby','t');box.setAttribute('aria-describedby','d');
+  const t=buschTexte(UNRAID_TILE_TEXTE,document.querySelector('home-assistant')?.hass),head=document.createElement('div');head.className='dialog-head busch-dialog-head';
+  this._close=document.createElement('button');this._close.className='close busch-dialog-close';this._close.setAttribute('type','button');this._close.setAttribute('aria-label',t.close);this._close.title=t.close;const icon=BuschUI.ha.icon('mdi:close');icon.setAttribute('aria-hidden','true');this._close.appendChild(icon);head.append(this._close,h);
+  const inhalt=document.createElement('div');inhalt.className='busch-dialog-content';inhalt.appendChild(p);
+  // Footer: Cancel before the primary action (right-aligned); a final action is filled red (ui-regeln Regel 2).
+  const knopf=(text,variante)=>{const b=document.createElement('button');b.className='busch-btn';b.setAttribute('type','button');b.setAttribute('data-variant',variante);b.textContent=text;return b;};
+  const row=document.createElement('div');row.className='buttons busch-dialog-foot';this._abbr=knopf(t.cancel,'secondary');
+  this._ok=knopf(aktion,gefahr?'destructive':'primary');if(gefahr)this._ok.setAttribute('data-filled','');row.append(this._abbr,this._ok);box.append(head,inhalt,row);root.append(style,this._scrim,box);
   return new Promise(resolve=>{
-   this._fertig=(wert,ausHistory=false)=>{if(this._erledigt)return;this._erledigt=true;window.removeEventListener('popstate',this._pop);document.removeEventListener('keydown',this._taste,true);if(!ausHistory&&obenEigener())history.back();this.remove();this._vorher?.focus?.();resolve(wert);};
-   // Jedes popstate, solange der Dialog offen ist, ist ein Zurück: der eigene back()-Aufruf läuft erst nach dem Abmelden.
-   this._pop=()=>this._fertig(false,true);
-   this._taste=e=>{if(e.key==='Escape'){e.preventDefault();e.stopPropagation?.();this._fertig(false);}else if(e.key==='Tab'){const z=[this._close,this._abbr,this._ok],i=z.indexOf(root.activeElement);e.preventDefault();(i<0?z[e.shiftKey?z.length-1:0]:z[(i+(e.shiftKey?-1:1)+z.length)%z.length]).focus();}};
-   window.addEventListener('popstate',this._pop);document.addEventListener('keydown',this._taste,true);
+   this._fertig=(wert,ausHistory=false)=>{if(this._erledigt)return;this._erledigt=true;document.removeEventListener('keydown',this._taste,true);this._falle?.release({returnFocus:false});if(!ausHistory)this._verlauf?.close();this.remove();this._vorher?.focus?.();resolve(wert);};
+   // Back (popstate without the own entry on top) cancels; the own back() of _fertig runs after the listener is gone.
+   this._verlauf=BuschUI.dialogHistory({name:'busch-unraid-confirm',onClose:()=>this._fertig(false,true)});
+   this._taste=e=>{if(e.key==='Escape'){e.preventDefault();e.stopPropagation?.();this._fertig(false);}};
+   document.addEventListener('keydown',this._taste,true);
    this._close.addEventListener('click',()=>this._fertig(false));this._abbr.addEventListener('click',()=>this._fertig(false));this._ok.addEventListener('click',()=>this._fertig(true));
-   // R04: Klick auf den Scrim schließt einen Bestätigungsdialog bewusst nicht; mousedown ohne Standardaktion hält den Fokus im Dialog.
+   // R04: a click on the scrim deliberately does not close a confirmation; mousedown without default keeps the focus inside.
    this._scrim.addEventListener('mousedown',e=>e.preventDefault());
-   this._abbr.focus();
+   this._falle=BuschUI.focusTrap(box,{initial:this._abbr});
   });
  }
 }

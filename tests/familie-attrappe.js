@@ -66,13 +66,14 @@ function ladeFamilie({ language = 'de', speicher } = {}) {
   const registered = new Map();
   const document = dokument(registered), body = document.body;
   const history = { stack: [null], get state() { return this.stack.at(-1); }, pushState(s) { this.stack.push(s); }, back() { this.stack.pop(); } };
-  const window = { customCards: [], innerWidth: 1000, innerHeight: 800, addEventListener() {}, removeEventListener() {}, scrollX: 0, scrollY: 0, ...(speicher ? { localStorage: speicher } : {}) };
+  // M28: listeners are kept (BuschUI.dialogHistory listens for popstate) and window.history is the same object as history.
+  const window = { customCards: [], innerWidth: 1000, innerHeight: 800, listeners: {}, addEventListener(type, fn) { (this.listeners[type] ||= []).push(fn); }, removeEventListener(type, fn) { this.listeners[type] = (this.listeners[type] || []).filter((f) => f !== fn); }, history, scrollX: 0, scrollY: 0, ...(speicher ? { localStorage: speicher } : {}) };
   const context = { performance, setTimeout, clearTimeout, HTMLElement: Element, customElements: { define: (k, v) => registered.set(k, v), get: (k) => registered.get(k) }, window, history, navigator: { language }, console, CustomEvent: class { constructor(type, init) { this.type = type; Object.assign(this, init); } }, document };
   vm.createContext(context);
   vm.runInContext(source, context);
   context.unraidBestaetigen = async () => true; // Dialog im Test ersetzt: zugestimmt
   const pick = vm.runInContext('({buschUnraidDockerModel,buschUnraidServers,buschUnraidSchema,BuschUnraidDockerCard,BuschUnraidDockerEditor,BuschUnraidStackCard,BuschUnraidContainerCard,TEXTE_BUSCH_UNRAID_DOCKER_CARD,SCHEMA_BUSCH_UNRAID_DOCKER_CARD,BUSCH_UNRAID_DOCKER_DEFAULTS})', context);
-  return { ...pick, context, registered, body, history };
+  return { ...pick, context, registered, body, history, window };
 }
 
 /** Ein Speicher wie localStorage (nur getItem/setItem). */

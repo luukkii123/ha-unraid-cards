@@ -338,6 +338,8 @@ def main():
                 page.screenshot(path=str(OUT / f"dialog-{breite}-{t}.png"))
                 report["dialog_text"][f"{breite}-{t}"] = {
                     "regel1": messe_text(page, DIALOG),
+                    # M28: shared anatomy — X left of the title in the head, Cancel left of (or above) the primary action, footer below the text.
+                    "anordnung": page.evaluate("()=>{const d=document.querySelector('busch-unraid-confirm').shadowRoot,r=s=>d.querySelector(s).getBoundingClientRect(),x=r('.busch-dialog-close'),t=r('.busch-dialog-title'),c=r('.busch-dialog-content'),f=r('.busch-dialog-foot'),[a,o]=[...d.querySelectorAll('.busch-dialog-foot button')].map(b=>b.getBoundingClientRect());return {x_links:x.right<=t.left+1,x_oben:x.bottom<=c.top+1,abbrechen_vor_primaer:a.right<=o.left+1||a.bottom<=o.top+1,fuss_unter_text:f.top>=c.bottom-1,primaer_rechts:o.right>=f.right-24};}"),
                     "inhalt": page.evaluate("()=>{const d=document.querySelector('busch-unraid-confirm').shadowRoot;const b=d.querySelector('.dialog').getBoundingClientRect();return {titel:d.querySelector('h2').textContent,text:d.querySelector('p').textContent,knoepfe:[...d.querySelectorAll('.buttons button')].map(x=>x.textContent),fokus:d.activeElement?.textContent||null,rect:{x:Math.round(b.x),y:Math.round(b.y),w:Math.round(b.width),h:Math.round(b.height)},inhalt_breite:Math.round(d.querySelector('.dialog').clientWidth-parseFloat(getComputedStyle(d.querySelector('.dialog')).paddingLeft)-parseFloat(getComputedStyle(d.querySelector('.dialog')).paddingRight)),vh:innerHeight}}"),
                 }
                 page.keyboard.press("Escape")
@@ -393,6 +395,8 @@ def main():
         elif k["kontrast_niedrig"]:
             hinweise.append(f"kontrast < 4.5:1 {tag}: {k['kontrast_niedrig']}")
     for key, d in report["dialog_text"].items():
+        if not all(d["anordnung"].values()):
+            eigene.append(f"dialog {key}: Anordnung X/Titel/Abbrechen/Primär abweichend: {d['anordnung']}")
         i = d["inhalt"]
         if i["knoepfe"] != ["Abbrechen", "Herunterfahren"] or i["fokus"] != "Abbrechen" or "Windows 11" not in i["text"]:
             eigene.append(f"dialog {key}: {i}")
@@ -411,7 +415,7 @@ def main():
         eigene.append(f"abbrechen {e['abbrechen']}")
     if e["bestaetigen"]["aufrufe"] != [["switch", "turn_off", {"entity_id": "switch.win"}]] or not e["bestaetigen"]["dialog_weg"]:
         eigene.append(f"bestaetigen {e['bestaetigen']}")
-    if e["history_state_am_ende"] and "buschUnraidConfirm" in json.dumps(e["history_state_am_ende"]):
+    if e["history_state_am_ende"] and any(k in json.dumps(e["history_state_am_ende"]) for k in ("buschUiDialog", "buschUnraidConfirm")):  # M28
         eigene.append("verwaister Verlaufseintrag")
     if not e["verlauf_abfragen"]:
         eigene.append("CPU-Verlauf nie abgefragt")

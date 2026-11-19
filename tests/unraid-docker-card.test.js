@@ -158,7 +158,7 @@ test('Menü öffnet mit Verlaufseintrag, Escape schließt und gibt den Fokus zur
   const main = card.shadowRoot.querySelectorAll('.tile-main').find((b) => b.dataset.key === 'stack:media');
   main.click();
   const menu = l.body.childNodes.find((n) => n.tagName === 'BUSCH-UNRAID-DOCKER-MENU');
-  assert.ok(menu); assert.equal(l.history.state.buschUnraidDockerMenu, menu._id);
+  assert.ok(menu); assert.equal(l.history.state.buschUiDialog.id, menu._verlauf.id); // M28: shared dialog history
   assert.equal(main.attributes['aria-expanded'], 'true');
   assert.equal(menu.shadowRoot.querySelector('.menu-title').textContent, 'media');
   same(menu.shadowRoot.querySelectorAll('.item').map((b) => b.dataset.action), ['toggle', 'start', 'stop', 'restart', 'update_all', 'details']);

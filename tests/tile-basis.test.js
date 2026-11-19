@@ -49,7 +49,8 @@ test('Dialog: Escape und Zurück brechen ab, Klick daneben nicht', async () => {
   let p = BuschUnraidConfirm.frage({titel:'Stoppen',text:'Windows 11 stoppen?',aktion:'Stoppen',gefahr:true});
   const d = umgebung.document.body.lastChild; d._scrim.click(); assert.ok(d.isConnected, 'Scrim schließt nicht');
   d.dispatchEvent(new umgebung.KeyboardEvent('keydown',{key:'Escape'})); assert.equal(await p, false);
-  p = BuschUnraidConfirm.frage({titel:'x',text:'y',aktion:'OK'}); umgebung.window.dispatchEvent(new umgebung.Event('popstate')); assert.equal(await p, false);
+  // M28: Back removes the own entry, then popstate arrives (BuschUI.dialogHistory closes when its entry is gone).
+  p = BuschUnraidConfirm.frage({titel:'x',text:'y',aktion:'OK'}); umgebung.history.stack.pop(); umgebung.window.dispatchEvent(new umgebung.Event('popstate')); assert.equal(await p, false);
 });
 test('Dialog: Doppelklick bestätigt einmal', async () => {
   const { BuschUnraidConfirm, umgebung } = ladeKarte(['BuschUnraidConfirm','umgebung'], domMitHistory());
@@ -68,7 +69,7 @@ test('Dialog: Aufbau, Fokus auf Abbrechen, Fokusfalle, Abbrechen liefert false',
   assert.equal(d.tagName, 'BUSCH-UNRAID-CONFIRM');
   const box = d.shadowRoot.querySelector('.dialog'); assert.equal(box.getAttribute('role'), 'alertdialog'); assert.equal(box.getAttribute('aria-modal'), 'true');
   assert.match(d.shadowRoot.querySelector('h2').textContent, /Stoppen/); assert.match(d.shadowRoot.querySelector('p').textContent, /plex/);
-  assert.equal(d._abbr.textContent, 'Cancel', 'ohne hass/navigator englisch'); assert.equal(d._ok.textContent, 'Stoppen'); assert.equal(d._ok.className, 'danger');
+  assert.equal(d._abbr.textContent, 'Cancel', 'ohne hass/navigator englisch'); assert.equal(d._ok.textContent, 'Stoppen'); assert.equal(d._ok.getAttribute('data-variant'), 'destructive'); assert.notEqual(d._ok.getAttribute('data-filled'), null, 'M28: final action filled red');
   assert.equal(d.shadowRoot.activeElement, d._abbr, 'Fokus beim Öffnen auf Abbrechen');
   const tab = (shiftKey) => { const e = new umgebung.KeyboardEvent('keydown',{key:'Tab',shiftKey}); d.dispatchEvent(e); return e; };
   assert.ok(tab(false).defaultPrevented); assert.equal(d.shadowRoot.activeElement, d._ok);
@@ -84,7 +85,7 @@ test('Dialog: ohne Gefahr normaler Knopf, deutsche Texte mit hass', async () => 
   const u = domMitHistory(); u.document.querySelector = (sel) => sel === 'home-assistant' ? { hass: { locale: { language: 'de' } } } : null;
   const { BuschUnraidConfirm, umgebung } = ladeKarte(['BuschUnraidConfirm','umgebung'], u);
   const p = BuschUnraidConfirm.frage({titel:'x',text:'y',aktion:'Neu starten'}); const d = umgebung.document.body.lastChild;
-  assert.equal(d._abbr.textContent, 'Abbrechen'); assert.notEqual(d._ok.className, 'danger'); d._ok.click(); assert.equal(await p, true);
+  assert.equal(d._abbr.textContent, 'Abbrechen'); assert.equal(d._ok.getAttribute('data-variant'), 'primary'); d._ok.click(); assert.equal(await p, true);
 });
 test('Dialog: Fokus kehrt zum vorher aktiven Element zurück (auch im Shadow DOM)', async () => {
   const { BuschUnraidConfirm, umgebung } = ladeKarte(['BuschUnraidConfirm','umgebung'], domMitHistory());
@@ -96,7 +97,7 @@ test('Dialog: Fokus kehrt zum vorher aktiven Element zurück (auch im Shadow DOM
 });
 test('Dialog: eigener History-Eintrag; zurück nur, wenn er oben liegt', async () => {
   const { BuschUnraidConfirm, umgebung } = ladeKarte(['BuschUnraidConfirm','umgebung'], domMitHistory()); const h = umgebung.history;
-  let p = BuschUnraidConfirm.frage({titel:'x',text:'y',aktion:'OK'}); assert.equal(h.length, 2); assert.equal(typeof h.state.buschUnraidConfirm, 'string'); assert.equal(h.state.dialog, undefined, 'nicht unter HAs Schlüssel dialog');
+  let p = BuschUnraidConfirm.frage({titel:'x',text:'y',aktion:'OK'}); assert.equal(h.length, 2); assert.equal(typeof h.state.buschUiDialog.id, 'string'); assert.equal(h.state.buschUiDialog.name, 'busch-unraid-confirm'); assert.equal(h.state.dialog, undefined, 'nicht unter HAs Schlüssel dialog');
   umgebung.document.body.lastChild._ok.click(); assert.equal(await p, true); assert.equal(h.backs, 1); assert.equal(h.length, 1);
   await new Promise((r) => setTimeout(r)); // eigenes popstate aus back() abwarten
   p = BuschUnraidConfirm.frage({titel:'x',text:'y',aktion:'OK'}); h.stack.pop(); // Zurück des Nutzers: Eintrag ist weg

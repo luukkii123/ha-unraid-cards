@@ -414,7 +414,8 @@ def main():
               f"Bestätigen Ausschalten: {e2e['server_shutdown']}")
         check(e2e["server_reboot"]["fokus"] == "more", f"Fokus nach Abbrechen: {e2e['server_reboot']['fokus']}")
         state = json.dumps(e2e["history"]["state"] or {})
-        check("buschUnraidDockerMenu" not in state and "buschUnraidConfirm" not in state, f"verwaister Verlaufseintrag: {state}")
+        # M28: dialogs and menus use BuschUI.dialogHistory (key buschUiDialog); old keys must not come back either.
+        check(all(k not in state for k in ("buschUiDialog", "buschUnraidDockerMenu", "buschUnraidConfirm")), f"verwaister Verlaufseintrag: {state}")
         browser.close()
 
     report["abgeschlossen"] = True

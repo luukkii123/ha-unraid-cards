@@ -248,7 +248,7 @@ def main():
     i = e["ausgeklappt_reihenfolge"].index("stack:monitoring")
     if e["ausgeklappt_reihenfolge"][i + 1:i + 5] != ["container:alertmanager", "container:grafana", "container:node-exporter", "container:prometheus"] or not e["eingeklappt"]:
         eigene.append(f"ausklappen {e['ausgeklappt_reihenfolge']}")
-    if e["history_state_am_ende"] and "buschUnraidDockerMenu" in json.dumps(e["history_state_am_ende"]):
+    if e["history_state_am_ende"] and any(k in json.dumps(e["history_state_am_ende"]) for k in ("buschUiDialog", "buschUnraidDockerMenu")):  # M28
         eigene.append("verwaister Verlaufseintrag")
     fremd = [u for u in report["netz"] if not (u in ("/", "/unraid-cards.js") or u.startswith("/api/unraid_ssh/icons/"))]
     if fremd:
