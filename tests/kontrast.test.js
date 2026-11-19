@@ -110,3 +110,28 @@ test('M79 coloured icons reach 3:1 on their surfaces (card/row/tile icon, badge,
   }
   assert.equal(faelle.length, 52);
 });
+
+// #1320 (Etappe I, Kontrast-Rest, user decision: no exception for graphics): information-carrying graphics reach 3:1 in
+// light and dark (WCAG 1.4.11): the bar and ring fill (normal, warning, critical) against the card and against its own track,
+// the CPU history line and the native progress bars (accent colour) against the card. The track itself is the 100 % frame;
+// the value stays readable next to it (bar text, ring value), so only the fill carries the amount.
+test('#1320 bar and ring fills, the CPU history line and progress bars reach 3:1 on the card and the fills on their track', () => {
+  const S = K.BUSCH_UNRAID_STYLE, T = K.UNRAID_TILE_STYLE, faelle = [];
+  const DIVIDER = { light: '#e0e0e0', dark: '#474747' };
+  for (const [name, basis] of Object.entries(THEMA)) {
+    const t = { ...basis, 'divider-color': DIVIDER[name] }, karte = hex(t['card-background-color']);
+    const spur = farbe(wert(regel(T, '.bar-track'), 'background'), t, T), ring = farbe(wert(regel(T, '.ring-bg'), 'stroke'), t, T);
+    const liste = [
+      ['.bar-fill', 'background', { karte, spur }], ['.bar.warn .bar-fill', 'background', { karte, spur }], ['.bar.crit .bar-fill', 'background', { karte, spur }],
+      ['.ring-fg', 'stroke', { karte, spur: ring }], ['.ring.warn .ring-fg', 'stroke', { karte, spur: ring }], ['.ring.crit .ring-fg', 'stroke', { karte, spur: ring }],
+      ['.line path', 'stroke', { karte }], ['.metric progress', 'accent-color', { karte }],
+    ];
+    for (const [sel, prop, flaechen] of liste) {
+      const fg = farbe(wert(regel(T, sel), prop), t, T);
+      for (const [f, bg] of Object.entries(flaechen)) { const q = quote(fg, bg); faelle.push(`${sel} ${f} ${name}: ${q.toFixed(2)}:1`); assert.ok(q >= 3, faelle.at(-1)); }
+    }
+    const nackt = S.match(/\}progress\{([^}]*)\}/); assert.ok(nackt, 'plain progress rule');
+    const q = quote(farbe(wert(nackt[1], 'accent-color'), t, S), karte); faelle.push(`progress karte ${name}: ${q.toFixed(2)}:1`); assert.ok(q >= 3, faelle.at(-1));
+  }
+  assert.equal(faelle.length, 30);
+});
