@@ -1566,6 +1566,87 @@ button{font:inherit;color:var(--primary-color);background:var(--secondary-backgr
 @container (max-width:440px){.header{grid-template-columns:40px minmax(0,1fr);column-gap:var(--unraid-small);row-gap:var(--unraid-small);padding-bottom:var(--unraid-small)}.card-icon{width:40px;height:40px}.header>.status-badge{grid-column:2;justify-self:start}.header>.actions{grid-column:1/-1;justify-content:flex-start}.row>.status-badge{grid-column:1;justify-self:start}.row>.actions{justify-content:flex-start}.actions button{padding-inline:var(--unraid-small);font-size:var(--ha-font-size-m,14px)}.disclosure{margin-top:0}}
 `;
 function buschUnraidNode(tag,text,className){const node=document.createElement(tag);if(text!==undefined)node.textContent=text;if(className)node.className=className;return node;}
+/* M49 (#1299, P10/F13): cards patch their live DOM instead of replacing it on every own update. One constructed sheet per
+ * stylesheet text is shared by all cards through adoptedStyleSheets (fallback: one <style> per shadow root that stays).
+ * The freshly built tree is merged into the live card: nodes pair by key (data-key + data-focus-key, data-entity-id,
+ * data-focus-key) or, unkeyed, in order with the same tag; paired nodes only get changed attributes and texts. So ha-icon,
+ * img, the focused button and the hovered tile stay the same objects; focus, scroll and hover survive (R21).
+ * Click handlers sit in `_unraidAct(event,node)` and move onto the kept node, so a kept button runs the latest handler.
+ * A placeholder from unraidBehalten() keeps the live node as it is (part unchanged, not built again). Media holders
+ * (BuschUI.media) manage their own <img>/fallback icon: they are kept while their source is unchanged, else replaced. */
+const UNRAID_BLAETTER=new Map();
+let unraidDockerCss=null;
+function unraidStil(root,css){
+ const Blatt=globalThis.CSSStyleSheet;
+ if(typeof Blatt==='function'&&typeof Blatt.prototype?.replaceSync==='function'&&Array.isArray(root.adoptedStyleSheets)){
+  let blatt=UNRAID_BLAETTER.get(css);if(!blatt){blatt=new Blatt();blatt.replaceSync(css);UNRAID_BLAETTER.set(css,blatt);}
+  if(root.adoptedStyleSheets.length!==1||root.adoptedStyleSheets[0]!==blatt)root.adoptedStyleSheets=[blatt];return null;}
+ let style=root._unraidStyle;if(!style){style=document.createElement('style');root._unraidStyle=style;}
+ if(root._unraidCss!==css){style.textContent=css;root._unraidCss=css;}return style;}
+/* Puts `card` (built off-document) into the shadow root: patches the live card when there is one, else inserts it.
+ * Returns the live card. */
+function unraidAnwenden(root,css,card){
+ const style=unraidStil(root,css),live=root._unraidCard;
+ if(live&&live.parentNode===root&&live.tagName===card.tagName&&typeof root.insertBefore==='function'){
+  unraidAbgleich(live,card);if(style&&root.childNodes[0]!==style)root.insertBefore(style,live);return live;}
+ unraidStempeln(card);if(style)root.replaceChildren(style,card);else root.replaceChildren(card);root._unraidCard=card;return card;}
+function unraidGleich(a,b){if(!a||!b||a.length!==b.length)return false;for(let i=0;i<a.length;i++)if(!Object.is(a[i],b[i]))return false;return true;}
+function unraidBehalten(tag,key){const node=document.createElement(tag);node._unraidBehalten=true;if(key!==undefined)node.dataset.key=key;return node;}
+/* Button whose click always runs the handler of the latest render (see above). */
+function unraidKnopf(optionen,fn){const node=document.createElement('button');node._unraidAct=fn;return BuschUI.action({...optionen,node,onClick:event=>node._unraidAct?.(event,node)});}
+function unraidKlick(node,fn){node._unraidAct=fn;node.addEventListener('click',event=>node._unraidAct?.(event,node));return node;}
+// Key and media kind never change on a node (pairs always share both), so both are computed once per node.
+function unraidIstMedium(n){return n._unraidMedium??=typeof n.className==='string'&&n.className.includes('busch-media');}
+function unraidMedienQuelle(n){if(n._unraidQuelle===undefined){const c=n.childNodes?.[0];n._unraidQuelle=c?String(c.tagName)+'|'+(c.getAttribute?.('src')??c.getAttribute?.('icon')??''):'';}return n._unraidQuelle;}
+// Before a built subtree goes live: record the source of every media holder (before an <img> can fail over to its icon)
+// and, on custom elements, the attributes the card set (see unraidAbgleich).
+function unraidStempeln(n){if(n?.nodeType!==1)return;if(unraidIstEigen(n))n._unraidAttr=Object.keys(unraidAttribute(n));if(unraidIstMedium(n))unraidMedienQuelle(n);for(const c of n.childNodes||[])unraidStempeln(c);}
+function unraidIstEigen(n){return String(n.tagName).includes('-');}
+function unraidSchluessel(n){if(n.nodeType!==1||!n.dataset)return null;if(n._unraidKey!==undefined)return n._unraidKey;const d=n.dataset,k=d.key??d.entityId;
+ return n._unraidKey=k!==undefined?n.tagName+'|'+k+'|'+(d.focusKey??''):d.focusKey!==undefined?n.tagName+'||'+d.focusKey:null;}
+function unraidPasst(alt,neu){if(alt.nodeType!==neu.nodeType||alt.tagName!==neu.tagName)return false;if(neu.nodeType!==1||neu._unraidBehalten)return true;
+ const medium=unraidIstMedium(neu);return medium===unraidIstMedium(alt)&&(!medium||unraidMedienQuelle(alt)===unraidMedienQuelle(neu));}
+function unraidHatElemente(n){for(const c of n.childNodes||[])if(c.nodeType===1)return true;return false;}
+function unraidAttribute(n){const a=n.attributes;if(!a)return {};if(typeof a.length!=='number')return a;const o={};for(let i=0;i<a.length;i++)o[a[i].name]=a[i].value;return o;}
+// Attributes; `open` of <details> is live state of the user (the CPU card keeps it in _coreDetailsOpen). A custom element
+// (ha-card, ha-icon) may set attributes and light DOM of its own: only attributes the card set before are removed.
+function unraidAttributeAbgleich(alt,neu,eigen,details){
+ const aa=alt.attributes,na=neu.attributes;if(!aa||!na)return;
+ if(typeof na.length==='number'&&typeof alt.hasAttribute==='function'){
+  for(let i=aa.length-1;i>=0;i--){const k=aa[i].name;if(!neu.hasAttribute(k)&&!(details&&k==='open')&&(!eigen||alt._unraidAttr?.includes(k)))alt.removeAttribute(k);}
+  for(let i=0;i<na.length;i++){const k=na[i].name,v=na[i].value;if(alt.getAttribute(k)!==v&&!(details&&k==='open'))alt.setAttribute(k,v);}
+  if(eigen)alt._unraidAttr=Array.from(na,x=>x.name);return;}
+ // DOM without NamedNodeMap (tests, previews): attributes as an object, and properties without attribute reflection.
+ const a=unraidAttribute(alt),b=unraidAttribute(neu);
+ for(const k of eigen?alt._unraidAttr||[]:Object.keys(a))if(k in a&&!(k in b)&&!(details&&k==='open'))alt.removeAttribute(k);
+ for(const k of Object.keys(b))if(a[k]!==b[k]&&!(details&&k==='open'))alt.setAttribute(k,b[k]);
+ if(eigen)alt._unraidAttr=Object.keys(b);
+ for(const k of ['className','title'])if(typeof neu[k]==='string'&&alt[k]!==neu[k])alt[k]=neu[k];
+ if(alt.disabled!==neu.disabled&&(typeof neu.disabled==='boolean'||typeof alt.disabled==='boolean'))alt.disabled=!!neu.disabled;
+ if(neu.dataset&&alt.dataset){for(const k of Object.keys(alt.dataset))if(!(k in neu.dataset))delete alt.dataset[k];Object.assign(alt.dataset,neu.dataset);}
+ if(neu.style&&alt.style&&typeof neu.style.cssText!=='string')Object.assign(alt.style,neu.style);}
+function unraidAbgleich(alt,neu){
+ if(neu._unraidBehalten)return;
+ if(neu.nodeType!==1){if(alt.nodeValue!==neu.nodeValue)alt.nodeValue=neu.nodeValue;return;}
+ const eigen=unraidIstEigen(alt);unraidAttributeAbgleich(alt,neu,eigen,alt.tagName==='DETAILS');
+ if(neu._unraidAct)alt._unraidAct=neu._unraidAct;else if(alt._unraidAct)alt._unraidAct=null;
+ // Media holders keep their own <img>/icon; a custom element given no content by the card keeps its own.
+ if(unraidIstMedium(neu)||(eigen&&!neu.childNodes?.length))return;
+ if(!unraidHatElemente(alt)&&!unraidHatElemente(neu)){const text=neu.textContent;if(alt.textContent!==text)alt.textContent=text;return;}
+ unraidKinderAbgleich(alt,neu);}
+function unraidKinderAbgleich(alt,neu){
+ // Common case (only values changed): same length, same keys, compatible in order → pair by position, nothing moves.
+ const ac=alt.childNodes,nc=neu.childNodes;let gleich=ac.length===nc.length;
+ for(let i=0;gleich&&i<nc.length;i++)gleich=unraidSchluessel(ac[i])===unraidSchluessel(nc[i])&&unraidPasst(ac[i],nc[i]);
+ if(gleich){for(let i=0;i<nc.length;i++)unraidAbgleich(ac[i],nc[i]);return;}
+ const alte=[...ac],neue=[...nc],altSchluessel=alte.map(unraidSchluessel),frei=new Map();alte.forEach((n,i)=>{const k=altSchluessel[i];if(k!==null&&!frei.has(k))frei.set(k,n);});
+ const benutzt=new Set(),soll=[];let zeiger=0;
+ for(const n of neue){const k=unraidSchluessel(n);let treffer=null;
+  if(k!==null){const c=frei.get(k);if(c&&!benutzt.has(c)&&unraidPasst(c,n))treffer=c;}
+  else for(let i=zeiger;i<alte.length;i++){const c=alte[i];if(altSchluessel[i]!==null||benutzt.has(c)||!unraidPasst(c,n))continue;treffer=c;zeiger=i+1;break;}
+  if(treffer){benutzt.add(treffer);unraidAbgleich(treffer,n);soll.push(treffer);}else if(!n._unraidBehalten){unraidStempeln(n);soll.push(n);}}
+ for(const n of alte)if(!benutzt.has(n))alt.removeChild(n);
+ for(let i=0;i<soll.length;i++){const n=soll[i];if(alt.childNodes[i]!==n)alt.insertBefore(n,alt.childNodes[i]||null);}}
 /* Busch HA UI 0.1.0: domain states map to the same semantic badge roles. */
 function buschUiStatusSemantic(status){return BuschUI.statusSemantic(String(status||'').toLowerCase());}
 /* M3: the badge tone follows the update phase; the text already does (buschUnraidStatusText). Error and warning
@@ -1640,7 +1721,7 @@ function unraidKompaktZeile(ids,werte,t){
 function unraidKompaktSemantik(status){const s=buschUiStatusSemantic(status);return s==='success'?'ok':s==='warning'||s==='error'?s:'unknown';}
 /* #643/2: der eine Einklapp-Knopf aller 17 Karten (R01, R08): flach, oben rechts im Kopf (Rasterbereich toggle),
  * nie Teil der Aktionsreihe. `t` liefert collapse/expand (UNRAID_TILE_TEXTE); data-focus-key=toggle hält den Fokus über Renders. */
-function unraidEinklappKnopf({eingeklappt,t,onClick}){const label=eingeklappt?t.expand:t.collapse,knopf=BuschUI.action({label,icon:eingeklappt?'mdi:chevron-down':'mdi:chevron-up',onClick,variant:'secondary'});
+function unraidEinklappKnopf({eingeklappt,t,onClick}){const label=eingeklappt?t.expand:t.collapse,knopf=unraidKnopf({label,icon:eingeklappt?'mdi:chevron-down':'mdi:chevron-up',variant:'secondary'},onClick);
  knopf.className+=' collapse-toggle';knopf.dataset.focusKey='toggle';knopf.setAttribute('aria-expanded',String(!eingeklappt));knopf.title=label;return knopf;}
 /* Ein Editor-Helfer für beide Editorklassen (R08): Häkchenlisten `visible_items`/`collapsed_items` aus dem Katalog.
  * formDaten: abgeleitete Listen in form.data, damit die Häkchen auch den Altzustand (show_*) korrekt zeigen.
@@ -1696,7 +1777,7 @@ class BuschUnraidBaseCard extends HTMLElement {
  _connect(){if(!this._hass||this._release)return;this._core=ensureBuschCore(1);this._release=this._core.retain(this._hass);this._unwatch=this._core.watch(()=>this._render());}
  getCardSize(){return this._eingeklappt?1+(this._anzeige?.kompakt?.length?1:0):this._kind==='stack'&&this._expanded?4:2;}
  getGridOptions(){return {columns:12,min_columns:3};}
- _button(parent,text,action,disabled=false,destructive=false,focusKey){const button=BuschUI.action({label:text,text,onClick:action,disabled,variant:destructive?'danger':'secondary'});if(destructive)button.className+=' danger';if(focusKey)button.dataset.focusKey=focusKey;parent.appendChild(button);return button;}
+ _button(parent,text,action,disabled=false,destructive=false,focusKey){const button=unraidKnopf({label:text,text,disabled,variant:destructive?'danger':'secondary'},action);if(destructive)button.className+=' danger';if(focusKey)button.dataset.focusKey=focusKey;parent.appendChild(button);return button;}
  _actions(parent,row,t){const actions=buschUnraidNode('div',undefined,'actions'),darf=unraidDarf(this);
   if(darf&&this._config.show_controls&&row.switch){const running=this._kind==='vm'?buschUnraidVmForceable(row.status):row.status==='running'||row.status==='partial'||row.switch.state==='on';this._button(actions,running?(this._kind==='vm'?t.vm_shutdown:t.stop):t.start,()=>this._action(running?'stop':'start',row),this._busy||!buschUnraidAvailable(row.switch)||row.status==='updating'||(this._kind==='vm'&&!['running','stopped'].includes(row.status)),running,'control');}
   if(darf&&this._config.show_controls&&this._config.show_restart&&row.restart)this._button(actions,t.restart,()=>this._action('restart',row),this._busy||row.restart.state==='unavailable'||row.status==='updating'||(this._kind==='vm'&&row.status!=='running'),false,'restart');
@@ -1733,7 +1814,8 @@ class BuschUnraidBaseCard extends HTMLElement {
   catch{if(generation===this._generation)this._error=t.failed;}
   finally{this._busy=false;this._render();}
  }
- _render(){if(!this.shadowRoot||!this._config)return;const active=this.shadowRoot.activeElement,row=active?.closest?.('.row'),headerAction=active?.tagName==='BUTTON'&&active.closest?.('.header > .actions')?active.dataset.focusKey:null,focus=row&&active?.tagName==='BUTTON'?{entity:row.dataset.entityId,index:[...row.querySelectorAll('button')].indexOf(active)}:headerAction?{headerAction}:active?.dataset?.focusKey==='toggle'?{toggle:true}:active?.classList?.contains('disclosure')?{disclosure:true}:null,scroll={x:window.scrollX,y:window.scrollY};const t=buschTexte(BUSCH_UNRAID_TEXT,this._hass),m=buschUnraidModel(this._core,this._config,this._kind);if(this.isConnected&&this._watchDeviceId!==m.device?.id){this._unwatchDevice?.();this._watchDeviceId=m.device?.id;this._unwatchDevice=this._watchDeviceId?this._core.watchDevice?.(this._watchDeviceId,()=>this._render()):null;}const signature=JSON.stringify([this._config,m,this._expanded,!!this._eingeklappt,!!this._busy,this._error,t,unraidDarf(this)]);if(signature===this._renderSignature)return;this._renderSignature=signature;const card=buschUnraidNode('ha-card'),style=buschUnraidNode('style',UNRAID_FAMILIE_STYLE);card.className=this._config.layout;
+ _render(){if(!this.shadowRoot||!this._config)return;const active=this.shadowRoot.activeElement,row=active?.closest?.('.row'),headerAction=active?.tagName==='BUTTON'&&active.closest?.('.header > .actions')?active.dataset.focusKey:null,focus=row&&active?.tagName==='BUTTON'?{entity:row.dataset.entityId,index:[...row.querySelectorAll('button')].indexOf(active)}:headerAction?{headerAction}:active?.dataset?.focusKey==='toggle'?{toggle:true}:active?.classList?.contains('disclosure')?{disclosure:true}:null,scroll={x:window.scrollX,y:window.scrollY};const t=buschTexte(BUSCH_UNRAID_TEXT,this._hass),m=buschUnraidModel(this._core,this._config,this._kind);if(this.isConnected&&this._watchDeviceId!==m.device?.id){this._unwatchDevice?.();this._watchDeviceId=m.device?.id;this._unwatchDevice=this._watchDeviceId?this._core.watchDevice?.(this._watchDeviceId,()=>this._render()):null;}// M49: only the model is serialised; configuration and dictionary are compared by identity (new only in setConfig/language).
+  const fest=[this._config,t,this._expanded,!!this._eingeklappt,!!this._busy,this._error,unraidDarf(this)],signature=JSON.stringify(m);if(signature===this._renderSignature&&unraidGleich(fest,this._renderFest))return;this._renderSignature=signature;this._renderFest=fest;const card=buschUnraidNode('ha-card');card.className=this._config.layout;
   // Kachel-Kopf (#564): neue Klassen tile-* zusätzlich; header/header-main/card-icon/detail bleiben für Fokuslogik und Renderskripte.
   const header=buschUnraidNode('div',undefined,'header tile-head'),title=this._config.title||m.device?.name_by_user||m.device?.name||t[this._kind];
   // #643/6: Titel und Badge in .title-row; Einklapp-Knopf oben rechts; Aktionen eigene Zeile (.header > .actions bleibt).
@@ -1756,7 +1838,7 @@ class BuschUnraidBaseCard extends HTMLElement {
   }
   if(this._config.debug){const debug=buschUnraidNode('p',JSON.stringify({device_id:m.device?.id,control:m.selected?.switch?.entity_id||m.switch?.entity_id,restart:m.selected?.restart?.entity_id||m.restart?.entity_id}),'message detail');body.appendChild(debug);}
   if(zu){const zeile=unraidKompaktZeile(this._anzeige?.kompakt,this._kompakt(m,t),t);if(zeile)card.appendChild(zeile);}
-  if(this._error){const error=buschUnraidNode('p',this._error,'message error');error.setAttribute('role','alert');card.appendChild(error);}titleNode.title=titleNode.textContent;BuschUI.header({node:header,titleNode});this.shadowRoot.replaceChildren(style,card);if(focus){let target;if(focus.disclosure)target=this.shadowRoot.querySelector('.disclosure');else if(focus.toggle)target=this.shadowRoot.querySelector('[data-focus-key="toggle"]');else if(focus.headerAction)target=[...this.shadowRoot.querySelectorAll('.header > .actions button')].find(button=>button.dataset.focusKey===focus.headerAction);else{const item=[...this.shadowRoot.querySelectorAll('.row')].find(node=>node.dataset.entityId===focus.entity);const buttons=[...(item?.querySelectorAll('button')||[])];target=buttons[focus.index]||buttons[0];}target?.focus({preventScroll:true});}if(window.scrollX!==scroll.x||window.scrollY!==scroll.y)window.scrollTo({left:scroll.x,top:scroll.y,behavior:'instant'});
+  if(this._error){const error=buschUnraidNode('p',this._error,'message error');error.setAttribute('role','alert');card.appendChild(error);}titleNode.title=titleNode.textContent;BuschUI.header({node:header,titleNode});unraidAnwenden(this.shadowRoot,UNRAID_FAMILIE_STYLE,card);if(focus){let target;if(focus.disclosure)target=this.shadowRoot.querySelector('.disclosure');else if(focus.toggle)target=this.shadowRoot.querySelector('[data-focus-key="toggle"]');else if(focus.headerAction)target=[...this.shadowRoot.querySelectorAll('.header > .actions button')].find(button=>button.dataset.focusKey===focus.headerAction);else{const item=[...this.shadowRoot.querySelectorAll('.row')].find(node=>node.dataset.entityId===focus.entity);const buttons=[...(item?.querySelectorAll('button')||[])];target=buttons[focus.index]||buttons[0];}target?.focus({preventScroll:true});}if(window.scrollX!==scroll.x||window.scrollY!==scroll.y)window.scrollTo({left:scroll.x,top:scroll.y,behavior:'instant'});
  }
 }
 class BuschUnraidStackCard extends BuschUnraidBaseCard {
@@ -1791,12 +1873,12 @@ class BuschUnraidVmCard extends BuschUnraidBaseCard {
   const h=this._hass,t={...buschTexte(BUSCH_UNRAID_TEXT,h),...buschTexte(TEXTE_BUSCH_UNRAID_VM_CARD,h)},m=this._core&&h?this._modellListe():{laedt:true},alle=this._zeigeAlle();
   // Liste: Server und seine VM-Geräte beobachten (Stream-Updates), Platten usw. nicht.
   if(this.isConnected&&this._core&&h)unraidBeobachten(this,unraidServerIds(this._core,this._config).filter(id=>['Unraid','Virtual machine'].includes(this._core.devices?.get?.(id)?.model)));
-  const kt=buschTexte(UNRAID_TILE_TEXTE,h),signature=JSON.stringify([this._config,alle,m,!!this._busy,this._error,t,!!this._eingeklappt,unraidDarf(this)]);if(signature===this._listSignature)return;this._listSignature=signature;
+  const kt=buschTexte(UNRAID_TILE_TEXTE,h),fest=[this._config,alle,!!this._busy,this._error,buschTexte(BUSCH_UNRAID_TEXT,h),buschTexte(TEXTE_BUSCH_UNRAID_VM_CARD,h),kt,!!this._eingeklappt,unraidDarf(this)],signature=JSON.stringify(m);if(signature===this._listSignature&&unraidGleich(fest,this._listFest))return;this._listSignature=signature;this._listFest=fest;
   const active=this.shadowRoot.activeElement,fokus=active?.tagName==='BUTTON'?{key:active.dataset.focusKey,entity:active.closest?.('.vm-row')?.dataset.entityId}:null;
-  const style=buschUnraidNode('style',UNRAID_TILE_STYLE),card=buschUnraidNode('ha-card');card.className=('tile '+(this._config.layout||'')).trim();
+  const card=buschUnraidNode('ha-card');card.className=('tile '+(this._config.layout||'')).trim();
   const head=buschUnraidNode('div',undefined,'tile-head header'),icon=BuschUI.ha.icon('mdi:monitor-multiple');icon.className='tile-icon';icon.setAttribute('aria-hidden','true');head.appendChild(icon);
   const tx=buschUnraidNode('div',undefined,'tile-text'),titel=buschUnraidNode('h2',this._config.title||t.vm_list,'tile-title');titel.title=titel.textContent;tx.appendChild(titel);if(m.name)tx.appendChild(buschUnraidNode('p',m.name,'tile-sub'));head.appendChild(tx);
-  const leiste=buschUnraidNode('div',undefined,'tile-actions'),schalter=BuschUI.action({label:t.show_all,text:t.show_all,onClick:()=>{this._alle=!this._zeigeAlle();this._render();},variant:'secondary'});schalter.dataset.focusKey='show-all';schalter.setAttribute('aria-pressed',String(alle));leiste.appendChild(schalter);
+  const leiste=buschUnraidNode('div',undefined,'tile-actions'),schalter=unraidKnopf({label:t.show_all,text:t.show_all,variant:'secondary'},()=>{this._alle=!this._zeigeAlle();this._render();});schalter.dataset.focusKey='show-all';schalter.setAttribute('aria-pressed',String(alle));leiste.appendChild(schalter);
   head.appendChild(unraidEinklappKnopf({eingeklappt:!!this._eingeklappt,t:kt,onClick:()=>this._umschalten()}));head.appendChild(leiste);card.appendChild(head);
   const message=text=>card.appendChild(buschUnraidNode('p',text,'message'));
   if(this._eingeklappt){const zeile=m.laedt||m.fehler?null:unraidKompaktZeile(this._anzeige?.kompakt,this._kompakt(m,t),t);if(zeile)card.appendChild(zeile);}
@@ -1806,7 +1888,7 @@ class BuschUnraidVmCard extends BuschUnraidBaseCard {
    if(r.status==='running'&&(this._zeigt('cpu')||this._zeigt('ram')))row.appendChild(buschUnraidMetrics(r,this._metrikSicht(),t,h?.locale?.language));
    this._actions(row,r,t);rows.appendChild(row);}card.appendChild(rows);if(m.unbekannt?.length)message(`${t.unavailable}: ${m.unbekannt.join(', ')}`);}
   if(this._error){const e=buschUnraidNode('p',this._error,'message error');e.setAttribute('role','alert');card.appendChild(e);}
-  this.shadowRoot.replaceChildren(style,card);
+  unraidAnwenden(this.shadowRoot,UNRAID_TILE_STYLE,card);
   if(fokus?.key){const ziel=[...this.shadowRoot.querySelectorAll('button')].find(b=>b.dataset.focusKey===fokus.key&&(['show-all','toggle'].includes(fokus.key)||b.closest?.('.vm-row')?.dataset.entityId===fokus.entity));ziel?.focus?.({preventScroll:true});}
  }
  static getConfigElement(){return document.createElement('busch-unraid-vm-card-editor');}
@@ -2098,16 +2180,19 @@ class BuschUnraidDockerCard extends BuschUnraidBaseCard {
   main.appendChild(buschMedia({},row,row.type==='stack'?'mdi:docker':'mdi:cube-outline','tile-icon'));
   const text=buschUnraidNode('span',undefined,'tile-text'),name=buschUnraidNode('span',row.name,'tile-name');name.title=row.name;
   const line=buschUnraidNode('span',undefined,'tile-status sem-'+status.semantic),icon=BuschUI.ha.icon(status.icon);icon.setAttribute('aria-hidden','true');const statusText=buschUnraidNode('span',status.text,'tile-status-text');statusText.title=status.text;line.append(icon,statusText);
-  text.append(name,line);main.appendChild(text);main.addEventListener('click',event=>{event.stopPropagation();this._openMenu(row,main);});tile.appendChild(main);
-  if(row.type==='stack'&&row.containers.length){const open=this._isOpen(row.key),toggle=buschUnraidNode('button',undefined,'tile-toggle');toggle.type='button';toggle.dataset.key=row.key;toggle.dataset.focusKey='toggle';toggle.setAttribute('aria-expanded',String(open));const hint=(open?t.hide_containers:t.show_containers).replace('{name}',row.name);toggle.setAttribute('aria-label',hint);toggle.title=hint;toggle.appendChild(BuschUI.ha.icon('mdi:chevron-down'));toggle.addEventListener('click',event=>{event.stopPropagation();this._toggle(row.key);});tile.appendChild(toggle);}
+  text.append(name,line);main.appendChild(text);unraidKlick(main,(event,node)=>{event.stopPropagation();this._openMenu(row,node);});tile.appendChild(main);
+  if(row.type==='stack'&&row.containers.length){const open=this._isOpen(row.key),toggle=buschUnraidNode('button',undefined,'tile-toggle');toggle.type='button';toggle.dataset.key=row.key;toggle.dataset.focusKey='toggle';toggle.setAttribute('aria-expanded',String(open));const hint=(open?t.hide_containers:t.show_containers).replace('{name}',row.name);toggle.setAttribute('aria-label',hint);toggle.title=hint;toggle.appendChild(BuschUI.ha.icon('mdi:chevron-down'));unraidKlick(toggle,event=>{event.stopPropagation();this._toggle(row.key);});tile.appendChild(toggle);}
   return tile;
  }
  _render(){
   if(!this.shadowRoot||!this._config)return;
   const active=this.shadowRoot.activeElement,focus=this._focusAfter||(active?.dataset?.key?{key:active.dataset.key,role:active.dataset.focusKey}:null);this._focusAfter=null;
   const words=buschTexte(TEXTE_BUSCH_UNRAID_DOCKER_CARD,this._hass),t=words.texte,stackText=buschTexte(BUSCH_UNRAID_TEXT,this._hass),m=buschUnraidDockerModel(this._core,this._config);this._lastModel=m;
-  const kachel=buschTexte(UNRAID_TILE_TEXTE,this._hass),signature=JSON.stringify([this._config,m,[...this._toggled],this._menuKey,!!this._busy,this._error,t,this._eingeklappt,kachel,unraidDarf(this)]);if(signature===this._renderSignature)return;this._renderSignature=signature;
-  const card=buschUnraidNode('ha-card'),style=buschUnraidNode('style',UNRAID_FAMILIE_STYLE+BUSCH_UNRAID_DOCKER_STYLE);if(this._busy)card.setAttribute('aria-busy','true');
+  // M49: model and open stacks are serialised, configuration and dictionaries compared by identity.
+  const kachel=buschTexte(UNRAID_TILE_TEXTE,this._hass),darf=unraidDarf(this),fest=[this._config,this._menuKey,!!this._busy,this._error,t,stackText,this._eingeklappt,kachel,darf],zeilen=new Map(m.tiles.map(row=>[row.key,JSON.stringify(row)])),signature=JSON.stringify([{...m,tiles:null},[...this._toggled]])+[...zeilen.values()].join('\n');if(signature===this._renderSignature&&unraidGleich(fest,this._renderFest))return;this._renderSignature=signature;this._renderFest=fest;
+  const card=buschUnraidNode('ha-card');if(this._busy)card.setAttribute('aria-busy','true');
+  // M49: a tile is built only when its row, open state or menu changed; otherwise a placeholder keeps the live tile.
+  const live=this.shadowRoot._unraidCard,altKacheln=live?._unraidKacheln,kachelFest=[t,stackText,!!this._busy,darf,this._hass?.locale?.language],gleichFest=unraidGleich(kachelFest,live?._unraidKachelFest),sigs=new Map();
   // Kopf-Icon bewusst ohne .tile-icon: diese Klasse tragen nur die Rasterkacheln (Renderskript prüft sie einheitlich).
   const header=buschUnraidNode('div',undefined,'header tile-head'),main=buschUnraidNode('div',undefined,'header-main tile-text'),titleNode=buschUnraidNode('h2',this._config.title||t.default_title,'tile-title');
   main.appendChild(titleNode);header.appendChild(buschMedia({},{},'mdi:docker','card-icon head-icon'));header.appendChild(main);
@@ -2123,7 +2208,9 @@ class BuschUnraidDockerCard extends BuschUnraidBaseCard {
   else{
    const grid=buschUnraidNode('div',undefined,'grid'+(['1','2','3','4'].includes(String(this._config.columns))?' cols-'+this._config.columns:''));grid.setAttribute('role','list');
    const visible=row=>!this._config.hide_stopped||row.status!=='stopped';
-   const add=row=>{const tile=this._tile(row,t,stackText);tile.setAttribute('role','listitem');grid.appendChild(tile);};
+   const add=row=>{const sig=(zeilen.get(row.key)??JSON.stringify(row))+'|'+this._isOpen(row.key)+'|'+(this._menuKey===row.key),alt=gleichFest?altKacheln?.get(row.key):null;sigs.set(row.key,sig);
+    if(alt&&alt._unraidSig===sig&&alt.parentNode?.parentNode?.parentNode===live){grid.appendChild(unraidBehalten('div',row.key));return;}
+    const tile=this._tile(row,t,stackText);tile.setAttribute('role','listitem');grid.appendChild(tile);};
    // #642: Abschnitte stacks (Stack-Kacheln samt Kindern) und containers (eigenständige Container).
    const kandidaten=m.tiles.filter(row=>this._zeigt(row.type==='stack'?'stacks':'containers'));
    for(const row of kandidaten.filter(visible)){add(row);if(row.type==='stack'&&this._isOpen(row.key))for(const child of row.containers.filter(visible))add(child);}
@@ -2132,7 +2219,9 @@ class BuschUnraidDockerCard extends BuschUnraidBaseCard {
   }
   if(!this._eingeklappt)card.appendChild(body);
   if(this._error){const error=buschUnraidNode('p',this._error,'message error');error.setAttribute('role','alert');card.appendChild(error);}
-  titleNode.title=titleNode.textContent;BuschUI.header({node:header,titleNode});this.shadowRoot.replaceChildren(style,card);
+  titleNode.title=titleNode.textContent;BuschUI.header({node:header,titleNode});
+  const lebend=unraidAnwenden(this.shadowRoot,unraidDockerCss||=UNRAID_FAMILIE_STYLE+BUSCH_UNRAID_DOCKER_STYLE,card),kacheln=new Map(),liveGrid=lebend.querySelector('.grid');
+  for(const tile of liveGrid?.childNodes||[]){const key=tile.dataset?.key;if(key!==undefined&&sigs.has(key)){tile._unraidSig=sigs.get(key);kacheln.set(key,tile);}}lebend._unraidKacheln=kacheln;lebend._unraidKachelFest=kachelFest;
   if(focus){const target=[...this.shadowRoot.querySelectorAll('button')].find(n=>n.dataset.key===focus.key&&n.dataset.focusKey===focus.role);target?.focus({preventScroll:true});}
  }
 }
@@ -2530,26 +2619,34 @@ class BuschUnraidTile extends HTMLElement {
  _render(){
   if(!this.shadowRoot)return;const t=buschTexte(this._texte,this._hass),m=this._core&&this._hass?this._modell(this._core,this._config):{laedt:true};
   // Track resolved auto-selection as well as explicit changes, including A → B → A.
-  const context=JSON.stringify([this._config.device_id||'',this._core?.devices?unraidServer(this._core,this._config).server?.id:null]);
+  const context=(this._config.device_id||'')+'\u0000'+(this._core?.devices?unraidServer(this._core,this._config).server?.id??'':'\u0001');
   if(context!==this._actionContext){this._actionContext=context;this._actionGeneration++;this._error=null;this._notice=null;}
   if(this.isConnected&&this._core&&this._hass)unraidBeobachten(this,unraidServerIds(this._core,this._config));
   // Render-Signatur wie BuschUnraidBaseCard: nur bei geänderter Ansicht neu aufbauen (set hass kommt bei jeder Zustandsänderung in HA).
-  const signatur=JSON.stringify([this._config,m,this._eingeklappt,this._menuOffen||null,!!this._busy,this._error,this._notice,this._hass?.locale?.language,this._hass?.config?.time_zone,this._signaturZusatz(),unraidDarf(this)]);if(signatur===this._signatur)return;this._signatur=signatur;
-  const style=document.createElement('style');style.textContent=UNRAID_TILE_STYLE;const card=document.createElement('ha-card');card.className='tile';
-  const k=this._kopf(m,t)||{},head=buschUnraidNode('div',undefined,'tile-head'),icon=BuschUI.ha.icon(k.icon||'mdi:server'),text=buschUnraidNode('div',undefined,'tile-text');icon.className='tile-icon';icon.setAttribute('aria-hidden','true');
+  // M49: only the model is serialised; configuration and dictionary are compared by identity (new only in setConfig/language).
+  const lang=this._hass?.locale?.language,darf=unraidDarf(this),fest=[this._config,t,this._eingeklappt,this._menuOffen||null,!!this._busy,this._error,this._notice,lang,this._hass?.config?.time_zone,this._signaturZusatz(),darf],signatur=JSON.stringify(m);
+  if(signatur===this._signatur&&unraidGleich(fest,this._signaturFest))return;this._signatur=signatur;this._signaturFest=fest;
+  const card=document.createElement('ha-card');card.className='tile';
+  // M49: head and body apart. The head (icon, title, actions) is built only when its own signature changed; otherwise a
+  // placeholder keeps the live head. Action buttons look their action up by key at click time, so a kept head never runs
+  // an action of an older model.
+  const k=this._kopf(m,t)||{},liste=m.laedt||m.fehler||!darf?[]:this._aktionen(m,t)||[];this._aktionsListe=new Map(liste.map(a=>[a.key,a]));
+  const kopfSig=JSON.stringify([this._config.title,k,liste.map(a=>[a.key,a.label,a.icon,a.text,!!a.menu,!!a.deaktiviert,!!a.gefahr]),this._eingeklappt,this._menuOffen||null,!!this._busy,lang]),liveKopf=this.shadowRoot._unraidCard?.childNodes?.[0];
+  if(liveKopf?._unraidSig===kopfSig&&liveKopf.parentNode===this.shadowRoot._unraidCard&&this.shadowRoot._unraidCard.parentNode===this.shadowRoot)card.appendChild(unraidBehalten('div'));else{
+  const head=buschUnraidNode('div',undefined,'tile-head'),icon=BuschUI.ha.icon(k.icon||'mdi:server'),text=buschUnraidNode('div',undefined,'tile-text');icon.className='tile-icon';icon.setAttribute('aria-hidden','true');
   const titel=buschUnraidNode('h2',this._config.title||k.titel||'','tile-title');titel.title=titel.textContent;text.appendChild(titel);if(k.untertitel)text.appendChild(buschUnraidNode('p',k.untertitel,'tile-sub'));head.appendChild(icon);head.appendChild(text);
   // Während `_busy` sperrt `aria-disabled` statt `disabled`: der fokussierte Knopf bleibt fokussierbar, der Fokus überlebt die Renders; Klicks verwirft `_ausfuehren`.
   const actions=buschUnraidNode('div',undefined,'tile-actions');
   // a.text: sichtbare Beschriftung neben dem Icon; a.menu: Knopf öffnet das flüchtige Menü (BuschUnraidDockerMenu, R08).
   // M16: every tile action is a server action (admin level); with admin_actions a non-admin gets none.
-  for(const a of (m.laedt||m.fehler||!unraidDarf(this)?[]:this._aktionen(m,t)||[])){const b=BuschUI.action({label:a.label,icon:a.icon,onClick:()=>a.menu?this._menuOeffnen(a,t):this._ausfuehren(a,t),disabled:!!a.deaktiviert,variant:a.gefahr?'danger':'secondary'});if(a.text){b.appendChild(buschUnraidNode('span',a.text,'action-text'));b.className+=' with-text';}if(a.menu){b.setAttribute('aria-haspopup','menu');b.setAttribute('aria-expanded',String(this._menuOffen===a.key));}if(this._busy&&!a.deaktiviert)b.setAttribute('aria-disabled','true');b.dataset.focusKey=a.key;actions.appendChild(b);}
-  head.appendChild(unraidEinklappKnopf({eingeklappt:this._eingeklappt,t,onClick:()=>this._umschalten()}));if(actions.childNodes.length)head.appendChild(actions);card.appendChild(head);
+  for(const a of liste){const key=a.key,b=unraidKnopf({label:a.label,icon:a.icon,disabled:!!a.deaktiviert,variant:a.gefahr?'danger':'secondary'},()=>{const x=this._aktionsListe?.get(key);if(x)x.menu?this._menuOeffnen(x,t):this._ausfuehren(x,t);});if(a.text){b.appendChild(buschUnraidNode('span',a.text,'action-text'));b.className+=' with-text';}if(a.menu){b.setAttribute('aria-haspopup','menu');b.setAttribute('aria-expanded',String(this._menuOffen===a.key));}if(this._busy&&!a.deaktiviert)b.setAttribute('aria-disabled','true');b.dataset.focusKey=a.key;actions.appendChild(b);}
+  head.appendChild(unraidEinklappKnopf({eingeklappt:this._eingeklappt,t,onClick:()=>this._umschalten()}));if(actions.childNodes.length)head.appendChild(actions);card.appendChild(head);}
   // #642: eingeklappt nur Kopf und (gewählt, nicht beim Laden/Fehler) die Kompaktzeile aus demselben Modell.
   if(this._eingeklappt){const zeile=m.laedt||m.fehler?null:unraidKompaktZeile(this._anzeige?.kompakt,this._kompakt(m,t),t);if(zeile)card.appendChild(zeile);}
   else{const body=buschUnraidNode('div',undefined,'tile-body');if(m.laedt)body.appendChild(buschUnraidNode('p',t.loading,'message'));else if(m.fehler)body.appendChild(buschUnraidNode('p',t[m.fehler]||m.fehler,'message'));else this._inhalt(body,m,t);card.appendChild(body);}
   if(this._notice){const n=buschUnraidNode('p',this._notice,'message');n.setAttribute('role','status');card.appendChild(n);}
   if(this._error){const e=buschUnraidNode('p',this._error,'message error');e.setAttribute('role','alert');card.appendChild(e);}
-  const fokus=this.shadowRoot.activeElement?.dataset?.focusKey;this.shadowRoot.replaceChildren(style,card);if(fokus)this.shadowRoot.querySelector(`[data-focus-key="${fokus}"]`)?.focus({preventScroll:true});
+  const fokus=this.shadowRoot.activeElement?.dataset?.focusKey;unraidAnwenden(this.shadowRoot,UNRAID_TILE_STYLE,card).childNodes[0]._unraidSig=kopfSig;if(fokus&&this.shadowRoot.activeElement?.dataset?.focusKey!==fokus)this.shadowRoot.querySelector(`[data-focus-key="${fokus}"]`)?.focus({preventScroll:true});
  }
  // Ruling R2: `_busy` wird synchron VOR dem ersten `await` gesetzt (Doppelklick-Schutz) und bei abgelehnter Bestätigung zurückgenommen.
  async _ausfuehren(a,t){
@@ -2748,9 +2845,12 @@ class BuschUnraidCpuCard extends BuschUnraidTile{
   // #643/5: Zeitraum als Überschrift, Min/Max aus denselben Punkten (kein zusätzlicher Abruf).
   if(this._zeigt('history')&&m.cpuId&&typeof this._hass?.callWS==='function'){const min=UNRAID_VERLAUF_MINUTEN.includes(Number(this._config.history_minutes))?Number(this._config.history_minutes):10,key=m.cpuId+'|'+min;
    body.appendChild(buschUnraidNode('h3',buschFuellen(t.history_title,{minutes:min}),'section'));const platz=buschUnraidNode('div',undefined,'history'),spanne=buschUnraidNode('p',undefined,'detail history-range');body.appendChild(platz);body.appendChild(spanne);
-   const zeige=p=>{platz.replaceChildren(unraidLinie(p,t.no_history,t.load));const werte=(p||[]).map(x=>x.v);spanne.textContent=werte.length>1?buschFuellen(t.history_range,{min:unraidZahl(Math.min(...werte),'%',lang),max:unraidZahl(Math.max(...werte),'%',lang)}):'';};
+   // M49: the answer arrives after the patch; it writes into the live nodes (the built ones are then discarded), and only
+   // the answer of the latest request does.
+   const nr=this._verlaufNr=(this._verlaufNr||0)+1,ziel=()=>{const card=this.shadowRoot?._unraidCard;return {platz:card?.querySelector('.history')||platz,spanne:card?.querySelector('.history-range')||spanne};};
+   const zeige=(p,z={platz,spanne})=>{z.platz.replaceChildren(unraidLinie(p,t.no_history,t.load));const werte=(p||[]).map(x=>x.v);z.spanne.textContent=werte.length>1?buschFuellen(t.history_range,{min:unraidZahl(Math.min(...werte),'%',lang),max:unraidZahl(Math.max(...werte),'%',lang)}):'';};
    if(this._linie?.key===key)zeige(this._linie.punkte);
-   unraidVerlauf(this._hass,m.cpuId,min,{t:m.cpuZeit,v:m.cpu}).then(p=>{this._linie={key,punkte:p};zeige(p);}).catch(()=>{platz.replaceChildren(buschUnraidNode('p',t.no_history,'message'));spanne.textContent='';});}}
+   unraidVerlauf(this._hass,m.cpuId,min,{t:m.cpuZeit,v:m.cpu}).then(p=>{this._linie={key,punkte:p};if(nr===this._verlaufNr)zeige(p,ziel());}).catch(()=>{if(nr!==this._verlaufNr)return;const z=ziel();z.platz.replaceChildren(buschUnraidNode('p',t.no_history,'message'));z.spanne.textContent='';});}}
  static getConfigElement(){return document.createElement('busch-unraid-cpu-card-editor');}
  static getStubConfig(){return {type:'custom:busch-unraid-cpu-card'};}
 }

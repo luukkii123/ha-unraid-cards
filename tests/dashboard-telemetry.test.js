@@ -47,7 +47,8 @@ test('CPU core disclosure keeps focus and open state across streamed telemetry r
   details.open = true; for (const toggle of details.listeners.toggle) toggle(); old.focus();
   core.entities.get('sensor.demo_dashboard_cpu').attributes.cores[0].percent = 17; k._render();
   const current = k.shadowRoot.querySelector('summary');
-  assert.notEqual(current, old);
+  assert.equal(current, old, 'M49: the telemetry render patches in place, the summary is kept');
+  assert.equal(k.shadowRoot.querySelector('details'), details);
   assert.equal(k.shadowRoot.activeElement, current);
   assert.equal(k.shadowRoot.querySelector('details').open, true);
   assert.match(text(k), /0.*17 %/s);
@@ -62,7 +63,7 @@ for (const open of [true, false]) test(`CPU preserves ${open ? 'opened' : 'close
   core.entities.get('sensor.demo_dashboard_cpu').attributes.cores[0].percent = 23;
   k.hass = { locale: { language: 'de' } };
   const current = k.shadowRoot.querySelector('summary');
-  assert.notEqual(current, old, 'changed telemetry rebuilt the shadow content');
+  assert.equal(current, old, 'M49: changed telemetry patches the shadow content in place');
   assert.equal(k.shadowRoot.querySelector('details').open, open);
   assert.equal(k.shadowRoot.activeElement, current);
   assert.match(text(k), /0.*23 %/s);

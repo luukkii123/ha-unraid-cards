@@ -14,6 +14,8 @@ class Element {
   append(...n) { for (const x of n) this.appendChild(x); }
   get lastChild() { return this.childNodes.at(-1) || null; }
   removeChild(n) { n.remove(); return n; }
+  // Like the DOM: moves `n` (also within the same parent) in front of `ref`; without `ref` to the end.
+  insertBefore(n, ref) { if (n === ref) return n; if (n.parentNode) n.remove(); n.parentNode = this; const i = ref ? this.childNodes.indexOf(ref) : -1; if (i < 0) this.childNodes.push(n); else this.childNodes.splice(i, 0, n); return n; }
   replaceChildren(...n) { for (const c of this.childNodes) c.parentNode = null; this.childNodes = []; this.append(...n); }
   remove() { if (this.parentNode) this.parentNode.childNodes = this.parentNode.childNodes.filter((c) => c !== this); this.parentNode = null; }
   setAttribute(k, v) { this.attributes[k] = String(v); if (k === 'class') this.className = String(v); }

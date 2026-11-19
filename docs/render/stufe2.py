@@ -189,12 +189,13 @@ def main():
             check(pg.locator(tag + " details").get_attribute("open") is not None, "Keyboard core disclosure failed")
             focus_retained = pg.evaluate("""()=>{
                 const card=document.querySelector('busch-unraid-cpu-card');
-                const before=card.shadowRoot.querySelector('summary');
+                // M49: the telemetry render patches in place: same summary object, value updated, focus and open state kept.
+                const before=card.shadowRoot.querySelector('summary'),text=card.shadowRoot.querySelector('details').textContent;
                 const entity=kern.entities.get('sensor.demo_dashboard_cpu');
                 entity.attributes={...entity.attributes,cores:entity.attributes.cores.map((row,index)=>index?row:{...row,percent:1})};
                 card.hass={...card._hass};
-                const after=card.shadowRoot.querySelector('summary');
-                return before!==after&&after===card.shadowRoot.activeElement&&card.shadowRoot.querySelector('details').open;
+                const after=card.shadowRoot.querySelector('summary'),details=card.shadowRoot.querySelector('details');
+                return before===after&&details.textContent!==text&&after===card.shadowRoot.activeElement&&details.open;
             }""")
             check(focus_retained, "Keyboard focus/open state lost on core telemetry render")
             results["cores-open"] = capture("cores-open", tag)

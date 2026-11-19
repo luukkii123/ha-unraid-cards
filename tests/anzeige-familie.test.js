@@ -98,9 +98,10 @@ test('Basiskarte: Kompaktzeile genau die gewählten, verfügbaren Werte; gestopp
 });
 
 test('Basiskarte: Signatur enthält _eingeklappt (direkter Render ohne _umschalten)', () => {
-  const k = familienKarte('stack'), vorher = k.shadowRoot.childNodes[1];
-  k._render(); assert.equal(k.shadowRoot.childNodes[1], vorher, 'unverändert: kein Neuaufbau');
-  k._eingeklappt = true; k._render(); assert.notEqual(k.shadowRoot.childNodes[1], vorher); assert.equal(knopf(k).getAttribute('aria-expanded'), 'false');
+  // M49: a render patches the live card; a probe attribute shows whether a render ran (the patch removes it).
+  const k = familienKarte('stack'), vorher = k.shadowRoot.childNodes[1], kopf = vorher.childNodes[0]; kopf.setAttribute('data-probe', '1');
+  k._render(); assert.equal(k.shadowRoot.childNodes[1], vorher); assert.equal(kopf.getAttribute('data-probe'), '1', 'unverändert: kein Render');
+  k._eingeklappt = true; k._render(); assert.equal(kopf.getAttribute('data-probe'), null, 'eingeklappt: Render lief'); assert.equal(k.shadowRoot.childNodes[1], vorher, 'M49: im Ort aktualisiert'); assert.equal(knopf(k).getAttribute('aria-expanded'), 'false');
 });
 
 const Ereignis = class { constructor(type, init = {}) { this.type = type; this.detail = init.detail; } };

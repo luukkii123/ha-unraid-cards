@@ -16,13 +16,13 @@ for (const [name, list] of Object.entries(actions)) for (const key of list) test
   old.blur(); core.entities.get('sensor.demo_cpu_percent').state = '34'; k._render();
   const current = k.shadowRoot.querySelector(`[data-focus-key="${oeffner(key)}"]`);
   assert.ok(current, 'telemetry preserves the action opener');
-  assert.notEqual(current, old);
+  assert.equal(current, old, 'M49: the telemetry render patches in place and keeps the opener object');
   const close = dialog.shadowRoot.querySelector('.close'); assert.ok(close, 'real close X'); close.click(); close.click();
   await pending;
   assert.equal(calls.length, 0); assert.equal(k._busy, false);
   const restored = k.shadowRoot.querySelector(`[data-focus-key="${oeffner(key)}"]`);
   assert.ok(restored, 'the completed cancellation leaves a focusable opener');
-  assert.notEqual(restored, old, 'focus returns to the rendered opener, not its detached original');
+  assert.equal(restored, old, 'focus returns to the live opener (M49: kept, never detached)');
   assert.equal(k.shadowRoot.activeElement, restored);
   assert.equal(dialog.isConnected, false);
   assert.equal(env.history.length, 1); assert.equal(env.history.backs, 1);
@@ -37,7 +37,7 @@ test('Paused parity has its own state and does not claim idle', () => { const { 
 test('Changing selected server during confirmation cannot send a command or show old feedback', async () => { const { k, calls, env } = setup('BuschUnraidServerCard'); const a = flach(k._aktionen(k._modell(k._core, k._config), k._texte.de)).find(x => x.key === 'server_reboot'); const pending = k._ausfuehren(a, k._texte.de); k.setConfig({device_id:'other',show_clock:false}); env.document.body.lastChild._ok.click(); await pending; assert.equal(calls.length,0); assert.doesNotMatch(k.shadowRoot.querySelector('ha-card').textContent,/nicht bestätigt|Anfrage gesendet/); });
 test('Switching server while a sent request is pending cannot show completion feedback on the new server', async () => { const { k, calls } = setup('BuschUnraidServerCard'); let done; k._hass.callService = async (...args) => { calls.push(args); await new Promise(r => { done = r; }); }; k._bestaetigen = async () => true; const a = flach(k._aktionen(k._modell(k._core,k._config),k._texte.de)).find(x => x.key === 'server_reboot'); const pending = k._ausfuehren(a,k._texte.de); await tick(); k.setConfig({device_id:'other',show_clock:false}); done(); await pending; assert.equal(calls.length,1); assert.doesNotMatch(k.shadowRoot.querySelector('ha-card').textContent,/Anfrage gesendet/); });
 test('Changing the selected server clears feedback from the previous target', async () => { const { k } = setup('BuschUnraidServerCard'); k._bestaetigen = async () => true; const a = flach(k._aktionen(k._modell(k._core,k._config),k._texte.de)).find(x => x.key === 'server_reboot'); await k._ausfuehren(a,k._texte.de); k.setConfig({device_id:'other',show_clock:false}); assert.doesNotMatch(k.shadowRoot.querySelector('ha-card').textContent,/Anfrage gesendet/); });
-test('Cancel restores the opener after telemetry rebuilt the card while the modal owned focus', async () => { const { k, core, calls, env } = setup('BuschUnraidServerCard'); const old = k.shadowRoot.querySelector('[data-focus-key="more"]'); old.focus(); const a = flach(k._aktionen(k._modell(core,k._config),k._texte.de)).find(x => x.key === 'server_reboot'); const pending = k._ausfuehren(a,k._texte.de); old.blur(); core.entities.get('sensor.demo_cpu_percent').state='26'; k._render(); assert.notEqual(k.shadowRoot.querySelector('[data-focus-key="more"]'),old); env.document.body.lastChild._abbr.click(); await pending; assert.equal(calls.length,0); assert.equal(k.shadowRoot.activeElement?.dataset.focusKey,'more'); });
+test('Cancel restores the opener after telemetry rebuilt the card while the modal owned focus', async () => { const { k, core, calls, env } = setup('BuschUnraidServerCard'); const old = k.shadowRoot.querySelector('[data-focus-key="more"]'); old.focus(); const a = flach(k._aktionen(k._modell(core,k._config),k._texte.de)).find(x => x.key === 'server_reboot'); const pending = k._ausfuehren(a,k._texte.de); old.blur(); core.entities.get('sensor.demo_cpu_percent').state='26'; k._render(); assert.equal(k.shadowRoot.querySelector('[data-focus-key="more"]'),old,'M49: opener kept by the patch'); env.document.body.lastChild._abbr.click(); await pending; assert.equal(calls.length,0); assert.equal(k.shadowRoot.activeElement?.dataset.focusKey,'more'); });
 
 for (const state of ['unavailable', 'unknown']) for (const phase of ['idle', 'paused', 'running']) {
   test(`Parity ${state} ignores retained ${phase} while main sensors remain available`, () => {
