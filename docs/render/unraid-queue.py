@@ -27,7 +27,8 @@ source=pathlib.Path(sys.argv[1]).read_text();out=pathlib.Path(sys.argv[2]);out.m
 native=len(sys.argv)>3
 if native:kt=KontrastTouch(None)  # M26: the native part runs in HA's own theme, only the synthetic page is measured
 prefix='queue-candidate-busch-' if native else 'busch-'
-if native:source=source.replace('busch-',prefix).replace('ensureBuschCore(1)','window.__queueCore')
+# Calls pass the bundle name since core 1.5.1 (M9); both forms are replaced.
+if native:source=re.sub(r'ensureBuschCore\(1(?:, "[^"]*")?\)','window.__queueCore',source.replace('busch-',prefix))
 fixture='''
 window.__queueCore={devices:new Map([['stack',{id:'stack',name:'Synthetischer Medienstack mit langem Namen',model:'Compose stack',config_entries:['demo']}]]),entities:new Map(),getDeviceEntities(id){return [...this.entities.values()].filter(e=>e.device_id===id)},attach(){},retain(){return()=>{}},watch(){return()=>{}}};
 window.put=(domain,key,kind,role,state,extra={})=>{const id=domain+'.'+key+'_'+role;__queueCore.entities.set(id,{entity_id:id,domain,device_id:'stack',platform:'unraid_ssh',config_entry_id:'demo',state,registry:{},attributes:{kind,role,config_entry_id:'demo',container_key:key,container_name:'Container '+key+' mit besonders langem Namen',stack_key:'media',...extra}});return id};

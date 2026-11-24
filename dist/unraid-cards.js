@@ -351,9 +351,9 @@ const BuschUI = (() => {
 
 /* === Kern: shared with Busch Cards at runtime; source hacs/shared-core/busch-core.js,
  * embedded by hacs/scripts/sync-shared-ui.py. Never edit inside the markers. === */
-/* BEGIN BUSCH SHARED CORE 1.5.0 sha256:9d35b2364dda1b9591f38143235af431b2c57f8938bb82d6a3f9d7ab282b0d02 */
-const BUSCH_CORE_STAMP = Object.freeze({ version: "1.5.0", sourceHash: "9d35b2364dda" });
-/* Busch Cards Core 1.5.0. Raise this version whenever the core content changes; the sync stamps it with the source hash. */
+/* BEGIN BUSCH SHARED CORE 1.5.1 sha256:d287deb6312d9f53bb9c952fb681b26b21d1c0216ab803449a202ae4d1b10d24 */
+const BUSCH_CORE_STAMP = Object.freeze({ version: "1.5.1", sourceHash: "d287deb6312d" });
+/* Busch Cards Core 1.5.1. Raise this version whenever the core content changes; the sync stamps it with the source hash. */
 const BUSCH_CORE_KEY = Symbol.for("busch.cards.core");
 const BUSCH_REGISTRY_IDS = { entity: "entity_id", device: "id", area: "area_id", floor: "floor_id", label: "label_id" };
 function buschCoreMap(rows, key) {
@@ -587,7 +587,7 @@ class BuschQueryEngine {
 }
 class BuschCardsCore {
   constructor() {
-    this.apiVersion = "1.0"; this.version = BUSCH_CORE_STAMP.version; this.sourceHash = BUSCH_CORE_STAMP.sourceHash; this.index = new BuschEntityIndex(); this.metrics = { stateUpdates: 0, queriesSkipped: 0, queriesRecalculated: 0, resultChanges: 0, domRenders: null, structuralBuilds: 0 };
+    this.apiVersion = "1.0"; this.version = BUSCH_CORE_STAMP.version; this.sourceHash = BUSCH_CORE_STAMP.sourceHash; this.bundle = "unknown"; this.conflicts = []; this.index = new BuschEntityIndex(); this.metrics = { stateUpdates: 0, queriesSkipped: 0, queriesRecalculated: 0, resultChanges: 0, domRenders: null, structuralBuilds: 0 };
     this.registry = new BuschRegistryCache(null, (name, map) => {
       this.index[name === "entity" ? "registry" : name === "device" ? "devices" : name === "area" ? "areas" : name === "floor" ? "floors" : "labels"] = map;
       this.lastErrors.delete(name);
@@ -847,7 +847,7 @@ class BuschCardsCore {
   query(spec) { return this.engine.query(spec); }
   smartQuery(spec, scopeDeviceId) { this.smart ||= new BuschSmartQueries(this); return this.smart.query(spec, scopeDeviceId); }
   subscribe(query, callback) { return this.engine.subscribe(query, callback); }
-  debugSnapshot() { return { version: this.version, sourceHash: this.sourceHash, ...this.metrics, entities: this.entities.size, devices: this.devices.size, registryRequests: { ...this.registry.requests }, errors: [...this.lastErrors.keys()] }; }
+  debugSnapshot() { return { version: this.version, sourceHash: this.sourceHash, bundle: this.bundle, conflicts: this.conflicts.map(entry => ({ ...entry })), ...this.metrics, entities: this.entities.size, devices: this.devices.size, registryRequests: { ...this.registry.requests }, errors: [...this.lastErrors.keys()] }; }
   dispose() {
     if (this._releaseTimer) { clearTimeout(this._releaseTimer); this._releaseTimer = null; } this.generation++; for (const unsubscribe of this.unsubscribers.splice(0)) Promise.resolve(unsubscribe()).catch(() => {});
     this._registryLive = false; this.streaming = false; this._entitiesActive = false; this._entitiesFull = false; this.connection = null; this.registry.clear(); this._refreshing = new Map(); this._queuedRefresh = new Set();
@@ -855,15 +855,19 @@ class BuschCardsCore {
   }
 }
 let buschCoreConflictReported = false;
-function ensureBuschCore(requiredApiVersion = 1) {
+// bundleName: the calling bundle (e.g. "busch-cards"); the creating bundle is kept on the core, a conflict names both.
+function ensureBuschCore(requiredApiVersion = 1, bundleName = "unknown") {
   const major = Number(String(requiredApiVersion).split(".")[0]);
   if (major !== 1) throw new Error(`Busch Cards Core API ${major} is incompatible with API 1 / ist mit API 1 nicht kompatibel.`);
-  const core = globalThis[BUSCH_CORE_KEY] || (globalThis[BUSCH_CORE_KEY] = new BuschCardsCore());
+  let core = globalThis[BUSCH_CORE_KEY];
+  if (!core) { core = globalThis[BUSCH_CORE_KEY] = new BuschCardsCore(); core.bundle = String(bundleName); }
   if (Number(String(core.apiVersion).split(".")[0]) !== major) throw new Error("Busch Cards Core API mismatch / inkompatible API-Version.");
   // The first loaded core stays (cards already hold it); a different one is reported once per bundle.
   if (core.sourceHash !== BUSCH_CORE_STAMP.sourceHash && !buschCoreConflictReported) {
     buschCoreConflictReported = true;
-    console.warn(`Busch Core ${BUSCH_CORE_STAMP.version} (${BUSCH_CORE_STAMP.sourceHash}) differs from the loaded core ${core.version} (${core.sourceHash || "unknown"}); keeping the loaded core. Update busch-cards and ha-unraid-cards together.`);
+    // A core before 1.5.1 has no bundle/conflicts fields; the warning still names what is known.
+    if (Array.isArray(core.conflicts)) core.conflicts.push({ bundle: String(bundleName), version: BUSCH_CORE_STAMP.version, sourceHash: BUSCH_CORE_STAMP.sourceHash });
+    console.warn(`Busch Core ${BUSCH_CORE_STAMP.version} (${BUSCH_CORE_STAMP.sourceHash}) from ${bundleName} differs from the loaded core ${core.version} (${core.sourceHash || "unknown"}) from ${core.bundle || "unknown"}; keeping the loaded core. Update busch-cards and ha-unraid-cards together.`);
   }
   return core;
 }
@@ -1982,7 +1986,7 @@ function unraidDarf(karte){return BuschUI.mayAct(karte._hass,karte._config,'admi
 function unraidEinklappbar(Base){return class extends Base{
  _umschalten(){this._eingeklappt=!this._eingeklappt;try{unraidSpeicher()?.setItem(this._schluessel(),this._eingeklappt?'1':'0');}catch{}const fokus=this._klappFokus?.();if(fokus)this._focusAfter=fokus;this._render();}};}
 function unraidKernAnbindung(Base){return class extends Base{
- _connect(){if(!this._hass||this._release)return;this._core=ensureBuschCore(1);this._release=this._core.retain(this._hass);this._unwatch=this._core.watch(()=>this._render());}};}
+ _connect(){if(!this._hass||this._release)return;this._core=ensureBuschCore(1, "ha-unraid-cards");this._release=this._core.retain(this._hass);this._unwatch=this._core.watch(()=>this._render());}};}
 const BuschUnraidKartenBasis=unraidKernAnbindung(unraidEinklappbar(HTMLElement));
 const BuschUnraidEditorBasis=unraidKernAnbindung(BuschEditorBase);
 class BuschUnraidBaseCard extends BuschUnraidKartenBasis {

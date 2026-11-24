@@ -2,13 +2,14 @@
 Since 0.4.0 (#642) the editor writes visible_items/collapsed_items and drops show_cpu/show_ram.
 Credentials JSON stays outside Git; no service calls or dashboard saves.
 """
-import json,sys,pathlib
+import json,sys,pathlib,re
 from playwright.sync_api import sync_playwright
 
 def run():
  private=json.loads(pathlib.Path(sys.argv[2]).read_text());base=private['base_url'].rstrip('/')
  auth={'hassUrl':base,'clientId':base+'/','expires':4102444800000,'expires_in':315360000,'refresh_token':'','access_token':private['token']}
- source=pathlib.Path(sys.argv[1]).read_text().replace('busch-','task2-busch-').replace('ensureBuschCore(1)','window.__task2Core')
+ # Calls pass the bundle name since core 1.5.1 (M9); both forms are replaced.
+ source=re.sub(r'ensureBuschCore\(1(?:, "[^"]*")?\)','window.__task2Core',pathlib.Path(sys.argv[1]).read_text().replace('busch-','task2-busch-'))
  with sync_playwright() as p:
   browser=p.chromium.launch(headless=True);context=browser.new_context(ignore_https_errors=True,viewport={'width':1000,'height':1200});context.add_init_script('localStorage.setItem("hassTokens",JSON.stringify(%s))'%json.dumps(auth));page=context.new_page();errors=[];page.on('pageerror',lambda e:errors.append({'type':type(e).__name__,'script':__import__('re').findall(r'/([A-Za-z0-9_.-]+\.js):(\d+):(\d+)',e.stack or '')}))
   page.goto(base+'/profile',wait_until='domcontentloaded',timeout=30000)
