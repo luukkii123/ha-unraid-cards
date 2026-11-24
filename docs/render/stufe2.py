@@ -80,6 +80,11 @@ def fixtures():
     return data
 
 
+# M64 (#1327): text, scroll and client width of every pool fact key (".pool-facts .busch-kv-key").
+JS_POOL_KEYS = """tag=>[...document.querySelector(tag).shadowRoot.querySelectorAll('.pool-facts .busch-kv-key')]
+  .map(k=>({text:k.textContent,scroll:k.scrollWidth,client:k.clientWidth}))"""
+
+
 def details_gegenprobe(page, tag, geschlossen, offen, check):
     """Closed content is excluded; real open core text/overflow stays measurable.
 
@@ -126,7 +131,7 @@ def details_gegenprobe(page, tag, geschlossen, offen, check):
 
 
 def main():
-    report = {"abgeschlossen": False, "selbsttest": {}, "details_sichtbarkeit": [], "breiten": {}, "popup": {}, "actions": [], "eigene_verstoesse": [], "seitenfehler": [], "netz": []}
+    report = {"abgeschlossen": False, "selbsttest": {}, "details_sichtbarkeit": [], "breiten": {}, "popup": {}, "actions": [], "pool_kopf": [], "eigene_verstoesse": [], "seitenfehler": [], "netz": []}
     failures = report["eigene_verstoesse"]
     kt = KontrastTouch(regeln)
     def check(ok, message):
@@ -177,6 +182,13 @@ def main():
                     info = pg.evaluate(base.JS_KARTE, tag)
                     check(not info["laedt"], f"Unexpected loading: {kind}/{variant}")
                     check(not info["ziele"], f"Small touch target: {kind}/{variant}: {info['ziele']}")
+                    if kind == "array" and variant in ("voll", "partial"):
+                        # M64 (#1327): the pool facts head shows every key in full (was "Mitgli…" at 960 px); the value wraps.
+                        keys = pg.evaluate(JS_POOL_KEYS, tag)
+                        ort = f"{variant}/{pg.viewport_size['width']}/{pg.evaluate('document.documentElement.dataset.theme')}"
+                        report["pool_kopf"].append({"fall": "array-" + ort, "keys": keys})
+                        check(len(keys) == 4, f"Pool fact keys missing: {ort}: {keys}")
+                        check(all(k["scroll"] <= k["client"] + 1 for k in keys), f"Pool fact key cut: {ort}: {keys}")
             for variant in ["folder", "unknown"]:
                 tag = place("system", variant)
                 results["docker-" + variant] = capture("docker-" + variant, tag)

@@ -46,3 +46,19 @@ test('M64 pool facts follow the pool heading as key/value rows; the hint is a no
     assert.equal(card.shadowRoot.querySelectorAll('.message').filter(m => /Zusatzdaten/.test(m.textContent)).length, 0, 'no plain message line');
   }
 });
+
+// M64 (#1327): the pool facts head shortened "Mitglieder" to "Mitgli…" at 960 px because the long member list shrank the key.
+// The key keeps its full text (no shrinking, single line, ellipsis only beyond 60 % of the column, Regel 1); the value
+// wraps. stufe2.py measures it in the browser at every width (no pool fact key cut).
+test('M64 pool fact keys keep their full text; the value wraps instead (Regel 1 per column)', () => {
+  const regel = K.UNRAID_TILE_STYLE.match(/\.pool-facts \.busch-kv-key\{([^}]*)\}/);
+  assert.ok(regel, 'own rule for the pool fact key');
+  assert.match(regel[1], /flex-shrink:0/, 'key does not shrink');
+  assert.match(regel[1], /max-width:60%/, 'key capped so the value keeps room');
+  const k = array(dashboardFixture(), { device_id: 'demo' });
+  const kv = k.shadowRoot.querySelector('.pool-facts').querySelectorAll('.busch-kv');
+  for (const n of kv) assert.equal(n.querySelector('.busch-kv-key').title, n.querySelector('.busch-kv-key').textContent, 'full key in title');
+  const stufe2 = require('node:fs').readFileSync(require('node:path').join(__dirname, '../docs/render/stufe2.py'), 'utf8');
+  assert.match(stufe2, /pool-facts \.busch-kv-key/, 'stufe2.py measures the pool fact keys');
+  assert.match(stufe2, /Pool fact key cut/, 'stufe2.py fails on a cut key');
+});
