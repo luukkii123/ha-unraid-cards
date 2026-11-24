@@ -173,6 +173,8 @@ Ergebnisse landen in `docs/render/ergebnis/` (nicht im Repo).
 
 ## Geprüft
 
+**24.11.2026 · 0.10.0, Nachholetappe J2 (#1344, Tag `v0.10.0`)** — Kern 1.5.1 (M9), alle Dialoge und Editoren bei 360/390 (M76), Kontrast-Helfer als Hilfsmodul (M26). Abschlusslauf `karten-20261124-124054-53d328` 58/58 grün, Bildprüfung ok, Beleg gleich.
+
 **24.11.2026 · 0.9.1, Nachholetappe J (#1327, Tag `v0.9.1`)** — Kontrast/Touch in allen Renderskripten (M26), Pool-Kopf „Mitglieder“ voll (M64), Kopfsymbol 44-px-Platz (M61). Abschlusslauf `karten-20261124-104659-fea696` grün (58/58, Volllauf, 2752 Node-Tests), `--beleg-pruefen` gleich; Bilder am Bild geprüft (Sonnet).
 
 **20.11.2026 · 0.9.0, Buschcheck Etappe I (#1322, Tag `v0.9.0`)** — Hilfsmethoden je einmal als Mixin (M72), Kopfkommentar mit Test (M73), echte MDI-Symbole in allen Renderskripten (M79), Symbole/Diagramme/Fokus ≥ 3:1, Shared UI 0.5.3, CI aus der Vorlage (M45). 668 Node-Tests (2 python3-Tests nur im Alpine-Container rot). Abschlusslauf `karten-20261119-234243-239269` grün (57/57, Volllauf, 2700 Node-Tests, Block `statisch` grün inkl. CI-Vorlage und Zeilenlänge), `--beleg-pruefen` gleich; Bilder am Bild geprüft (Sonnet).
