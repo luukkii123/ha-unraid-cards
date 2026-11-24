@@ -4,7 +4,8 @@
 python3 /repo/docs/render/stufe3.py /repo/dist/unraid-cards.js /out
 Mount the unchanged shared rule helpers at /work. No real HA or hardware.
 All three cards/editors, full/empty/partial/offline/legacy, de/en,
-320/480/960 light/dark. The fixture factory alone needs no browser package.
+320/480/960 light/dark; the editors also at 360/390 (M76, #1344, listed under ``handybreiten``).
+The fixture factory alone needs no browser package.
 """
 import json
 import pathlib
@@ -207,6 +208,33 @@ def main():
             report['lesbarkeit_selbsttest'][kind] = {'vorher': before, 'sonde': probe, 'nachher': after, 'erkannt': detected}
             check(before['checked'] > 0 and not before['failures'] and detected and after == before,
                   f'Invalid readability counterprobe: {kind}')
+        def editor_pruefen(pg, tag, kind, language, results):
+            """Editor of one card in one language at the current width/theme (M76: also run at 360/390)."""
+            editor = tag + '-editor'
+            pg.evaluate("([tag,lang])=>{const e=document.createElement(tag);e.setAttribute('data-stage3-editor','');e.setConfig({type:'custom:'+tag.replace(/-editor$/,''),device_id:'demo'});e.hass={locale:{language:lang}};window.editorConfig=null;e.addEventListener('config-changed',ev=>window.editorConfig=ev.detail.config);document.querySelector('#wrap').replaceChildren(e)}", [editor, language])
+            results[f'{kind}-editor-{language}'] = capture(f'{kind}-editor-{language}', editor)
+            gesehen.append((f'{kind}-editor-{language}', pg.viewport_size['width']))
+            title = pg.locator(editor + ' input[name=title]')
+            title.focus()
+            check(title.evaluate('(e)=>document.activeElement===e'), f'Editor input cannot focus: {kind}/{language}')
+            title.fill('Example custom title')
+            title.press('Tab')
+            check(pg.evaluate("window.editorConfig?.title==='Example custom title'"), f'Editor did not publish title: {kind}/{language}')
+            if kind == 'usb':
+                hub = pg.locator(editor + ' input[name=show_hubs]')
+                check(hub.is_checked(), f'Hub default is not true: {language}')
+                hub.uncheck()
+                check(pg.evaluate('window.editorConfig?.show_hubs===false'), f'Editor did not publish hub filter: {language}')
+                tag = place('usb', language=language, config={'show_hubs': False})
+                check('Example hub' not in pg.locator(tag + ' ha-card').inner_text(), 'Hub filter did not apply')
+                results[f'usb-filtered-{language}'] = capture(f'usb-filtered-{language}', tag)
+        def editoren(pg):
+            """M76: only the three editors in both languages (phone widths 360/390)."""
+            results = {}
+            for language in ('de', 'en'):
+                for kind in ('users', 'usb', 'coral'):
+                    editor_pruefen(pg, place(kind, language=language), kind, language, results)
+            return results
         def measurement(pg):
             results = {}
             for language in ('de', 'en'):
@@ -251,26 +279,14 @@ def main():
                     persisted = pg.evaluate("tag=>{const c=document.querySelector(tag);c.setConfig({...c._config});return c._eingeklappt&&c.shadowRoot.querySelector('[data-focus-key=toggle]').getAttribute('aria-expanded')==='false'}", tag)
                     check(persisted, f'Collapse preference lost: {kind}/{language}')
                     report['interaktionen'].append({'karte': kind, 'sprache': language, 'breite': pg.viewport_size['width'], 'thema': pg.evaluate('document.documentElement.dataset.theme'), 'fokus_sichtbar': focused, 'fokus_eingabe': 'Tab', 'fokus_details': focus, 'fokus_stream': retained, 'einklappen_gespeichert': persisted})
-                    editor = tag + '-editor'
-                    pg.evaluate("([tag,lang])=>{const e=document.createElement(tag);e.setAttribute('data-stage3-editor','');e.setConfig({type:'custom:'+tag.replace(/-editor$/,''),device_id:'demo'});e.hass={locale:{language:lang}};window.editorConfig=null;e.addEventListener('config-changed',ev=>window.editorConfig=ev.detail.config);document.querySelector('#wrap').replaceChildren(e)}", [editor, language])
-                    results[f'{kind}-editor-{language}'] = capture(f'{kind}-editor-{language}', editor)
-                    title = pg.locator(editor + ' input[name=title]')
-                    title.focus()
-                    check(title.evaluate('(e)=>document.activeElement===e'), f'Editor input cannot focus: {kind}/{language}')
-                    title.fill('Example custom title')
-                    title.press('Tab')
-                    check(pg.evaluate("window.editorConfig?.title==='Example custom title'"), f'Editor did not publish title: {kind}/{language}')
-                    if kind == 'usb':
-                        hub = pg.locator(editor + ' input[name=show_hubs]')
-                        check(hub.is_checked(), f'Hub default is not true: {language}')
-                        hub.uncheck()
-                        check(pg.evaluate('window.editorConfig?.show_hubs===false'), f'Editor did not publish hub filter: {language}')
-                        tag = place('usb', language=language, config={'show_hubs': False})
-                        check('Example hub' not in pg.locator(tag + ' ha-card').inner_text(), 'Hub filter did not apply')
-                        results[f'usb-filtered-{language}'] = capture(f'usb-filtered-{language}', tag)
+                    editor_pruefen(pg, tag, kind, language, results)
             check(pg.evaluate('window.calls.length===0 && window.ws.length===0'), 'Read-only cards sent services or browser polls')
             return results
-        report['breiten'] = lauf_breiten(page, breiten=(320, 480, 960), messung=measurement, hoehe=1200)
+        gesehen = []
+        report['breiten'] = lauf_breiten(page, breiten=base.BREITEN, messung=measurement, hoehe=1200)
+        report['handybreiten_messung'] = lauf_breiten(page, breiten=base.HANDY_BREITEN, messung=editoren, hoehe=1200)
+        report['handybreiten'] = base.handy_ausweis(gesehen)
+        failures.extend(f'Phone width {l}' for l in report['handybreiten']['luecken'])
         report['ha_icon'] = ha_icon_fehlend(page)  # M79: stand-in active, names without a path
         check(report['ha_icon']['aktiv'] and not report['ha_icon']['fehlend'], f"ha-icon-Attrappe {report['ha_icon']}")
         browser.close()

@@ -5,6 +5,8 @@ Container invocation: python3 /repo/docs/render/stufe2.py /repo/dist/unraid-card
 Mount the shared rule helpers at /work. Services and telemetry are synthetic.
 All changed cards, core disclosure, interface editor and all ten confirmations:
 320/480/960 px, light/dark; text, touch targets, scroll, focus and modal history.
+M76 (#1344): the confirmations (array, mover, parity, server, spindown) and the interface editor also at 360/390 px
+(Regel 1 and 2); report.json lists them under ``handybreiten``.
 """
 import copy
 import json
@@ -217,9 +219,16 @@ def main():
             check(focus_retained, "Keyboard focus/open state lost on core telemetry render")
             results["cores-open"] = capture("cores-open", tag)
             report["details_sichtbarkeit"].append(details_gegenprobe(pg, tag, geschlossen, results["cores-open"], check))
+            results.update(dialoge(pg))
+            return results
+        def dialoge(pg):
+            """Interface editor and all ten confirmations at the current width/theme (M76: also run at 360/390)."""
+            results = {}
+            width = pg.viewport_size["width"]
             editor = "busch-unraid-interface-card-editor"
             pg.evaluate("tag=>{document.querySelector('#wrap').replaceChildren();const e=document.createElement(tag);e.setConfig({type:'custom:busch-unraid-interface-card',device_id:'demo'});e.hass={locale:{language:'de'}};e.addEventListener('config-changed',ev=>window.editorConfig=ev.detail.config);document.querySelector('#wrap').append(e)}", editor)
             results["interface-editor"] = capture("interface-editor", editor)
+            gesehen.append(("interface-editor", width))
             pg.locator(editor + " input[name=show_virtual]").uncheck()
             check(pg.evaluate("window.editorConfig?.show_virtual===false"), "Editor did not publish filter config")
             for kind, keys in ACTIONS.items():
@@ -231,6 +240,7 @@ def main():
                     check("Example server" in pg.locator(base.DIALOG).inner_text(), "Missing confirmation target: " + key)
                     check(pg.evaluate("document.querySelector('busch-unraid-confirm').shadowRoot.activeElement.textContent") == "Abbrechen", "Confirmation did not focus cancel: " + key)
                     results[key + "-dialog"] = capture(key + "-dialog", base.DIALOG)
+                    gesehen.append((key + "-dialog", width))
                     pg.locator(base.ABBRECHEN).click()
                     check(pg.evaluate("window.calls.length") == 0, "Cancel sent service: " + key)
                     open_action(pg, tag, key)
@@ -240,9 +250,13 @@ def main():
                     check(calls == [["button", "press", {"entity_id": "button.demo_" + key}]], "Wrong service/target: " + key)
                     report["actions"].append({"key": key, "width": pg.viewport_size["width"], "calls": calls})
             return results
-        report["breiten"] = lauf_breiten(page, breiten=(320, 480, 960), messung=measurement, hoehe=1200)
+        gesehen = []
+        report["breiten"] = lauf_breiten(page, breiten=base.BREITEN, messung=measurement, hoehe=1200)
+        report["handybreiten_messung"] = lauf_breiten(page, breiten=base.HANDY_BREITEN, messung=dialoge, hoehe=1200)
+        report["handybreiten"] = base.handy_ausweis(gesehen)
+        failures.extend(f"Phone width {l}" for l in report["handybreiten"]["luecken"])
         schreibe(OUT / "report.json", report, zeige=0)
-        for width in (320, 480, 960):
+        for width in base.DIALOG_BREITEN:
             page.set_viewport_size({"width": width, "height": 800})
             for kind, keys in ACTIONS.items():
                 for key in keys:
@@ -253,9 +267,9 @@ def main():
                     report["popup"][f"{key}-{width}"] = popup
                     for rule in ("escape", "zurueck", "schliessknopf", "obenauf", "scrim"):
                         verdict = popup.get(rule, {})
-                        # A narrow fullscreen sheet may leave no outside point;
+                        # A phone bottom sheet (< 450 px, also 360/390, M76) may leave no outside point;
                         # at 480/960 px even Scrim must have a real verdict.
-                        no_outside_point = (rule == "scrim" and width == 320
+                        no_outside_point = (rule == "scrim" and width < 450
                                             and verdict.get("ergebnis") == "kein_urteil"
                                             and verdict.get("beleg", {}).get("kein_punkt") is True)
                         check(verdict.get("ergebnis") in ("bestanden", "verletzt") or no_outside_point,

@@ -7,7 +7,8 @@ sonst über ``bash scripts/karten-alle.sh --repo ha-unraid-cards --schritt anzei
     python3 /repo/docs/render/anzeige.py /repo/dist/unraid-cards.js /tmp/anzeige-out
 
 Nur erfundene Daten (``kacheln.ATTRAPPE`` und ``tests/familie-attrappe.js``), kein HA,
-keine echten Dienstaufrufe. Je Karte bei 320/480/960 px, hell und dunkel:
+keine echten Dienstaufrufe. Je Karte bei 320/480/960 px, hell und dunkel (Servermenü,
+Bestätigung und Editoren zusätzlich bei 360/390 px, M76, ``handybreiten`` im Bericht):
 
 * ausgeklappt (localStorage leer) und eingeklappt (Schlüssel der Karte mit ``'1'``
   vorbelegt, ``collapsed_items`` gesetzt): Bild, Regel 1 (``messe_text``), Touchziele,
@@ -235,6 +236,81 @@ def main():
                 ziel = report.setdefault(bereich, {"ausnahmen_datei": messung[bereich].get("ausnahmen_datei"), "laeufe": []})
                 ziel["laeufe"].append({"fall": fall, "breite": breite, "thema": thema, **{k: v for k, v in messung[bereich].items() if k != "ausnahmen_datei"}})
 
+        def dialoge_editoren(pg):
+            """Server menu, confirmation and the editors of all 17 cards at the current width/theme (M76: also 360/390)."""
+            breite = pg.viewport_size["width"]
+            thema = pg.evaluate("document.documentElement.dataset.theme")
+            ergebnis = {}
+            # Servermenü (flüchtig, R04/R08/R23).
+            platziere(SERVER, "voll", {"device_id": "srv"}, False, [])
+            pg.locator(MEHR).click()
+            pg.wait_for_selector(MENUE)
+            pg.wait_for_timeout(200)
+            lage = pg.evaluate(JS_MENUE)
+            bild = f"servermenue-{breite}-{thema}.png"
+            pg.screenshot(path=str(OUT / bild))
+            report["menue"].append({"breite": breite, "thema": thema, "bild": bild, **lage})
+            check(lage["items"] == ["server_reboot", "server_shutdown"], f"Menüeinträge {breite} {thema}: {lage['items']}")
+            check(lage["sheet"] == (breite < 450) and lage["innen"] and not lage["klein"], f"Menülage {breite} {thema}: {lage}")
+            check(pg.evaluate("()=>document.querySelector('busch-unraid-server-card').shadowRoot.querySelector('[data-focus-key=more]').getAttribute('aria-expanded')") == "true", f"⋮ ohne aria-expanded {breite} {thema}")
+            ergebnis["servermenue"] = messe_text(pg, MENUE)
+            gesehen.append(("servermenue", breite))
+            kt_sammeln("servermenue", breite, thema, messe_kontrast_touch_hier(pg, MENUE, ausnahmen=AUSNAHMEN))
+            pg.keyboard.press("Escape")
+            pg.wait_for_timeout(400)
+            fokus = pg.evaluate("()=>{const c=document.querySelector('busch-unraid-server-card');return document.activeElement===c&&c.shadowRoot.activeElement?.dataset?.focusKey}")
+            check(fokus == "more" and not pg.evaluate("()=>!!document.querySelector('busch-unraid-docker-menu')"), f"Fokus nach Escape {breite} {thema}: {fokus}")
+            # M26: contrast/touch of the confirmation dialog (footer buttons primary/destructive), opened from the menu, closed by Escape.
+            pg.locator(MEHR).click()
+            pg.wait_for_selector(MENUE)
+            pg.locator(f"{MENUE} .item[data-action='server_reboot']").click()
+            pg.wait_for_selector(base.DIALOG)
+            pg.wait_for_timeout(200)
+            kt_sammeln("bestaetigung", breite, thema, messe_kontrast_touch_hier(pg, "busch-unraid-confirm", ausnahmen=AUSNAHMEN))
+            ergebnis["bestaetigung"] = messe_text(pg, base.DIALOG)
+            gesehen.append(("bestaetigung", breite))
+            pg.keyboard.press("Escape")
+            pg.wait_for_function("()=>!document.querySelector('busch-unraid-confirm')")
+            pg.wait_for_timeout(300)
+            # Editoren aller 17 Karten.
+            for name, tag, variante, cfg, kompakt, _ in FAELLE:
+                if name in ("vm-gestoppt", "vm-liste"):
+                    continue
+                editor = tag + "-editor"
+                pg.evaluate("""([tag,v,cfg])=>{localStorage.clear();place(tag,v,cfg);
+                  const wrap=document.querySelector('#wrap');const e=document.createElement(tag+'-editor');e.setAttribute('data-anzeige-editor','');
+                  window.editorConfig=null;e.addEventListener('config-changed',ev=>window.editorConfig=ev.detail.config);
+                  e.setConfig({type:'custom:'+tag,...cfg});e.hass={locale:{language:'de'},states:{}};wrap.replaceChildren(e);}""", [tag, variante, cfg])
+                pg.wait_for_timeout(200)
+                bild = f"editor-{name}-{breite}-{thema}.png"
+                pg.locator(editor).screenshot(path=str(OUT / bild))
+                felder = pg.evaluate("""ed=>{const f=document.querySelector(ed).querySelector('ha-form');const o=n=>[...f.querySelectorAll('input[name="'+n+'"]')].map(i=>({wert:i.value,an:i.checked,text:i.parentElement.textContent}));
+                  return {visible:o('visible_items'),collapsed:o('collapsed_items'),felder:[...f.querySelectorAll('.feld')].map(x=>x.dataset.feld),show:[...f.querySelectorAll('.feld')].map(x=>x.dataset.feld).filter(n=>/^show_(cpu|ram|status|containers|clock|temperatures|history|boot)$/.test(n))}}""", editor)
+                eintrag = {"editor": name, "breite": breite, "thema": thema, "bild": bild, **felder}
+                ort = f"Editor {name} {breite} {thema}"
+                check(len(felder["visible"]) > 0 and all(x["an"] for x in felder["visible"]), f"{ort}: visible_items fehlt oder nicht vorbelegt: {felder['visible']}")
+                check(all(x["text"].strip() and x["text"].strip() != x["wert"] for x in felder["visible"] + felder["collapsed"]), f"{ort}: Option ohne Beschriftung")
+                check((len(felder["collapsed"]) == 0) == (name == "interface"), f"{ort}: collapsed_items {felder['collapsed']}")
+                check(not felder["show"], f"{ort}: überführte Altschalter im Formular: {felder['show']}")
+                eintrag["regel1"] = messe_text(pg, editor)
+                # M48: foreign updates (new hass, same language and devices) feed the form nothing but hass.
+                eintrag["fremde_sets"] = pg.evaluate("""ed=>{const e=document.querySelector(ed),f=e.querySelector('ha-form'),vor=f._sets||0;
+                  for(let i=0;i<2;i++)e.hass={locale:{language:'de'},states:{['sensor.fremd_'+i]:{state:String(i)}}};return (f._sets||0)-vor;}""", editor)
+                check(eintrag["fremde_sets"] == 0, f"{ort}: fremdes Update setzt ha-form neu ({eintrag['fremde_sets']} Sets)")
+                ergebnis[f"editor-{name}"] = eintrag["regel1"]
+                gesehen.append((f"editor-{name}", breite))
+                if breite == 960 and thema == "light":
+                    erstes = felder["visible"][0]["wert"]
+                    pg.locator(f'{editor} input[name="visible_items"][value="{erstes}"]').uncheck()
+                    pg.wait_for_timeout(100)
+                    neu = pg.evaluate("window.editorConfig")
+                    eintrag["nach_abwahl"] = neu
+                    check(isinstance(neu, dict) and isinstance(neu.get("visible_items"), list) and erstes not in neu["visible_items"]
+                          and not any(k.startswith("show_") and k[5:] in ("cpu", "ram", "status", "containers", "clock", "temperatures", "history", "boot") for k in neu),
+                          f"{ort}: Abwahl schreibt {neu}")
+                report["editoren"].append(eintrag)
+            return ergebnis
+
         def messung(pg):
             breite = pg.viewport_size["width"]
             thema = pg.evaluate("document.documentElement.dataset.theme")
@@ -312,73 +388,15 @@ def main():
                 else:
                     check(not temp["punkte"] and any("52" in t for t in temp["texte"]), f"CPU-Temperatur kühl mit Punkt {breite} {thema}: {temp}")
                 ergebnis[f"cpu-temp-{variante}"] = messe_text(pg, "busch-unraid-cpu-card")
-            # Servermenü (flüchtig, R04/R08/R23).
-            platziere(SERVER, "voll", {"device_id": "srv"}, False, [])
-            pg.locator(MEHR).click()
-            pg.wait_for_selector(MENUE)
-            pg.wait_for_timeout(200)
-            lage = pg.evaluate(JS_MENUE)
-            bild = f"servermenue-{breite}-{thema}.png"
-            pg.screenshot(path=str(OUT / bild))
-            report["menue"].append({"breite": breite, "thema": thema, "bild": bild, **lage})
-            check(lage["items"] == ["server_reboot", "server_shutdown"], f"Menüeinträge {breite} {thema}: {lage['items']}")
-            check(lage["sheet"] == (breite < 450) and lage["innen"] and not lage["klein"], f"Menülage {breite} {thema}: {lage}")
-            check(pg.evaluate("()=>document.querySelector('busch-unraid-server-card').shadowRoot.querySelector('[data-focus-key=more]').getAttribute('aria-expanded')") == "true", f"⋮ ohne aria-expanded {breite} {thema}")
-            ergebnis["servermenue"] = messe_text(pg, MENUE)
-            kt_sammeln("servermenue", breite, thema, messe_kontrast_touch_hier(pg, MENUE, ausnahmen=AUSNAHMEN))
-            pg.keyboard.press("Escape")
-            pg.wait_for_timeout(400)
-            fokus = pg.evaluate("()=>{const c=document.querySelector('busch-unraid-server-card');return document.activeElement===c&&c.shadowRoot.activeElement?.dataset?.focusKey}")
-            check(fokus == "more" and not pg.evaluate("()=>!!document.querySelector('busch-unraid-docker-menu')"), f"Fokus nach Escape {breite} {thema}: {fokus}")
-            # M26: contrast/touch of the confirmation dialog (footer buttons primary/destructive), opened from the menu, closed by Escape.
-            pg.locator(MEHR).click()
-            pg.wait_for_selector(MENUE)
-            pg.locator(f"{MENUE} .item[data-action='server_reboot']").click()
-            pg.wait_for_selector(base.DIALOG)
-            pg.wait_for_timeout(200)
-            kt_sammeln("bestaetigung", breite, thema, messe_kontrast_touch_hier(pg, "busch-unraid-confirm", ausnahmen=AUSNAHMEN))
-            pg.keyboard.press("Escape")
-            pg.wait_for_function("()=>!document.querySelector('busch-unraid-confirm')")
-            pg.wait_for_timeout(300)
-            # Editoren aller 17 Karten.
-            for name, tag, variante, cfg, kompakt, _ in FAELLE:
-                if name in ("vm-gestoppt", "vm-liste"):
-                    continue
-                editor = tag + "-editor"
-                pg.evaluate("""([tag,v,cfg])=>{localStorage.clear();place(tag,v,cfg);
-                  const wrap=document.querySelector('#wrap');const e=document.createElement(tag+'-editor');e.setAttribute('data-anzeige-editor','');
-                  window.editorConfig=null;e.addEventListener('config-changed',ev=>window.editorConfig=ev.detail.config);
-                  e.setConfig({type:'custom:'+tag,...cfg});e.hass={locale:{language:'de'},states:{}};wrap.replaceChildren(e);}""", [tag, variante, cfg])
-                pg.wait_for_timeout(200)
-                bild = f"editor-{name}-{breite}-{thema}.png"
-                pg.locator(editor).screenshot(path=str(OUT / bild))
-                felder = pg.evaluate("""ed=>{const f=document.querySelector(ed).querySelector('ha-form');const o=n=>[...f.querySelectorAll('input[name="'+n+'"]')].map(i=>({wert:i.value,an:i.checked,text:i.parentElement.textContent}));
-                  return {visible:o('visible_items'),collapsed:o('collapsed_items'),felder:[...f.querySelectorAll('.feld')].map(x=>x.dataset.feld),show:[...f.querySelectorAll('.feld')].map(x=>x.dataset.feld).filter(n=>/^show_(cpu|ram|status|containers|clock|temperatures|history|boot)$/.test(n))}}""", editor)
-                eintrag = {"editor": name, "breite": breite, "thema": thema, "bild": bild, **felder}
-                ort = f"Editor {name} {breite} {thema}"
-                check(len(felder["visible"]) > 0 and all(x["an"] for x in felder["visible"]), f"{ort}: visible_items fehlt oder nicht vorbelegt: {felder['visible']}")
-                check(all(x["text"].strip() and x["text"].strip() != x["wert"] for x in felder["visible"] + felder["collapsed"]), f"{ort}: Option ohne Beschriftung")
-                check((len(felder["collapsed"]) == 0) == (name == "interface"), f"{ort}: collapsed_items {felder['collapsed']}")
-                check(not felder["show"], f"{ort}: überführte Altschalter im Formular: {felder['show']}")
-                eintrag["regel1"] = messe_text(pg, editor)
-                # M48: foreign updates (new hass, same language and devices) feed the form nothing but hass.
-                eintrag["fremde_sets"] = pg.evaluate("""ed=>{const e=document.querySelector(ed),f=e.querySelector('ha-form'),vor=f._sets||0;
-                  for(let i=0;i<2;i++)e.hass={locale:{language:'de'},states:{['sensor.fremd_'+i]:{state:String(i)}}};return (f._sets||0)-vor;}""", editor)
-                check(eintrag["fremde_sets"] == 0, f"{ort}: fremdes Update setzt ha-form neu ({eintrag['fremde_sets']} Sets)")
-                ergebnis[f"editor-{name}"] = eintrag["regel1"]
-                if breite == 960 and thema == "light":
-                    erstes = felder["visible"][0]["wert"]
-                    pg.locator(f'{editor} input[name="visible_items"][value="{erstes}"]').uncheck()
-                    pg.wait_for_timeout(100)
-                    neu = pg.evaluate("window.editorConfig")
-                    eintrag["nach_abwahl"] = neu
-                    check(isinstance(neu, dict) and isinstance(neu.get("visible_items"), list) and erstes not in neu["visible_items"]
-                          and not any(k.startswith("show_") and k[5:] in ("cpu", "ram", "status", "containers", "clock", "temperatures", "history", "boot") for k in neu),
-                          f"{ort}: Abwahl schreibt {neu}")
-                report["editoren"].append(eintrag)
+            ergebnis.update(dialoge_editoren(pg))
             return ergebnis
 
+        gesehen = []
         report["breiten"] = lauf_breiten(page, breiten=BREITEN, messung=messung, hoehe=1200)
+        # M76 (#1344, F14): server menu, confirmation and the 17 editors also at the phone widths 360/390.
+        report["handybreiten_messung"] = lauf_breiten(page, breiten=base.HANDY_BREITEN, messung=dialoge_editoren, hoehe=1200)
+        report["handybreiten"] = base.handy_ausweis(gesehen)
+        fehler.extend(f"Handybreite {l}" for l in report["handybreiten"]["luecken"])
         # M26: exceptions never hit are listed (form of regeln.messe_kontrast_touch).
         liste = json.loads(AUSNAHMEN.read_text(encoding="utf-8")) if AUSNAHMEN.is_file() else {}
         for bereich in ("kontrast", "touch"):
@@ -399,8 +417,8 @@ def main():
                       f"Kartentitel uneinheitlich {breite} {thema}: {sorted(varianten)}")
         schreibe(OUT / "report.json", report, zeige=0)
 
-        # Regel 2 am Servermenü je Breite (flüchtig: Scrim schließt, kein Verlaufsrest).
-        for breite in BREITEN:
+        # Regel 2 am Servermenü je Breite (flüchtig: Scrim schließt, kein Verlaufsrest), M76: auch 360/390.
+        for breite in base.DIALOG_BREITEN:
             page.set_viewport_size({"width": breite, "height": 800})
             base.thema(page, "light")
             platziere(SERVER, "voll", {"device_id": "srv"}, False, [])

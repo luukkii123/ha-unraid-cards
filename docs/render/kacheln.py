@@ -17,7 +17,9 @@ Array, Parität, Luftstrom, Shares, VM-Auslastung) und die VM-Liste bei 320,
 ``unraidAttrappe({parity:true, zweiteVm:true})``, ``leer`` =
 ``unraidAttrappe({gpu:false, fans:false})`` für die Leerzustände von
 Grafikkarte, Luftstrom und Parität. ``stateObject`` ist weggelassen (nur der
-Kern liest es, und der ist hier ersetzt).
+Kern liest es, und der ist hier ersetzt). Der Bestätigungsdialog läuft
+zusätzlich bei 360 und 390 px (M76); ``report.json`` weist sie unter
+``handybreiten`` aus.
 
 Regel 1 misst :func:`regeln.messe_text` je Karte, Breite und Thema. Regel 2
 misst :func:`regeln.messe_popup` am Bestätigungsdialog der VM-Liste
@@ -45,6 +47,9 @@ OUT = pathlib.Path(sys.argv[2] if len(sys.argv) > 2 else "/tmp/kacheln-out")
 OUT.mkdir(parents=True, exist_ok=True)
 ORIGIN = "http://karten.test"
 BREITEN = (320, 480, 960)
+#: M76 (#1344, F14): dialogs and editors additionally at the phone widths 360/390 (light/dark, Regel 1/2).
+HANDY_BREITEN = (360, 390)
+DIALOG_BREITEN = tuple(sorted(BREITEN + HANDY_BREITEN))
 JETZT = "2026-10-23T12:00:00+02:00"
 
 # (Name, Kartentyp, Variante, Zusatzkonfiguration)
@@ -279,6 +284,21 @@ ABBRECHEN = "[role=alertdialog] .buttons button:first-child"
 OEFFNER = "busch-unraid-vm-card .vm-row button[data-focus-key='control']"
 
 
+def handy_ausweis(gesehen):
+    """M76: report section ``handybreiten`` from ``[(view, width), ...]`` of the dialogs/editors measured.
+
+    ``luecken`` names every view without 360 or 390 px; nothing measured at all is a gap, not a pass.
+    """
+    ansichten = {}
+    for name, breite in gesehen:
+        if breite in HANDY_BREITEN:
+            ansichten.setdefault(name, set()).add(breite)
+    luecken = [f"{n} ohne {b} px" for n, w in sorted(ansichten.items()) for b in HANDY_BREITEN if b not in w]
+    if not ansichten:
+        luecken.append("keine Dialog-/Editoransicht bei 360/390 px gemessen")
+    return {"breiten": list(HANDY_BREITEN), "ansichten": {n: sorted(w) for n, w in sorted(ansichten.items())}, "luecken": luecken}
+
+
 def thema(page, t):
     page.evaluate("t=>{document.documentElement.dataset.theme=t;document.documentElement.style.colorScheme=t}", t)
 
@@ -343,8 +363,8 @@ def main():
 
         report["breiten"] = lauf_breiten(page, breiten=BREITEN, messung=messung, hoehe=1200)
 
-        # ── Bestätigungsdialog der VM-Liste ────────────────────────────────
-        for breite in BREITEN:
+        # ── Bestätigungsdialog der VM-Liste (M76: auch 360/390) ────────────
+        for breite in DIALOG_BREITEN:
             for t in ("light", "dark"):
                 page.set_viewport_size({"width": breite, "height": 800})
                 thema(page, t)
@@ -397,6 +417,8 @@ def main():
     eigene = []
     hinweise = []
     eigene += [f"horizontaler scroll {h}" for h in report["hscroll"]]
+    report["handybreiten"] = handy_ausweis([("dialog", int(key.split("-")[0])) for key in report["dialog_text"]])
+    eigene += [f"handybreite {l}" for l in report["handybreiten"]["luecken"]]
     for k in report["karten"]:
         tag = f"{k['fall']} {k['breite']} {k['thema']}"
         if k["ziele"]:
