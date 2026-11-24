@@ -173,6 +173,8 @@ Ergebnisse landen in `docs/render/ergebnis/` (nicht im Repo).
 
 ## Geprüft
 
+**24.11.2026 · 0.10.1, Abschlusstor (#1344, Tag `v0.10.1`)** — Kern 1.5.2 (M50). Abschlusslauf `karten-20261124-142858-03d3e9` 58/58 grün (Vorlauf 135414 nur wegen Vacuum-Lastmessung bei Last ≈ 11 rot), Bildprüfung ok, Beleg gleich.
+
 **24.11.2026 · 0.10.0, Nachholetappe J2 (#1344, Tag `v0.10.0`)** — Kern 1.5.1 (M9), alle Dialoge und Editoren bei 360/390 (M76), Kontrast-Helfer als Hilfsmodul (M26). Abschlusslauf `karten-20261124-124054-53d328` 58/58 grün, Bildprüfung ok, Beleg gleich.
 
 **24.11.2026 · 0.9.1, Nachholetappe J (#1327, Tag `v0.9.1`)** — Kontrast/Touch in allen Renderskripten (M26), Pool-Kopf „Mitglieder“ voll (M64), Kopfsymbol 44-px-Platz (M61). Abschlusslauf `karten-20261124-104659-fea696` grün (58/58, Volllauf, 2752 Node-Tests), `--beleg-pruefen` gleich; Bilder am Bild geprüft (Sonnet).
