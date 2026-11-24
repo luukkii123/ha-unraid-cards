@@ -354,7 +354,7 @@ const BuschUI = (() => {
 /* BEGIN BUSCH SHARED CORE 1.5.0 sha256:9d35b2364dda1b9591f38143235af431b2c57f8938bb82d6a3f9d7ab282b0d02 */
 const BUSCH_CORE_STAMP = Object.freeze({ version: "1.5.0", sourceHash: "9d35b2364dda" });
 /* Busch Cards Core 1.5.0. Raise this version whenever the core content changes; the sync stamps it with the source hash. */
-const BUSCH_CORE_KEY = Symbol.for("busch.cards.core");
+const BUSCH_CORE_KEY = Symbol.for("busch.cards.core"); 
 const BUSCH_REGISTRY_IDS = { entity: "entity_id", device: "id", area: "area_id", floor: "floor_id", label: "label_id" };
 function buschCoreMap(rows, key) {
   return new Map((Array.isArray(rows) ? rows : Object.values(rows || {})).map(row => [row[key], row]));
