@@ -2837,6 +2837,8 @@ const UNRAID_TILE_STYLE=BUSCH_UNRAID_STYLE+`
 .collapse-toggle{display:inline-grid;place-items:center;width:44px;height:44px;min-width:44px;min-height:44px;padding:0;border:0;border-radius:50%;background:transparent;color:var(--secondary-text-color);--mdc-icon-size:20px;cursor:pointer}
 .collapse-toggle:hover{background:color-mix(in srgb,var(--secondary-text-color) 12%,transparent)}.collapse-toggle:focus-visible{outline:2px solid ${BuschUI.tokens.focusColor};outline-offset:2px}
 .tile-icon{--mdc-icon-size:40px;color:var(--primary-text-color);flex:0 0 auto}
+/* M61 position (#1331): head symbol in a 44 px slot like Lightcards and Arrstack, the 40 px glyph centred; the title is centred on it. */
+.tile-head>.tile-icon:not(.card-icon){display:grid;place-items:center;width:44px;height:44px}
 /* M61: size and weight of the card title come from BuschUI.header level 1 (--ha-card-header-font-size, medium). */
 .tile-title{margin:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
 .tile-sub{margin:2px 0 0;color:var(--secondary-text-color);font-size:var(--ha-font-size-s,12px);overflow-wrap:anywhere}

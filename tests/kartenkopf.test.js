@@ -40,3 +40,19 @@ test('M61 section headings are the one level-2 step (busch-ui-heading2)', () => 
   for (const k of [gpu, array, sys]) for (const h of k.shadowRoot.querySelectorAll('.section')) { n++; assert.equal(h.tagName, 'H3'); assert.match(h.className, /\bbusch-ui-heading2\b/, h.textContent); }
   assert.ok(n >= 4, 'section headings checked: ' + n);
 });
+
+// M61 position (#1331): the head symbol of the tiles and the VM card sits in a 44 px slot like Lightcards and Arrstack
+// (glyph stays 40 px), 12 px (--ha-space-3) before the title, and the title is centred on it (top-aligned 44 px slot in a
+// 44 px row). The family heads (stack, container, Docker) keep their .card-icon box and are not part of this rule.
+test('M61 position: tile head symbol is a 44 px slot, --ha-space-3 to the title', () => {
+  const s = K.UNRAID_TILE_STYLE;
+  const slot = (s.match(/\.tile-head>\.tile-icon:not\(\.card-icon\)\{([^}]*)\}/) || [])[1] || '';
+  assert.match(slot, /width:44px/); assert.match(slot, /height:44px/);
+  assert.match(slot, /display:grid/); assert.match(slot, /place-items:center/);
+  assert.match(s, /\.tile-icon\{--mdc-icon-size:40px;/, 'glyph unchanged');
+  assert.match(s, /\.tile-head\{[^}]*gap:var\(--ha-space-2,8px\) var\(--ha-space-3,12px\)/, 'column gap 12 px');
+  for (const k of [kachel('BuschUnraidServerCard', inventoryFixture()), kachel('BuschUnraidVmCard', unraidAttrappe(), { device_id: 'srv' })]) {
+    const icon = k.shadowRoot.querySelector('.tile-head').childNodes[0];
+    assert.equal(String(icon.className), 'tile-icon');
+  }
+});
