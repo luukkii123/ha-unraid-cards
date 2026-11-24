@@ -1,5 +1,5 @@
 {
-  "beschreibung": "Ausnahmen der Kontrast-/Touchmessung (M26, hacs/scripts/kontrast_touch.py) für docs/render/anzeige.py. Jede Ausnahme mit Grund.",
+  "beschreibung": "Ausnahmen der Kontrast-/Touchmessung (M26, hacs/scripts/kontrast_touch.py) für alle Renderskripte des Runners (anzeige.py direkt, die übrigen über kontrast_bericht.py). Jede Ausnahme mit Grund.",
   "kontrast": [],
   "touch": []
 }

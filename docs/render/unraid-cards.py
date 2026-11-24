@@ -15,6 +15,9 @@ except ImportError:
  regeln = None
  print('ha-icon-Attrappe: NICHT geprueft - regeln.py fehlt (Repo-CI ohne /work)')
 KEIN_URTEIL = {'kein_urteil': 'regeln.py nicht gefunden - ha-icon-Attrappe nicht geprueft'}
+# M26 (#1327): contrast/touch per state (hacs/scripts/kontrast_touch.py via regeln.py); without regeln.py kein_urteil.
+from kontrast_bericht import KontrastTouch  # noqa: E402
+kt=KontrastTouch(regeln)
 # Bestaetigungen laufen ueber den eigenen Dialog busch-unraid-confirm (R04), nicht mehr ueber window.confirm:
 # Klick ausloesen, auf den Dialog warten, Abbrechen (erster) oder Bestaetigen (letzter Knopf) druecken.
 def antworte(page,klick,annehmen):
@@ -57,6 +60,7 @@ with sync_playwright() as p:
       if mobile['buttonCount']!=3 or mobile['actionRows']!=1:failures.append({'mobile_stack_actions':mobile})
       if mobile['disclosureGap']>16 or mobile['actionToMetrics'] is not None and mobile['actionToMetrics']>16:failures.append({'mobile_stack_spacing':mobile})
      file=f'{backend}-{kind}-{width}-'+('dark' if dark else 'light')+'.png';page.locator('busch-unraid-'+kind+'-card').screenshot(path=str(out/file))
+     kt.messe(page,'busch-unraid-'+kind+'-card',f'{backend}-{kind}',breite=width,thema='dark' if dark else 'light')
      report.append({'backend':backend,'kind':kind,'width':width,'dark':dark,'failures':failures,**({'mobile':mobile} if backend=='metadata' and not dark and width==393 and kind=='stack' else {})})
      if backend=='metadata' and not dark and width==320 and kind=='stack':
       antworte(page,lambda:page.get_by_role('button',name='Stoppen',exact=True).first.click(),False)
@@ -66,6 +70,7 @@ with sync_playwright() as p:
       assert page.evaluate('window.unraidCalls[0][1]')=='press'
  page.evaluate("""()=>{for(const [key,value] of [['--primary-text-color','#212121'],['--secondary-text-color','#555'],['--card-background-color','#fff'],['--secondary-background-color','#eef5fb'],['--divider-color','#dbe4ed'],['--success-color','#16864b'],['--warning-color','#a76900']])document.documentElement.style.setProperty(key,value);core.entities=new Map(JSON.parse(JSON.stringify(window.unraidModernRows)));for(let i=3;i<16;i++)for(const domain of ['switch','button','update']){const entry=structuredClone(core.entities.get(domain+'.renamed_0'));entry.entity_id=domain+'.renamed_'+i;entry.attributes.container_key='key'+i;entry.attributes.container_name='Anwendungscontainer mit einem sehr langen Namen '+i;core.entities.set(entry.entity_id,entry);}document.querySelectorAll('busch-unraid-stack-card,busch-unraid-container-card').forEach(node=>node.remove());const card=document.createElement('busch-unraid-stack-card');card.style.width='360px';card.setConfig({device_id:'stack',start_expanded:true});card.hass={locale:{language:'de'}};document.body.append(card)}""")
  page.locator('busch-unraid-stack-card').screenshot(path=str(out/'metadata-stack-360-expanded-16-light.png'))
+ kt.messe(page,'busch-unraid-stack-card','metadata-stack-expanded-16',breite=360,thema='light')
  large=page.evaluate("""()=>{const card=document.body.lastElementChild,root=card.shadowRoot,config={device_id:'stack',start_expanded:true};const expanded={containers:root.querySelectorAll('.row').length,height:Math.round(card.getBoundingClientRect().height),hasFixedRows:Object.hasOwn(card.getGridOptions(),'rows'),horizontalOverflow:root.querySelector('ha-card').scrollWidth>root.querySelector('ha-card').clientWidth+1};root.querySelector('.disclosure').click();const collapsedHeight=Math.round(card.getBoundingClientRect().height),collapsedContainers=root.querySelectorAll('.row').length,collapsedHasFixedRows=Object.hasOwn(card.getGridOptions(),'rows');card.setConfig(config);const equivalentEchoPreserved=!card._expanded;card.setConfig({...config,title:'Presentation update'});const presentationUpdatePreserved=!card._expanded;card.setConfig(config);root.querySelector('.disclosure').click();const row=root.querySelector('.row'),entityId=row?.dataset.entityId,button=row?.querySelector('button');button?.focus();const entity=core.entities.get(entityId);entity.state='off';card.hass={...card.hass,locale:{language:'de',...card.hass.locale}};const focusAfterRefresh={sameRow:root.activeElement?.closest('.row')?.dataset.entityId===entityId,isButton:root.activeElement?.tagName==='BUTTON'};const headerControl=root.querySelector('.header > .actions button[data-focus-key="control"]');headerControl.focus();core.entities.get('switch.stack').state='off';card._render();const focusHeaderAfterRefresh=root.activeElement?.dataset.focusKey==='control'&&root.activeElement?.closest('.header > .actions')!==null;return {...expanded,collapsedHeight,collapsedContainers,collapsedHasFixedRows,equivalentEchoPreserved,presentationUpdatePreserved,focusAfterRefresh,focusHeaderAfterRefresh,serviceCalls:window.unraidCalls.length}}""")
  large_failures=[]
  if large['containers']!=16 or large['collapsedContainers']!=0:large_failures.append({'container_count':large})
@@ -77,7 +82,8 @@ with sync_playwright() as p:
  report.append({'backend':'metadata','kind':'stack','width':360,'dark':False,'expanded_containers':16,'metrics':large,'failures':large_failures})
  ha_icon=regeln.ha_icon_fehlend(page) if regeln else KEIN_URTEIL  # M79: stand-in active, names without a path
  browser.close()
-(out/'report.json').write_text(json.dumps({'cases':report,'errors':errors,'haIcon':ha_icon},indent=2))
-print(json.dumps({'cases':len(report),'failures':sum(len(r['failures']) for r in report),'errors':errors}))
+(out/'report.json').write_text(json.dumps({'cases':report,'errors':errors,'haIcon':ha_icon,**kt.bericht()},indent=2))
+print(json.dumps({'cases':len(report),'failures':sum(len(r['failures']) for r in report),'errors':errors,'kontrast_touch':kt.verstoesse()}))
 assert not errors and not any(r['failures'] for r in report)
 assert not regeln or (ha_icon['aktiv'] and not ha_icon['fehlend']),ha_icon
+assert not kt.verstoesse(),'Kontrast/Touch-Verstoesse: report.json kontrast/touch'

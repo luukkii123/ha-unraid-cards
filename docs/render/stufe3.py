@@ -132,7 +132,9 @@ JS_INVENTORY_READABILITY = r"""({tag,kind})=>{
 def main():
     sys.path.insert(0, '/work')
     from playwright.sync_api import sync_playwright
+    import regeln
     from regeln import bewerte, ha_icon_attrappe, ha_icon_fehlend, lauf_breiten, messe_text, schreibe, selbsttest, zaehle
+    from kontrast_bericht import KontrastTouch  # M26 (#1327): contrast/touch per state
     import kacheln as base
     bundle = pathlib.Path(sys.argv[1])
     out = pathlib.Path(sys.argv[2] if len(sys.argv) > 2 else '/tmp/stufe3-out')
@@ -143,6 +145,7 @@ def main():
               'grenzen': ['Synthetic HA form fixture; real HA editor dialog behavior belongs to HA.',
                           'No screen reader or field performance measurement.']}
     failures = report['eigene_verstoesse']
+    kt = KontrastTouch(regeln)
     def check(ok, message):
         if not ok:
             failures.append(message)
@@ -186,6 +189,7 @@ def main():
             measurement = messe_text(page, selector)  # selector names ONE host; helpers enter its shadow root.
             check(measurement.get('geprueft', 0) > 0 and measurement.get('geprueft_mit_kasten', 0) > 0,
                   f'Empty text measurement: {name}/{width}/{theme}: {measurement}')
+            kt.messe(page, selector, name, breite=width, thema=theme)
             return measurement
         for kind in ('users', 'usb', 'coral'):
             tag = place(kind)
@@ -271,8 +275,9 @@ def main():
         check(report['ha_icon']['aktiv'] and not report['ha_icon']['fehlend'], f"ha-icon-Attrappe {report['ha_icon']}")
         browser.close()
     report['abgeschlossen'] = True
+    report.update(kt.bericht())  # M26: areas kontrast/touch, every violation counts in bewerte
     schreibe(out / 'report.json', report, zeige=0)
-    code = max(bewerte(report), int(bool(failures or report['seitenfehler'])))
+    code = max(bewerte(report), int(bool(failures or report['seitenfehler'] or kt.verstoesse())))
     print(json.dumps({'zaehlung': zaehle(report), 'eigene': failures, 'seitenfehler': report['seitenfehler'], 'report': str(out / 'report.json'), 'exit': code}, ensure_ascii=False))
     return code
 

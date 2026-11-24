@@ -23,7 +23,9 @@ import zlib
 
 sys.path.insert(0, "/work")
 from playwright.sync_api import sync_playwright  # noqa: E402
+import regeln  # noqa: E402
 from regeln import bewerte, ha_icon_attrappe, ha_icon_fehlend, lauf_breiten, messe_popup, messe_text, schreibe, selbsttest, zaehle  # noqa: E402
+from kontrast_bericht import KontrastTouch  # noqa: E402  M26 (#1327): contrast/touch per state
 
 BUNDLE = pathlib.Path(sys.argv[1])
 OUT = pathlib.Path(sys.argv[2] if len(sys.argv) > 2 else "/tmp/docker-out")
@@ -119,6 +121,7 @@ def main():
         page.wait_for_function("()=>!!customElements.get('busch-unraid-docker-card')")
         page.evaluate("place({})")
         report["selbsttest"] = selbsttest(page, "busch-unraid-docker-card")
+        kt = KontrastTouch(regeln)
 
         def messung(pg):
             pg.evaluate("place({})")
@@ -134,10 +137,12 @@ def main():
                 report["hscroll"].append(breite)
             pg.locator("busch-unraid-docker-card").screenshot(path=str(OUT / f"karte-{breite}-{thema}.png"))
             text = messe_text(pg, "busch-unraid-docker-card")
+            kt.messe(pg, "busch-unraid-docker-card", "karte", breite=breite, thema=thema)
             # Aufgeklappt: Container direkt hinter der Stack-Kachel
             pg.evaluate("place({start_expanded:true})")
             pg.wait_for_timeout(150)
             pg.locator("busch-unraid-docker-card").screenshot(path=str(OUT / f"karte-{breite}-{thema}-ausgeklappt.png"))
+            kt.messe(pg, "busch-unraid-docker-card", "karte-ausgeklappt", breite=breite, thema=thema)
             return {"zu": text, "ausgeklappt": messe_text(pg, "busch-unraid-docker-card")}
 
         report["breiten"] = lauf_breiten(page, breiten=BREITEN, messung=messung, hoehe=1400)
@@ -154,6 +159,7 @@ def main():
             lage = page.evaluate(JS_MENU)
             report["menue"].append({"breite": breite, "thema": thema, "kachel": key, **(lage or {"fehlt": True})})
             page.screenshot(path=str(OUT / f"menue-{breite}-{thema}-{key.replace(':', '_')}.png"))
+            kt.messe(page, "busch-unraid-docker-menu", "menue-" + key, breite=breite, thema=thema)
             page.keyboard.press("Escape")
             page.wait_for_timeout(400)
         # Menü am rechten Rand (letzte Spalte) und unten: nicht abgeschnitten
@@ -259,8 +265,9 @@ def main():
         eigene.append(f"fremde anfragen {fremd}")
     report["eigene_verstoesse"] = eigene
     report["seitenfehler"] = fehler
+    report.update(kt.bericht())  # M26: areas kontrast/touch, every violation counts in bewerte
     schreibe(OUT / "report.json", report, zeige=0)
-    code = max(bewerte(report), 1 if eigene or fehler else 0)
+    code = max(bewerte(report), 1 if eigene or fehler or kt.verstoesse() else 0)
     print(json.dumps({"zaehlung": zaehle(report), "eigene": eigene, "fehler": fehler, "exit": code}, ensure_ascii=False, indent=1))
     sys.exit(code)
 

@@ -19,8 +19,13 @@ except ImportError:
  regeln = None
  print('ha-icon-Attrappe: NICHT geprueft - regeln.py fehlt (Repo-CI ohne /work)')
 KEIN_URTEIL = {'kein_urteil': 'regeln.py nicht gefunden - ha-icon-Attrappe nicht geprueft'}
+# M26 (#1327): contrast/touch per state (hacs/scripts/kontrast_touch.py via regeln.py); without regeln.py kein_urteil.
+# Only the synthetic page is measured; the native part belongs to HA's own theme.
+from kontrast_bericht import KontrastTouch  # noqa: E402
+kt=KontrastTouch(regeln)
 source=pathlib.Path(sys.argv[1]).read_text();out=pathlib.Path(sys.argv[2]);out.mkdir(parents=True,exist_ok=True)
 native=len(sys.argv)>3
+if native:kt=KontrastTouch(None)  # M26: the native part runs in HA's own theme, only the synthetic page is measured
 prefix='queue-candidate-busch-' if native else 'busch-'
 if native:source=source.replace('busch-',prefix).replace('ensureBuschCore(1)','window.__queueCore')
 fixture='''
@@ -103,6 +108,7 @@ with sync_playwright() as p:
       page.keyboard.press('Enter');assert page.evaluate("lastDetail.startsWith('switch.')")
      if width in [320,390,960] and scenario in ['queued','percent','failed']:
       page.evaluate('host.scrollTop=0');page.locator('#queue-probe').screenshot(path=str(out/f'{kind}-{scenario}-{width}-{dark}.png'))
+     kt.messe(page,prefix+'unraid-'+kind+'-card',f'{kind}-{scenario}',breite=width,thema='dark' if dark else 'light')
      report.append({'kind':kind,'scenario':scenario,'width':width,'dark':dark,'issues':result['issues']})
  # HA state stream equivalent: same card/hass, just a new backend state, render.
  page.evaluate("const u=__queueCore.entities.get('update.web_update');u.state='on';u.attributes.update_state='queued';card._render();u.attributes.update_state='verifying';card._render();")
@@ -111,6 +117,7 @@ with sync_playwright() as p:
  guard_report={**guard_counts,'websocketWritesBlocked':page.evaluate("(window.__blocked||[]).reduce((counts,type)=>{counts[type]=(counts[type]||0)+1;return counts},{})")} if native else {}
  ha_icon=(regeln.ha_icon_fehlend(page) if regeln else KEIN_URTEIL) if not native else None  # M79: stand-in active, names without a path
  browser.close()
-summary={'haIcon':ha_icon,'guard':guard_report,'native':native,'cases':len(report),'failures':sum(len(r['issues']) for r in report),'page_errors':errors,'service_calls':0,'cases_detail':report}
-(out/'report.json').write_text(json.dumps(summary,indent=2));print(json.dumps({k:v for k,v in summary.items() if k!='cases_detail'}));assert not summary['failures'] and not errors
+summary={'haIcon':ha_icon,'guard':guard_report,'native':native,'cases':len(report),'failures':sum(len(r['issues']) for r in report),'page_errors':errors,'service_calls':0,'kontrast_touch_verstoesse':kt.verstoesse(),'cases_detail':report,**kt.bericht()}
+(out/'report.json').write_text(json.dumps(summary,indent=2));print(json.dumps({k:v for k,v in summary.items() if k not in ('cases_detail','kontrast','touch')}));assert not summary['failures'] and not errors
 assert native or not regeln or (ha_icon['aktiv'] and not ha_icon['fehlend']),ha_icon
+assert not kt.verstoesse(),'Kontrast/Touch-Verstoesse: report.json kontrast/touch'

@@ -15,7 +15,9 @@ import sys
 
 sys.path.insert(0, "/work")
 from playwright.sync_api import sync_playwright
+import regeln
 from regeln import bewerte, ha_icon_attrappe, ha_icon_fehlend, lauf_breiten, messe_popup, messe_text, schreibe, selbsttest, zaehle
+from kontrast_bericht import KontrastTouch  # M26 (#1327): contrast/touch per state
 import kacheln as base
 
 BUNDLE = pathlib.Path(sys.argv[1])
@@ -126,6 +128,7 @@ def details_gegenprobe(page, tag, geschlossen, offen, check):
 def main():
     report = {"abgeschlossen": False, "selbsttest": {}, "details_sichtbarkeit": [], "breiten": {}, "popup": {}, "actions": [], "eigene_verstoesse": [], "seitenfehler": [], "netz": []}
     failures = report["eigene_verstoesse"]
+    kt = KontrastTouch(regeln)
     def check(ok, message):
         if not ok:
             failures.append(message)
@@ -163,6 +166,7 @@ def main():
             text = messe_text(page, selector)
             check(text.get("geprueft", 0) > 0 and text.get("geprueft_mit_kasten", 0) > 0,
                   f"Empty text measurement: {name}/{width}/{theme}: {text}")
+            kt.messe(page, selector, name, breite=width, thema=theme)
             return text
         def measurement(pg):
             results = {}
@@ -249,8 +253,9 @@ def main():
         check(report["ha_icon"]["aktiv"] and not report["ha_icon"]["fehlend"], f"ha-icon-Attrappe {report['ha_icon']}")
         browser.close()
     report["abgeschlossen"] = True
+    report.update(kt.bericht())  # M26: areas kontrast/touch, every violation counts in bewerte
     schreibe(OUT / "report.json", report, zeige=0)
-    code = max(bewerte(report), int(bool(failures or report["seitenfehler"])))
+    code = max(bewerte(report), int(bool(failures or report["seitenfehler"] or kt.verstoesse())))
     print(json.dumps({"zaehlung": zaehle(report), "eigene": failures, "seitenfehler": report["seitenfehler"], "report": str(OUT / "report.json"), "exit": code}, ensure_ascii=False))
     return code
 

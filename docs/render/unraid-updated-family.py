@@ -16,6 +16,9 @@ except ImportError:
  regeln = None
  print('ha-icon-Attrappe: NICHT geprueft - regeln.py fehlt (Repo-CI ohne /work)')
 KEIN_URTEIL = {'kein_urteil': 'regeln.py nicht gefunden - ha-icon-Attrappe nicht geprueft'}
+# M26 (#1327): contrast/touch per state (hacs/scripts/kontrast_touch.py via regeln.py); without regeln.py kein_urteil.
+from kontrast_bericht import KontrastTouch  # noqa: E402
+kt=KontrastTouch(regeln)
 # Bestaetigungen laufen ueber den eigenen Dialog busch-unraid-confirm (R04), nicht mehr ueber window.confirm:
 # Klick ausloesen, auf den Dialog warten, Abbrechen (erster) oder Bestaetigen (letzter Knopf) druecken.
 def antworte(page,klick,annehmen):
@@ -77,10 +80,12 @@ with sync_playwright() as p:
        antworte(page,lambda:page.locator('[data-test-card]').get_by_role('button',name='Sofort ausschalten',exact=True).click(),False);assert page.evaluate('calls.length')==1
        antworte(page,lambda:page.locator('[data-test-card]').get_by_role('button',name='Sofort ausschalten',exact=True).click(),True);assert page.evaluate("calls[1][0]==='button'&&calls[1][1]==='press'&&calls[1][2].entity_id==='button.vm_Guest_force_stop'")
       detail=[];page.evaluate("document.querySelector('[data-test-card]').addEventListener('hass-more-info',e=>window.detail=e.detail)");page.get_by_role('button',name='Details',exact=True).first.click();assert page.evaluate('detail.entityId').startswith('switch.')
+     kt.messe(page,'[data-test-card]',f'{kind}-{scenario}',breite=width,thema='dark' if dark else 'light')
      file=f'{kind}-{scenario}-{width}-'+('dark' if dark else 'light')+'.png';page.locator('[data-test-card]').screenshot(path=str(out/file));report.append({'kind':kind,'scenario':scenario,'width':width,'dark':dark,'failures':findings,'screenshot':file})
  ha_icon=regeln.ha_icon_fehlend(page) if regeln else KEIN_URTEIL  # M79: stand-in active, names without a path
  browser.close()
-(out/'report.json').write_text(json.dumps({'cases':report,'errors':errors,'haIcon':ha_icon},indent=2))
-print(json.dumps({'cases':len(report),'failures':sum(len(r['failures']) for r in report),'errors':errors}))
+(out/'report.json').write_text(json.dumps({'cases':report,'errors':errors,'haIcon':ha_icon,**kt.bericht()},indent=2))
+print(json.dumps({'cases':len(report),'failures':sum(len(r['failures']) for r in report),'errors':errors,'kontrast_touch':kt.verstoesse()}))
 assert not errors and not any(r['failures'] for r in report)
 assert not regeln or (ha_icon['aktiv'] and not ha_icon['fehlend']),ha_icon
+assert not kt.verstoesse(),'Kontrast/Touch-Verstoesse: report.json kontrast/touch'

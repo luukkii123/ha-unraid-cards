@@ -36,7 +36,9 @@ import sys
 
 sys.path.insert(0, "/work")
 from playwright.sync_api import sync_playwright  # noqa: E402
+import regeln  # noqa: E402
 from regeln import bewerte, ha_icon_attrappe, ha_icon_fehlend, lauf_breiten, messe_popup, messe_text, schreibe, selbsttest, zaehle  # noqa: E402
+from kontrast_bericht import KontrastTouch  # noqa: E402  M26 (#1327): contrast/touch per state
 
 BUNDLE = pathlib.Path(sys.argv[1])
 OUT = pathlib.Path(sys.argv[2] if len(sys.argv) > 2 else "/tmp/kacheln-out")
@@ -284,6 +286,7 @@ def thema(page, t):
 def main():
     report = {"selbsttest": {}, "breiten": None, "karten": [], "hscroll": [], "popup": {}, "dialog_text": {}, "e2e": {}, "netz": []}
     fehler = []
+    kt = KontrastTouch(regeln)
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
         ha_icon_attrappe(browser)  # M79: shared ha-icon with the real MDI glyphs (hacs/docs/render/mdi-pfade.json)
@@ -335,6 +338,7 @@ def main():
                     info["laufwerke"] = pg.evaluate(JS_LAUFWERKE, tag)
                 report["karten"].append({"fall": fall, "breite": breite, "thema": t, "bild": datei, **info})
                 ergebnis[fall] = messe_text(pg, tag)
+                kt.messe(pg, tag, fall, breite=breite, thema=t)
             return ergebnis
 
         report["breiten"] = lauf_breiten(page, breiten=BREITEN, messung=messung, hoehe=1200)
@@ -350,6 +354,7 @@ def main():
                 page.wait_for_selector(DIALOG)
                 page.wait_for_timeout(200)
                 page.screenshot(path=str(OUT / f"dialog-{breite}-{t}.png"))
+                kt.messe(page, "busch-unraid-confirm", "dialog", breite=breite, thema=t)
                 report["dialog_text"][f"{breite}-{t}"] = {
                     "regel1": messe_text(page, DIALOG),
                     # M28: shared anatomy — X left of the title in the head, Cancel left of (or above) the primary action, footer below the text.
@@ -455,8 +460,9 @@ def main():
     report["eigene_verstoesse"] = eigene
     report["hinweise"] = hinweise
     report["seitenfehler"] = fehler
+    report.update(kt.bericht())  # M26: areas kontrast/touch, every violation counts in bewerte
     schreibe(OUT / "report.json", report, zeige=0)
-    code = max(bewerte(report), 1 if eigene or fehler else 0)
+    code = max(bewerte(report), 1 if eigene or fehler or kt.verstoesse() else 0)
     print(json.dumps({"zaehlung": zaehle(report), "eigene": eigene, "hinweise": len(hinweise), "fehler": fehler,
                       "bilder": len(list(OUT.glob("*.png"))), "exit": code}, ensure_ascii=False, indent=1))
     sys.exit(code)
